@@ -64,7 +64,7 @@ def test_quality_rejects_taker_buy_volume_above_total():
     candle = NormalizedCandle(
         **{**sample_candle().__dict__, "taker_buy_volume": 3.0}
     )
-    with pytest.raises(MarketDataError, match="taker-buy"):
+    with pytest.raises(MarketDataError, match="[Tt]aker-buy"):
         validate_candles([candle])
 
 
