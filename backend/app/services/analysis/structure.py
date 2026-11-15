@@ -60,5 +60,8 @@ def analyze_structure(candles: list[NormalizedCandle], pivot_span: int = 2) -> d
         "bullish_fvg": bullish_fvg,
         "bearish_fvg": bearish_fvg,
         "pivot_count": len(highs) + len(lows),
-        "method_note": (\n            "Pivot memakai 2 candle kiri/kanan; BOS/CHOCH dikonfirmasi saat candle terakhir\n"\n            "ditutup melewati swing. FVG adalah gap tiga-candle sederhana."\n        ),
+        "method_note": (
+            "Pivot memakai 2 candle kiri/kanan; BOS/CHOCH dikonfirmasi saat candle "
+            "terakhir ditutup melewati swing. FVG adalah gap tiga-candle sederhana."
+        ),
     }
