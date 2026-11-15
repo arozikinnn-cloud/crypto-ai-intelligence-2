@@ -44,7 +44,7 @@ def test_combined_intelligence_endpoint_returns_all_module_context(monkeypatch):
     async def fake_derivatives(self, symbol, period):
         return {
             "symbol": symbol,
-            "open_interest": 1000.0,
+            "source_market": "binance_usdm_futures",\n            "open_interest_unit": "contracts",\n            "open_interest": 1000.0,
             "open_interest_change_percent": 1.0,
             "open_interest_period": period,
             "funding_rate": 0.0001,
