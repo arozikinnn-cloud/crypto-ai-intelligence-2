@@ -20,8 +20,12 @@ class SignalEvent(Base):
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE", nullable=False)
     timeframe_set: Mapped[str] = mapped_column(String(80), nullable=False)
     reasons_json: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class SignalNotification(Base):
