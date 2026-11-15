@@ -12,3 +12,23 @@ class LiquidationEvent(BaseModel):
     timestamp: datetime
     order_status: str
     note: str
+
+
+
+class LiquidationHistoryPoint(BaseModel):
+    bucket_start_time: int
+    side: str
+    event_count: int
+    total_quantity: float
+    total_notional: float
+    min_price: float
+    max_price: float
+
+
+class LiquidationHistoryResponse(BaseModel):
+    symbol: str
+    source_market: str
+    hours: int
+    event_count: int
+    points: list[LiquidationHistoryPoint]
+    note: str
