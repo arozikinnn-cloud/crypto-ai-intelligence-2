@@ -197,6 +197,7 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     monkeypatch.setattr(
         BinanceAggTradesMarketData, "fetch_order_flow", fake_aggtrades
     )
+    monkeypatch.setattr(api, "record_signal", lambda *_args: None)
     monkeypatch.setattr(api, "analyze_market", fake_technical)
     monkeypatch.setattr(api, "analyze_structure", fake_structure)
     monkeypatch.setattr(api, "analyze_order_flow", fake_flow)
