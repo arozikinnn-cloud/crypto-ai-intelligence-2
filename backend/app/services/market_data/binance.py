@@ -54,6 +54,7 @@ class BinanceMarketData:
                         volume=float(row[5]),
                         quote_volume=float(row[7]),
                         trades=int(row[8]) if len(row) > 8 else 0,
+                        taker_buy_volume=float(row[9]) if len(row) > 9 else None,
                     )
                 )
         except (TypeError, ValueError, IndexError, OverflowError) as exc:
