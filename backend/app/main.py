@@ -31,14 +31,19 @@ async def lifespan(_app: FastAPI):
     if settings.cvd_collector_enabled:
         collector_tasks.extend(
             asyncio.create_task(
-                stream_binance_aggtrades(symbol, stop_event, settings.cvd_collector_flush_interval_seconds),
+                stream_binance_aggtrades(
+                    symbol, stop_event, settings.cvd_collector_flush_interval_seconds
+                ),
                 name=f"cvd-collector-{symbol}",
             ) for symbol in settings.cvd_collector_symbol_list
         )
     if settings.liquidation_collector_enabled:
         collector_tasks.extend(
             asyncio.create_task(
-                stream_binance_liquidations(symbol, stop_event, settings.liquidation_collector_flush_interval_seconds),
+                stream_binance_liquidations(
+                    symbol, stop_event,
+                    settings.liquidation_collector_flush_interval_seconds
+                ),
                 name=f"liquidation-collector-{symbol}",
             ) for symbol in settings.liquidation_collector_symbol_list
         )
@@ -55,7 +60,10 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.3.0",
-    description="Research-first crypto market intelligence API. Public market data only; no order execution.",
+    description=(
+        "Research-first crypto market intelligence API. "
+        "Public market data only; no order execution."
+    ),
     debug=settings.debug,
     lifespan=lifespan,
 )
