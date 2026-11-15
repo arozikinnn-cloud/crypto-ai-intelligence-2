@@ -13,10 +13,7 @@ from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
-from app.services.market_data.cvd_storage import (
-    persist_aggtrades_cvd,
-    read_cvd_history,
-)
+from app.services.market_data.cvd_storage import read_cvd_history
 
 router = APIRouter(prefix="/analysis", tags=["order-flow and derivatives"])
 
@@ -56,7 +53,6 @@ async def aggtrades_order_flow(
     """Recent trade-level aggressor delta from Binance public aggregated trades."""
     try:
         result = await BinanceAggTradesMarketData().fetch_order_flow(symbol, limit)
-        result = persist_aggtrades_cvd(db, result)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception:
