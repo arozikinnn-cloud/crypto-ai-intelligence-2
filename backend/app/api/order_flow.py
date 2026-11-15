@@ -10,7 +10,9 @@ router = APIRouter(prefix="/analysis", tags=["order-flow and derivatives"])
 
 @router.get("/order-flow", response_model=OrderFlowResponse)
 async def order_flow_analysis(
-    symbol: str = Query(default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"),
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
     interval: str = Query(default="5m"),
     lookback: int = Query(default=20, ge=2, le=100),
 ) -> OrderFlowResponse:
@@ -18,7 +20,7 @@ async def order_flow_analysis(
         raise HTTPException(status_code=422, detail="Unsupported candle interval.")
     try:
         candles = await BinanceMarketData().fetch_klines(
-            symbol, interval, min(lookback, 100)
+            symbol, interval, lookback, closed_only=True
         )
         result = analyze_order_flow(candles, lookback)
     except MarketDataError as exc:
