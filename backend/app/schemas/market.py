@@ -1,11 +1,8 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class CandleResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    provider: str
     symbol: str
     timeframe: str
     open_time: datetime
@@ -17,7 +14,6 @@ class CandleResponse(BaseModel):
     volume: float
     quote_volume: float
     trades: int
-    fetched_at: datetime
 
 
 class MarketDataResponse(BaseModel):
