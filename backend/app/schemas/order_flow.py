@@ -15,6 +15,15 @@ class OrderFlowResponse(BaseModel):
     method_note: str
 
 
+class CvdPoint(BaseModel):
+    bucket_start_time: int
+    buy_volume: float
+    sell_volume: float
+    delta: float
+    cumulative_delta: float
+    trade_count: int
+
+
 class AggTradesOrderFlowResponse(BaseModel):
     symbol: str
     source_market: str
@@ -24,6 +33,9 @@ class AggTradesOrderFlowResponse(BaseModel):
     net_delta: float
     delta_percent: float
     cumulative_delta: float
+    cvd_bucket_interval: str
+    cvd_scope: str
+    cvd_points: list[CvdPoint]
     bias: str
     first_trade_time: int | None
     last_trade_time: int | None
