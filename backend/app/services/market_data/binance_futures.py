@@ -1,4 +1,5 @@
 import asyncio
+from math import isfinite
 import httpx
 from app.services.market_data.base import MarketDataError
 
@@ -34,10 +35,16 @@ class BinanceFuturesMarketData:
             raise MarketDataError("Binance Futures derivatives request failed.") from exc
 
         try:
-            if not isinstance(oi_payload, list) or len(oi_payload) < 1:
+            if not isinstance(oi_payload, list) or not oi_payload:
                 raise ValueError("Missing open-interest history.")
             latest_oi = float(oi_payload[-1]["sumOpenInterest"])
-            previous_oi = float(oi_payload[-2]["sumOpenInterest"]) if len(oi_payload) > 1 else None
+            previous_oi = (
+                float(oi_payload[-2]["sumOpenInterest"]) if len(oi_payload) > 1 else None
+            )
+            if not isfinite(latest_oi) or latest_oi < 0:
+                raise ValueError("Invalid open interest.")
+            if previous_oi is not None and (not isfinite(previous_oi) or previous_oi < 0):
+                raise ValueError("Invalid previous open interest.")
             oi_change = (
                 (latest_oi - previous_oi) / previous_oi * 100
                 if previous_oi not in (None, 0)
@@ -47,8 +54,12 @@ class BinanceFuturesMarketData:
                 raise ValueError("Missing funding-rate history.")
             funding_rate = float(funding_payload[-1]["fundingRate"])
             funding_time = int(funding_payload[-1]["fundingTime"])
-        except (KeyError, TypeError, ValueError, ZeroDivisionError) as exc:
-            raise MarketDataError("Binance Futures returned malformed derivatives data.") from exc
+            if not isfinite(funding_rate):
+                raise ValueError("Invalid funding rate.")
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise MarketDataError(
+                "Binance Futures returned malformed derivatives data."
+            ) from exc
 
         return {
             "symbol": normalized,
@@ -58,7 +69,8 @@ class BinanceFuturesMarketData:
             "funding_rate": funding_rate,
             "funding_time": funding_time,
             "interpretation": (
-                "OI naik menunjukkan posisi terbuka bertambah, bukan otomatis bullish. "
-                "Funding positif berarti long membayar short; negatif berarti short membayar long."
+                "OI mengukur jumlah kontrak terbuka; kenaikan OI tidak otomatis bullish. "
+                "Funding positif berarti long membayar short; funding negatif berarti "
+                "short membayar long. Gunakan bersama harga, volume, dan konteks lain."
             ),
         }
