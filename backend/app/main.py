@@ -7,6 +7,7 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.database.base import Base
 from app.database.session import engine
+from app.database.migrations import migrate_schema
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 
@@ -17,12 +18,13 @@ configure_logging()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    migrate_schema(engine)
     yield
 
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.2.0",
+    version="0.3.0",
     description=(
         "Research-first crypto market intelligence API. "
         "Public market data only; no order execution."
