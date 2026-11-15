@@ -47,7 +47,7 @@ def test_order_flow_endpoint_returns_proxy_metadata(monkeypatch):
     response = client.get("/api/v1/analysis/order-flow?lookback=3")
     assert response.status_code == 200
     assert response.json()["bias"] == "BUY_PRESSURE"
-    assert "not DOM/footprint" in response.json()["method_note"]
+    assert "bukan DOM/footprint" in response.json()["method_note"]
 
 
 def test_derivatives_endpoint_returns_public_context(monkeypatch):
