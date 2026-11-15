@@ -97,7 +97,8 @@ def build_intelligence_decision(
     ]
     if trade_order_flow is not None:
         context_notes.append(
-            "AggTrades/CVD hanya mencakup batch terbaru yang dikembalikan API, bukan CVD sesi penuh."
+            "AggTrades/CVD hanya mencakup batch terbaru yang dikembalikan API, "
+            "bukan CVD sesi penuh."
         )
     if oi_change is None:
         context_notes.append("Perubahan open interest belum tersedia untuk dibandingkan.")
