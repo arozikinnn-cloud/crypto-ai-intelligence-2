@@ -20,28 +20,53 @@ class CryptoAIApp extends StatelessWidget {
 }
 
 class DashboardShell extends StatefulWidget {
-  const DashboardShell({super.key, this.loadAnalysis});
+  const DashboardShell({
+    super.key,
+    this.loadAnalysis,
+    this.loadNotifications,
+  });
 
   final Future<Map<String, dynamic>> Function()? loadAnalysis;
+  final Future<List<Map<String, dynamic>>> Function()? loadNotifications;
 
   @override
   State<DashboardShell> createState() => _DashboardShellState();
 }
 
 class _DashboardShellState extends State<DashboardShell> {
+  final AnalysisApi _api = AnalysisApi();
   late Future<Map<String, dynamic>> _analysis;
+  late Future<List<Map<String, dynamic>>> _notifications;
 
   @override
   void initState() {
     super.initState();
     _analysis = _load();
+    _notifications = _loadNotifications();
   }
 
   Future<Map<String, dynamic>> _load() =>
-      widget.loadAnalysis?.call() ?? AnalysisApi().fetchIntelligence();
+      widget.loadAnalysis?.call() ?? _api.fetchIntelligence();
+
+  Future<List<Map<String, dynamic>>> _loadNotifications() =>
+      widget.loadNotifications?.call() ?? _api.fetchNotifications();
+
+  Future<void> _markNotificationRead(int id) async {
+    await _api.markNotificationRead(id);
+    if (mounted) setState(() => _notifications = _loadNotifications());
+  }
 
   void _refresh() {
-    setState(() => _analysis = _load());
+    setState(() {
+      _analysis = _load();
+      _notifications = _loadNotifications();
+    });
+  }
+
+  @override
+  void dispose() {
+    _api.close();
+    super.dispose();
   }
 
   @override
@@ -82,16 +107,26 @@ class _DashboardShellState extends State<DashboardShell> {
                 message: 'The API returned an empty response.',
               );
             }
-            return _AnalysisView(data: data);
+            return _AnalysisView(
+              data: data,
+              notifications: _notifications,
+              onMarkNotificationRead: _markNotificationRead,
+            );
           },
         ),
       );
 }
 
 class _AnalysisView extends StatelessWidget {
-  const _AnalysisView({required this.data});
+  const _AnalysisView({
+    required this.data,
+    required this.notifications,
+    required this.onMarkNotificationRead,
+  });
 
   final Map<String, dynamic> data;
+  final Future<List<Map<String, dynamic>>> notifications;
+  final Future<void> Function(int id) onMarkNotificationRead;
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +168,10 @@ class _AnalysisView extends StatelessWidget {
           items: notes,
           emptyMessage: 'No additional context available.',
         ),
+        _NotificationInbox(
+          notifications: notifications,
+          onMarkRead: onMarkNotificationRead,
+        ),
         const Padding(
           padding: EdgeInsets.all(8),
           child: Text(
@@ -148,6 +187,66 @@ class _AnalysisView extends StatelessWidget {
   List<String> _strings(dynamic value) => value is List
       ? value.map((item) => item.toString()).toList()
       : const [];
+}
+
+class _NotificationInbox extends StatelessWidget {
+  const _NotificationInbox({
+    required this.notifications,
+    required this.onMarkRead,
+  });
+
+  final Future<List<Map<String, dynamic>>> notifications;
+  final Future<void> Function(int id) onMarkRead;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Signal notification inbox',
+                  style: Theme.of(context).textTheme.titleMedium),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: notifications,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: LinearProgressIndicator(),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Text('Inbox unavailable: ${snapshot.error}');
+                  }
+                  final items = snapshot.data ?? const [];
+                  if (items.isEmpty) return const Text('No notifications yet.');
+                  return Column(
+                    children: items.map((item) {
+                      final id = item['id'] as int?;
+                      final read = item['read'] == true;
+                      return ListTile(
+                        dense: true,
+                        title: Text(item['title']?.toString() ?? 'Signal alert'),
+                        subtitle: Text(item['message']?.toString() ?? ''),
+                        trailing: read
+                            ? const Icon(Icons.done, semanticLabel: 'Read')
+                            : IconButton(
+                                tooltip: 'Mark as read',
+                                icon: const Icon(Icons.mark_email_read_outlined),
+                                onPressed: id == null
+                                    ? null
+                                    : () => onMarkRead(id),
+                              ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _SectionCard extends StatelessWidget {
