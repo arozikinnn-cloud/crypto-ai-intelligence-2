@@ -24,6 +24,7 @@ def normalize_kline_message(message: dict) -> NormalizedCandle:
             volume=float(payload["v"]),
             quote_volume=float(payload["q"]),
             trades=int(payload["n"]),
+            taker_buy_volume=float(payload["V"]) if "V" in payload else None,
         )
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         raise MarketDataError("Binance returned malformed websocket kline data.") from exc
