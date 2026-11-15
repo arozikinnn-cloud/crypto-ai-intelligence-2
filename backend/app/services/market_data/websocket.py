@@ -1,19 +1,44 @@
 import asyncio
 import json
 import logging
+import math
 from collections.abc import Awaitable, Callable
-from app.services.market_data.base import MarketDataError
+from datetime import datetime, timezone
+from app.services.market_data.base import MarketDataError, NormalizedCandle
+from app.services.market_data.quality import validate_candles
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_kline_message(message: dict) -> NormalizedCandle:
+    try:
+        payload = message["k"]
+        candle = NormalizedCandle(
+            symbol=str(payload["s"]).upper(),
+            timeframe=str(payload["i"]),
+            open_time=datetime.fromtimestamp(int(payload["t"]) / 1000, tz=timezone.utc),
+            close_time=datetime.fromtimestamp(int(payload["T"]) / 1000, tz=timezone.utc),
+            open=float(payload["o"]),
+            high=float(payload["h"]),
+            low=float(payload["l"]),
+            close=float(payload["c"]),
+            volume=float(payload["v"]),
+            quote_volume=float(payload["q"]),
+            trades=int(payload["n"]),
+        )
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise MarketDataError("Binance returned malformed websocket kline data.") from exc
+    validate_candles([candle])
+    return candle
 
 
 async def stream_binance_klines(
     symbol: str,
     interval: str,
-    on_message: Callable[[dict], Awaitable[None]],
+    on_candle: Callable[[NormalizedCandle], Awaitable[None]],
     stop_event: asyncio.Event,
 ) -> None:
-    """Consume Binance public kline updates; caller controls lifecycle via stop_event."""
+    """Consume normalized public kline updates; caller controls lifecycle via stop_event."""
     try:
         import websockets
     except ImportError as exc:
@@ -34,7 +59,7 @@ async def stream_binance_klines(
                         continue
                     message = json.loads(raw)
                     if isinstance(message, dict) and isinstance(message.get("k"), dict):
-                        await on_message(message)
+                        await on_candle(normalize_kline_message(message))
         except asyncio.CancelledError:
             raise
         except Exception:
