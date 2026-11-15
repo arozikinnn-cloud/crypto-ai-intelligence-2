@@ -25,8 +25,12 @@ def test_structure_requires_minimum_history():
 
 
 def test_structure_returns_smc_fields():
-    result = analyze_structure(candles_from_closes([100 + (i % 7) for i in range(80)]))
+    closes = [100 + (index % 7) for index in range(80)]
+    result = analyze_structure(candles_from_closes(closes))
     assert result["trend"] in {"bullish", "bearish", "range_or_unconfirmed"}
-    assert result["event"] in {\n        "none", "bullish_bos", "bearish_bos", "bullish_choch", "bearish_choch"\n    }
+    allowed_events = {
+        "none", "bullish_bos", "bearish_bos", "bullish_choch", "bearish_choch"
+    }
+    assert result["event"] in allowed_events
     assert result["pivot_count"] >= 0
     assert "method_note" in result
