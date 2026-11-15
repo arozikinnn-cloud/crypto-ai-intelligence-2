@@ -58,3 +58,19 @@ async def test_binance_rejects_invalid_symbol_before_network_call():
     provider = BinanceMarketData()
     with pytest.raises(MarketDataError):
         await provider.fetch_klines("BTC/USDT", "1h", 10)
+
+
+def test_quality_rejects_taker_buy_volume_above_total():
+    candle = NormalizedCandle(
+        **{**sample_candle().__dict__, "taker_buy_volume": 3.0}
+    )
+    with pytest.raises(MarketDataError, match="taker-buy"):
+        validate_candles([candle])
+
+
+def test_quality_rejects_non_finite_taker_buy_volume():
+    candle = NormalizedCandle(
+        **{**sample_candle().__dict__, "taker_buy_volume": float("nan")}
+    )
+    with pytest.raises(MarketDataError, match="not finite"):
+        validate_candles([candle])
