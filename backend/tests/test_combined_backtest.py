@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database.base import Base
 from app.models.signal_event import SignalEvent, SignalNotification
 from app.services.analysis.combined_backtest import run_combined_backtest
-from app.services.market_data.base import NormalizedCandle
+from app.services.market_data.base import MarketDataError, NormalizedCandle
 from app.api.signals import record_signal
 
 
@@ -80,12 +80,13 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
 
 def test_backtest_rejects_gaps_in_historical_candles():
     rows = candles()
-    rows[150] = NormalizedCandle(
-        **{
-            **rows[150].__dict__,
-            "open_time": rows[150].open_time + timedelta(hours=1),
-            "close_time": rows[150].close_time + timedelta(hours=1),
-        }
-    )
-    with pytest.raises(Exception, match="missing|irregular"):
+    for index in range(150, len(rows)):
+        rows[index] = NormalizedCandle(
+            **{
+                **rows[index].__dict__,
+                "open_time": rows[index].open_time + timedelta(hours=1),
+                "close_time": rows[index].close_time + timedelta(hours=1),
+            }
+        )
+    with pytest.raises(MarketDataError, match="missing|irregular"):
         run_combined_backtest(rows)
