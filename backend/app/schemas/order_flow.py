@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class OrderFlowResponse(BaseModel):
     symbol: str
     timeframe: str
+    source_market: str
     lookback: int
     buy_volume: float
     sell_volume: float
@@ -16,6 +17,8 @@ class OrderFlowResponse(BaseModel):
 
 class DerivativesContextResponse(BaseModel):
     symbol: str
+    source_market: str
+    open_interest_unit: str
     open_interest: float
     open_interest_change_percent: float | None
     open_interest_period: str
