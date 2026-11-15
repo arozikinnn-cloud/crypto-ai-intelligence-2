@@ -1,27 +1,21 @@
-# Phase 3 — Technical analysis engine
+from fastapi import APIRouter
+from app.api.analysis import router as analysis_router
+from app.api.backtest import router as backtest_router
+from app.api.health import router as health_router
+from app.api.market import router as market_router
 
-## Scope
-The engine consumes normalized Binance Spot OHLCV candles and returns an explainable research-only assessment. It does not place orders and does not claim predictive certainty.
+api_router = APIRouter()
+api_router.include_router(health_router)
+api_router.include_router(market_router)
+api_router.include_router(analysis_router)
+api_router.include_router(backtest_router)
 
-## Features
-- EMA 20 and EMA 50 trend alignment.
-- RSI 14 momentum.
-- MACD (12, 26, 9) line and signal comparison.
-- ATR 14 volatility estimate.
-- Current volume relative to the previous 20-candle average.
-- Rolling 20-candle support and resistance bounds.
-- Basic 20-versus-previous-20 swing structure classification (higher highs/higher lows, lower highs/lower lows, or mixed/range).
 
-## Rule-based assessment
-BUY requires at least three of four bullish checks: bullish EMA alignment, RSI 50–70, MACD above its signal, and volume ratio >= 1. SELL uses mirrored bearish checks. Otherwise the result is NO TRADE. This is deliberately conservative and transparent.
+## Advanced analysis additions
 
-The confluence score is a count of satisfied rule checks, not a calibrated probability, expected return, or guarantee. Entry is the latest candle close. Stop distance is 1.5 ATR and target is 2R by default. These levels are analytical references, not exchange orders.
+- GET `/api/v1/analysis/multi-timeframe?symbol=BTCUSDT&intervals=15m,1h,4h&limit=200`
+  fetches each timeframe concurrently and only returns an overall BUY/SELL when every requested timeframe independently produces the same directional signal. Any disagreement or NO TRADE result yields overall NO TRADE.
+- GET `/api/v1/analysis/structure?symbol=BTCUSDT&interval=1h&limit=200`
+  reports confirmed swing pivots, a basic BOS/CHOCH event, and the latest simple three-candle bullish/bearish fair-value gap.
 
-## API
-- GET /api/v1/analysis/technical?symbol=BTCUSDT&interval=1h&limit=200
-- GET /api/v1/analysis/backtest?symbol=BTCUSDT&interval=1h&limit=500&fee_bps=10&slippage_bps=5
-
-The technical endpoint requires at least 60 candles. Backtesting requires at least 120 candles and reports separate 70% in-sample and 30% out-of-sample metrics. The EMA20/EMA50 crossover simulation uses next-candle open execution and deducts estimated fees and slippage on entry and exit. Default cost assumptions are 10 basis points fee and 5 basis points slippage per side; users can override them within bounded API limits.
-
-## Limitations
-This is an initial technical baseline. It does not yet include SMC/order-flow/liquidation/open-interest/fundamental/sentiment analysis, multi-timeframe confluence, walk-forward optimization, or model calibration. The backtest is a simplified long/short simulation, not a broker/exchange fill model. Do not treat its results as financial advice or a forecast.
+SMC scope is deliberately a first-pass structural implementation, not a complete institutional order-flow model. Pivots require two candles on the right to confirm, so the newest two candles cannot create a confirmed pivot. BOS/CHOCH is evaluated against the latest confirmed swing and current last close. FVG detection is geometric and does not establish that a gap is valid, unmitigated, or tradeable. The endpoints use public Binance Spot OHLCV and remain research-only.
