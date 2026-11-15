@@ -20,7 +20,8 @@ def store_candles(db: Session, provider: str, candles: list[NormalizedCandle]) -
         values = {
             "close_time": item.close_time, "open": item.open, "high": item.high,
             "low": item.low, "close": item.close, "volume": item.volume,
-            "quote_volume": item.quote_volume, "trades": item.trades, "fetched_at": fetched_at,
+            "quote_volume": item.quote_volume, "trades": item.trades,
+            "taker_buy_volume": item.taker_buy_volume, "fetched_at": fetched_at,
         }
         if existing is None:
             db.add(Candle(provider=provider, symbol=item.symbol, timeframe=item.timeframe,
