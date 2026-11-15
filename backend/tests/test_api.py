@@ -210,3 +210,6 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     assert payload["order_flow"]["source_market"] == "binance_spot_klines"
     assert payload["derivatives"]["source_market"] == "binance_usdm_futures"
     assert payload["aggtrades_order_flow"]["bias"] == "BUY_PRESSURE"
+    assert payload["market_context"]["order_book"]["available"] is False
+    assert "cvd_history" in payload["market_context"]
+    assert "liquidations" in payload["market_context"]
