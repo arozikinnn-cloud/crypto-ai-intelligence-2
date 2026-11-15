@@ -7,6 +7,9 @@ from app.services.market_data.base import MarketDataError
 @pytest.mark.asyncio
 async def test_aggtrades_maps_buyer_maker_and_builds_cvd_buckets(monkeypatch):
     class FakeResponse:
+        status_code = 200
+        headers = {}
+
         def raise_for_status(self):
             return None
 
@@ -55,6 +58,9 @@ async def test_aggtrades_rejects_invalid_symbol_without_network():
 @pytest.mark.asyncio
 async def test_aggtrades_rejects_non_positive_quantity(monkeypatch):
     class FakeResponse:
+        status_code = 200
+        headers = {}
+
         def raise_for_status(self):
             return None
 
