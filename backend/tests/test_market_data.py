@@ -3,6 +3,7 @@ import pytest
 from app.services.market_data.base import MarketDataError, NormalizedCandle
 from app.services.market_data.quality import validate_candles
 from app.services.market_data.binance import BinanceMarketData
+from app.services.market_data.websocket import normalize_kline_message
 
 
 def sample_candle(minute: int = 0) -> NormalizedCandle:
@@ -29,6 +30,27 @@ def test_quality_rejects_inconsistent_ohlc():
     invalid = NormalizedCandle(**{**candle.__dict__, "high": 101.0})
     with pytest.raises(MarketDataError):
         validate_candles([invalid])
+
+
+def test_quality_rejects_non_finite_values():
+    candle = sample_candle()
+    invalid = NormalizedCandle(**{**candle.__dict__, "close": float("nan")})
+    with pytest.raises(MarketDataError):
+        validate_candles([invalid])
+
+
+def test_websocket_kline_is_normalized_to_utc_candle():
+    message = {
+        "k": {
+            "s": "BTCUSDT", "i": "1h", "t": 1767225600000, "T": 1767229199999,
+            "o": "100", "h": "110", "l": "90", "c": "105",
+            "v": "2", "q": "205", "n": 10,
+        }
+    }
+    candle = normalize_kline_message(message)
+    assert candle.symbol == "BTCUSDT"
+    assert candle.open_time.tzinfo == timezone.utc
+    assert candle.close == 105.0
 
 
 @pytest.mark.asyncio
