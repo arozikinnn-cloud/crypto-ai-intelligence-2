@@ -36,6 +36,9 @@ def test_indicators_return_expected_fields():
     assert result["ema50"] is not None
     assert result["rsi14"] == 100.0
     assert result["atr14"] is not None
+    assert result["market_structure"] in {
+        "higher_high_higher_low", "lower_high_lower_low", "mixed_or_range"
+    }
 
 
 def test_analysis_rejects_insufficient_history():
