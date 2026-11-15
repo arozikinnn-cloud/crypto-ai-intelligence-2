@@ -1,6 +1,7 @@
 import asyncio
 from math import isfinite
 import httpx
+from app.services.market_data.http import get_json_with_retry
 from app.services.market_data.base import MarketDataError
 
 
@@ -15,24 +16,21 @@ class BinanceFuturesMarketData:
         if period not in self.ALLOWED_PERIODS:
             raise MarketDataError("Unsupported open-interest period.")
 
-        try:
-            async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-                oi_response, funding_response = await asyncio.gather(
-                    client.get(
-                        "/futures/data/openInterestHist",
-                        params={"symbol": normalized, "period": period, "limit": 2},
-                    ),
-                    client.get(
-                        "/fapi/v1/fundingRate",
-                        params={"symbol": normalized, "limit": 1},
-                    ),
-                )
-                oi_response.raise_for_status()
-                funding_response.raise_for_status()
-                oi_payload = oi_response.json()
-                funding_payload = funding_response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise MarketDataError("Binance Futures derivatives request failed.") from exc
+        async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
+            oi_payload, funding_payload = await asyncio.gather(
+                get_json_with_retry(
+                    client,
+                    "/futures/data/openInterestHist",
+                    {"symbol": normalized, "period": period, "limit": 2},
+                    "Binance Futures open interest",
+                ),
+                get_json_with_retry(
+                    client,
+                    "/fapi/v1/fundingRate",
+                    {"symbol": normalized, "limit": 1},
+                    "Binance Futures funding",
+                ),
+            )
 
         try:
             if not isinstance(oi_payload, list) or not oi_payload:
