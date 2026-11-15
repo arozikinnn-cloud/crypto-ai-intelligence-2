@@ -1,8 +1,6 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
-
 import websockets
 
 from app.database.session import SessionLocal
