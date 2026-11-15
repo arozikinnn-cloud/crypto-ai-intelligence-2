@@ -18,7 +18,7 @@ async def backtest(
     slippage_bps: float = Query(default=5.0, ge=0, le=100),
 ) -> BacktestResponse:
     try:
-        candles = await BinanceMarketData().fetch_klines(symbol, interval, limit)
+        candles = await BinanceMarketData().fetch_klines(symbol, interval, limit, closed_only=True)
         result = run_ema_backtest(candles, fee_bps=fee_bps, slippage_bps=slippage_bps)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
