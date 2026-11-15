@@ -65,8 +65,6 @@ async def aggtrades_order_flow(
     return AggTradesOrderFlowResponse(**result)
 
 
-
-
 @router.get("/order-flow/cvd-history", response_model=CvdHistoryResponse)
 def cvd_history(
     symbol: str = Query(
