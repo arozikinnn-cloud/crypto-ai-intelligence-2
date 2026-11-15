@@ -1,7 +1,11 @@
 from datetime import datetime
 from pydantic import BaseModel
 from app.schemas.analysis import AnalysisResponse
-from app.schemas.order_flow import OrderFlowResponse, DerivativesContextResponse
+from app.schemas.order_flow import (
+    AggTradesOrderFlowResponse,
+    OrderFlowResponse,
+    DerivativesContextResponse,
+)
 from app.schemas.structure import StructureResponse
 
 
@@ -18,4 +22,5 @@ class IntelligenceResponse(BaseModel):
     timeframe_analyses: list[AnalysisResponse]
     structure: StructureResponse
     order_flow: OrderFlowResponse
+    aggtrades_order_flow: AggTradesOrderFlowResponse
     derivatives: DerivativesContextResponse
