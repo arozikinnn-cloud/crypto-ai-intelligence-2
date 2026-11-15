@@ -52,7 +52,12 @@ def read_liquidation_history(
     ).all()
     buckets = {}
     for row in rows:
-        minute = int(row.timestamp.replace(second=0, microsecond=0).timestamp() * 1000)
+        event_time = row.timestamp
+        if event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=timezone.utc)
+        minute = int(
+            event_time.replace(second=0, microsecond=0).timestamp() * 1000
+        )
         key = (minute, row.side)
         bucket = buckets.setdefault(
             key,
