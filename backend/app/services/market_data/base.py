@@ -15,6 +15,7 @@ class NormalizedCandle:
     volume: float
     quote_volume: float
     trades: int
+    taker_buy_volume: float | None = None
 
 
 class MarketDataError(Exception):
