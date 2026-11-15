@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'services/analysis_api.dart';
@@ -33,16 +35,20 @@ class DashboardShell extends StatefulWidget {
   State<DashboardShell> createState() => _DashboardShellState();
 }
 
-class _DashboardShellState extends State<DashboardShell> {
+class _DashboardShellState extends State<DashboardShell>
+    with WidgetsBindingObserver {
   final AnalysisApi _api = AnalysisApi();
   late Future<Map<String, dynamic>> _analysis;
   late Future<List<Map<String, dynamic>>> _notifications;
+  Timer? _notificationPoller;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _analysis = _load();
     _notifications = _loadNotifications();
+    _startNotificationPolling();
   }
 
   Future<Map<String, dynamic>> _load() =>
@@ -50,6 +56,26 @@ class _DashboardShellState extends State<DashboardShell> {
 
   Future<List<Map<String, dynamic>>> _loadNotifications() =>
       widget.loadNotifications?.call() ?? _api.fetchNotifications();
+
+  void _startNotificationPolling() {
+    _notificationPoller?.cancel();
+    _notificationPoller = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      setState(() => _notifications = _loadNotifications());
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() => _notifications = _loadNotifications());
+      _startNotificationPolling();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _notificationPoller?.cancel();
+      _notificationPoller = null;
+    }
+  }
 
   Future<void> _markNotificationRead(int id) async {
     await _api.markNotificationRead(id);
@@ -65,6 +91,8 @@ class _DashboardShellState extends State<DashboardShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notificationPoller?.cancel();
     _api.close();
     super.dispose();
   }
