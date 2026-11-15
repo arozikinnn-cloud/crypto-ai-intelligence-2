@@ -1,9 +1,11 @@
 import asyncio
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Query
-from app.schemas.intelligence import IntelligenceResponse
+
 from app.schemas.analysis import AnalysisResponse
-from app.schemas.order_flow import OrderFlowResponse, DerivativesContextResponse
+from app.schemas.intelligence import IntelligenceResponse
+from app.schemas.order_flow import DerivativesContextResponse, OrderFlowResponse
 from app.schemas.structure import StructureResponse
 from app.services.analysis.engine import analyze_market
 from app.services.analysis.intelligence import build_intelligence_decision
@@ -18,7 +20,9 @@ router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
 
 @router.get("/intelligence", response_model=IntelligenceResponse)
 async def combined_intelligence(
-    symbol: str = Query(default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"),
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
     intervals: str = Query(default="15m,1h,4h"),
     limit: int = Query(default=200, ge=60, le=500),
     order_flow_interval: str = Query(default="5m"),
@@ -26,7 +30,10 @@ async def combined_intelligence(
 ) -> IntelligenceResponse:
     selected = [item.strip() for item in intervals.split(",") if item.strip()]
     if not selected or len(selected) > 4 or len(set(selected)) != len(selected):
-        raise HTTPException(status_code=422, detail="Provide 1–4 unique comma-separated intervals.")
+        raise HTTPException(
+            status_code=422,
+            detail="Provide 1–4 unique comma-separated intervals.",
+        )
     if any(item not in BinanceMarketData.ALLOWED_INTERVALS for item in selected):
         raise HTTPException(status_code=422, detail="One or more intervals are unsupported.")
     if order_flow_interval not in BinanceMarketData.ALLOWED_INTERVALS:
@@ -45,8 +52,11 @@ async def combined_intelligence(
         flow_candles = results[len(selected)]
         derivatives_data = results[len(selected) + 1]
         analyses = [analyze_market(items) for items in candle_sets]
-        structure_index = selected.index("1h") if "1h" in selected else 0\n        structure_data = analyze_structure(candle_sets[structure_index])
-        flow_data = analyze_order_flow(flow_candles, lookback=min(100, len(flow_candles)))
+        structure_index = selected.index("1h") if "1h" in selected else 0
+        structure_data = analyze_structure(candle_sets[structure_index])
+        flow_data = analyze_order_flow(
+            flow_candles, lookback=min(100, len(flow_candles))
+        )
         decision = build_intelligence_decision(
             [item["side"] for item in analyses],
             structure_data,
@@ -74,9 +84,7 @@ async def combined_intelligence(
     return IntelligenceResponse(
         symbol=symbol.upper(),
         timestamp=timestamp,
-        timeframe_analyses=[
-            AnalysisResponse(**item) for item in analyses
-        ],
+        timeframe_analyses=[AnalysisResponse(**item) for item in analyses],
         structure=structure_response,
         order_flow=flow_response,
         derivatives=derivatives_response,
