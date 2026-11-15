@@ -44,7 +44,7 @@ def atr(candles: list[NormalizedCandle], period: int = 14) -> float | None:
     return sum(true_ranges[-period:]) / period
 
 
-def calculate_indicators(candles: list[NormalizedCandle]) -> dict[str, float | None]:
+def calculate_indicators(candles: list[NormalizedCandle]) -> dict[str, float | str | None]:
     closes = [item.close for item in candles]
     volumes = [item.volume for item in candles]
     ema20_series = _ema(closes, 20)
@@ -60,7 +60,31 @@ def calculate_indicators(candles: list[NormalizedCandle]) -> dict[str, float | N
         volumes[-1] / volume_baseline
         if volume_baseline and volume_baseline > 0 else None
     )
+    market_structure = "insufficient_history"
+    if len(candles) >= 40:
+        previous_window = candles[-40:-20]
+        recent_window = candles[-20:]
+        higher_high = max(item.high for item in recent_window) > max(
+            item.high for item in previous_window
+        )
+        higher_low = min(item.low for item in recent_window) > min(
+            item.low for item in previous_window
+        )
+        lower_high = max(item.high for item in recent_window) < max(
+            item.high for item in previous_window
+        )
+        lower_low = min(item.low for item in recent_window) < min(
+            item.low for item in previous_window
+        )
+        if higher_high and higher_low:
+            market_structure = "higher_high_higher_low"
+        elif lower_high and lower_low:
+            market_structure = "lower_high_lower_low"
+        else:
+            market_structure = "mixed_or_range"
+
     return {
+        "market_structure": market_structure,
         "last_price": closes[-1] if closes else None,
         "ema20": ema20_series[-1] if ema20_series else None,
         "ema50": ema50_series[-1] if ema50_series else None,
