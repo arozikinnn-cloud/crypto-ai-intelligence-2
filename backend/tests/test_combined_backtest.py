@@ -57,7 +57,10 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
         notices = db.scalars(select(SignalNotification)).all()
         assert len(events) == 1
         assert len(notices) == 1
-        record_signal(db, "BTCUSDT", "SELL", ["15m", "1h"], ["bearish"], "2026-11-15T11:00:00+00:00")
+        record_signal(
+            db, "BTCUSDT", "SELL", ["15m", "1h"], ["bearish"],
+            "2026-11-15T11:00:00+00:00"
+        )
         events = db.scalars(select(SignalEvent).order_by(SignalEvent.id)).all()
         assert [event.status for event in events] == ["INVALIDATED", "ACTIVE"]
         assert len(db.scalars(select(SignalNotification)).all()) == 2
