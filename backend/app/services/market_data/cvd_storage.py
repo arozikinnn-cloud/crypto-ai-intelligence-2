@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.cvd_bucket import CvdBucket
@@ -78,5 +78,69 @@ def persist_aggtrades_cvd(db: Session, result: dict) -> dict:
             + " Bucket disimpan lokal secara idempoten; CVD dihitung dari riwayat "
             "bucket yang berhasil diamati oleh aplikasi. Jeda saat aplikasi mati "
             "atau sumber data gagal dapat membuat riwayat tidak lengkap."
+        ),
+    }
+
+
+
+def read_cvd_history(db: Session, symbol: str, limit: int = 500) -> dict:
+    normalized = symbol.upper().strip()
+    if not normalized.isalnum() or not 5 <= len(normalized) <= 20:
+        raise ValueError("Invalid trading symbol.")
+    if not 1 <= limit <= 2000:
+        raise ValueError("CVD history limit must be between 1 and 2000.")
+
+    rows = db.scalars(
+        select(CvdBucket)
+        .where(
+            CvdBucket.symbol == normalized,
+            CvdBucket.source_market == "binance_spot_aggtrades",
+        )
+        .order_by(desc(CvdBucket.bucket_start_time))
+        .limit(limit)
+    ).all()
+    rows = list(reversed(rows))
+    if not rows:
+        return {
+            "symbol": normalized,
+            "source_market": "binance_spot_aggtrades",
+            "cvd_bucket_interval": "1m",
+            "cvd_scope": "persisted_observed_history",
+            "points": [],
+            "cumulative_delta": 0.0,
+            "note": "Belum ada bucket CVD yang tersimpan untuk simbol ini.",
+        }
+
+    cumulative = db.scalar(
+        select(func.coalesce(func.sum(CvdBucket.delta), 0.0)).where(
+            CvdBucket.symbol == normalized,
+            CvdBucket.source_market == "binance_spot_aggtrades",
+            CvdBucket.bucket_start_time < rows[0].bucket_start_time,
+        )
+    )
+    running = float(cumulative or 0.0)
+    points = []
+    for row in rows:
+        running += row.delta
+        points.append(
+            {
+                "bucket_start_time": int(row.bucket_start_time.replace(tzinfo=timezone.utc).timestamp() * 1000),
+                "buy_volume": row.buy_volume,
+                "sell_volume": row.sell_volume,
+                "delta": row.delta,
+                "cumulative_delta": running,
+                "trade_count": row.trade_count,
+            }
+        )
+    return {
+        "symbol": normalized,
+        "source_market": "binance_spot_aggtrades",
+        "cvd_bucket_interval": "1m",
+        "cvd_scope": "persisted_observed_history",
+        "points": points,
+        "cumulative_delta": running,
+        "note": (
+            "Riwayat ini hanya mencakup bucket yang berhasil dikumpulkan aplikasi. "
+            "Jeda saat aplikasi mati atau data sumber gagal dapat menyebabkan gap."
         ),
     }
