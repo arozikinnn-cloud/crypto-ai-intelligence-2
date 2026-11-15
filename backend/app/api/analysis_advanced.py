@@ -26,7 +26,7 @@ async def multi_timeframe_analysis(
     try:
         provider = BinanceMarketData()
         candle_sets = await asyncio.gather(
-            *(provider.fetch_klines(symbol, interval, limit) for interval in selected)
+            *(provider.fetch_klines(symbol, interval, limit, closed_only=True) for interval in selected)
         )
         analyses = [analyze_market(items) for items in candle_sets]
     except MarketDataError as exc:
@@ -63,7 +63,7 @@ async def market_structure_analysis(
     if interval not in VALID_INTERVALS:
         raise HTTPException(status_code=422, detail="Unsupported candle interval.")
     try:
-        candles = await BinanceMarketData().fetch_klines(symbol, interval, limit)
+        candles = await BinanceMarketData().fetch_klines(symbol, interval, limit, closed_only=True)
         result = analyze_structure(candles)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
