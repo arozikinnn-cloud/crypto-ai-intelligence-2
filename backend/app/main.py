@@ -14,6 +14,7 @@ import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
 import app.models.cvd_collector_state  # noqa: F401
 import app.models.liquidation_record  # noqa: F401
+import app.models.signal_event  # noqa: F401
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
 from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
@@ -30,26 +31,16 @@ async def lifespan(_app: FastAPI):
     if settings.cvd_collector_enabled:
         collector_tasks.extend(
             asyncio.create_task(
-                stream_binance_aggtrades(
-                    symbol,
-                    stop_event,
-                    settings.cvd_collector_flush_interval_seconds,
-                ),
+                stream_binance_aggtrades(symbol, stop_event, settings.cvd_collector_flush_interval_seconds),
                 name=f"cvd-collector-{symbol}",
-            )
-            for symbol in settings.cvd_collector_symbol_list
+            ) for symbol in settings.cvd_collector_symbol_list
         )
     if settings.liquidation_collector_enabled:
         collector_tasks.extend(
             asyncio.create_task(
-                stream_binance_liquidations(
-                    symbol,
-                    stop_event,
-                    settings.liquidation_collector_flush_interval_seconds,
-                ),
+                stream_binance_liquidations(symbol, stop_event, settings.liquidation_collector_flush_interval_seconds),
                 name=f"liquidation-collector-{symbol}",
-            )
-            for symbol in settings.liquidation_collector_symbol_list
+            ) for symbol in settings.liquidation_collector_symbol_list
         )
     try:
         yield
@@ -64,19 +55,13 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.3.0",
-    description=(
-        "Research-first crypto market intelligence API. "
-        "Public market data only; no order execution."
-    ),
+    description="Research-first crypto market intelligence API. Public market data only; no order execution.",
     debug=settings.debug,
     lifespan=lifespan,
 )
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=settings.cors_origin_list,
+    allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"],
 )
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
