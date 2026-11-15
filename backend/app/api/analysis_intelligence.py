@@ -83,11 +83,7 @@ async def combined_intelligence(
         timestamp=timestamp,
         **structure_data,
     )
-    flow_response = OrderFlowResponse(
-        symbol=symbol.upper(),
-        timeframe=order_flow_interval,
-        **flow_data,
-    )
+    flow_response = OrderFlowResponse(**flow_data)
     derivatives_response = DerivativesContextResponse(**derivatives_data)
     return IntelligenceResponse(
         symbol=symbol.upper(),
