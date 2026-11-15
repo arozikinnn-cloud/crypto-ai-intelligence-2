@@ -73,6 +73,15 @@ def test_structure_finds_order_block_before_bullish_break():
     baseline = analyze_structure(candles)
     swing_high = baseline["last_swing_high"]
     assert swing_high is not None
+    prior = candles[-5]
+    bearish_close = prior.close - 0.2
+    candles[-5] = replace(
+        prior,
+        open=prior.close + 0.2,
+        high=prior.close + 0.5,
+        low=bearish_close - 0.5,
+        close=bearish_close,
+    )
     close = swing_high + 1.0
     candles[-1] = replace(
         candles[-1],
