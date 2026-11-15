@@ -4,69 +4,24 @@ The API is research-only. It does not place exchange orders and does not promise
 
 ## Technical analysis
 
-- `GET /api/v1/analysis/technical?symbol=BTCUSDT&interval=1h&limit=200`
-- Uses EMA20/EMA50, RSI14, MACD, ATR14, volume ratio, rolling support/resistance, and a transparent four-check confluence rule.
-- BUY/SELL requires at least three aligned checks. Otherwise the result is NO TRADE.
-- Entry is the latest confirmed candle close; reference SL/TP are ATR-based. They are analytical references, not execution instructions.
-- Analysis endpoints request closed candles only, avoiding signals based on a still-forming kline.
+The technical engine computes EMA20/EMA50, RSI14, MACD, ATR14, volume ratio, rolling support/resistance, and deterministic BUY/SELL/NO TRADE evidence. The confluence score is not a calibrated probability or win rate.
 
-## Multi-timeframe analysis
+## Structure and SMC
 
-- `GET /api/v1/analysis/multi-timeframe?symbol=BTCUSDT&intervals=15m,1h,4h&limit=200`
-- Fetches up to four unique intervals concurrently.
-- Overall BUY/SELL is returned only if every requested timeframe independently produces the same directional signal. Any disagreement or NO TRADE result produces overall NO TRADE.
+Structure analysis uses confirmed swing pivots, BOS/CHOCH, wick-based liquidity sweep heuristics, three-candle FVGs, and last-opposing-candle order-block zones. These are price-action heuristics, not evidence of actual resting institutional orders.
 
-## Market structure / SMC baseline
+## Order flow and CVD scope
 
-- `GET /api/v1/analysis/structure?symbol=BTCUSDT&interval=1h&limit=200`
-- Reports confirmed swing pivots, BOS/CHOCH, wick-and-close liquidity sweeps, a simple last-opposing-candle order-block zone on a confirmed break, and the latest three-candle bullish/bearish FVG.
-- FVG output includes touched/mitigated and fully-mitigated flags based only on candles after formation. Pivots require right-side candles to confirm. Order blocks use the full candle range of the last opposing candle in the 20-bar lookback. These are transparent heuristics, not a complete institutional SMC or order-flow model.
+- `/api/v1/analysis/order-flow` estimates aggressor delta from Binance Spot kline taker-buy volume.
+- `/api/v1/analysis/order-flow/aggtrades` derives buyer/seller aggressor volume from Binance Spot aggregated trades.
+- The aggTrades endpoint returns a 1-minute bucketed CVD curve (`cvd_points`) and terminal CVD for the returned batch.
+- `cvd_scope=returned_batch_only` is intentional: the public endpoint returns a bounded recent batch. This is not persistent session CVD or an all-day cumulative series.
+- Binance aggTrades is trade-level aggregated data, not raw individual fills, order-book depth, DOM, footprint, or absorption.
 
-## Order-flow proxy
+## Derivatives and liquidations
 
-- `GET /api/v1/analysis/order-flow?symbol=BTCUSDT&interval=5m&lookback=20`
-- Binance Spot kline taker-buy base volume is used as the buy-aggressor estimate. Sell-aggressor volume is estimated as total base volume minus taker-buy volume.
-- Per-candle delta is buy estimate minus sell estimate. The response's `cumulative_delta` is the sum of those deltas only across the selected lookback window.
-- The response is explicitly labelled as Binance Spot kline data. It is a kline-derived proxy, not DOM, footprint, tick-by-tick CVD, absorption, or liquidation data. It must not be described as those measures.
+Open interest and funding are contextual metrics, not standalone directional signals. The Futures force-order WebSocket is an event pass-through; it is not a complete liquidation heatmap or a durable liquidation database.
 
-## Trade-level aggregated-trades order flow
+## Backtesting limitations
 
-- `GET /api/v1/analysis/order-flow/aggtrades?symbol=BTCUSDT&limit=500`
-- Uses Binance Spot public aggregated trades. The exchange's buyer-is-maker flag is interpreted correctly: when true, the seller was the aggressor; when false, the buyer was the aggressor.
-- Reports buy-aggressor volume, sell-aggressor volume, net delta, delta percentage, trade count, and the timestamp range represented by the returned batch.
-- This is a trade-level aggregated-trade batch, not a full-session CVD, DOM, footprint, order-book absorption, or futures liquidation feed. The API currently reads the most recent batch (up to 1,000 records); historical pagination and durable CVD accumulation are future work.
-
-## Futures derivatives context
-
-- `GET /api/v1/analysis/derivatives?symbol=BTCUSDT&period=5m`
-- Fetches public Binance USD-M Futures open-interest history (reported in contracts) and the latest funding-rate record. The response labels the Futures source separately from the Spot order-flow source.
-- Open-interest change compares the last two available records in the selected period. OI rising does not identify whether new positions are long or short. Positive funding means longs pay shorts; negative funding means shorts pay longs.
-- Derivatives context is separate from the spot order-flow proxy. The combined endpoint displays it as context and does not use it to force a directional signal.
-
-## Backtest
-
-- `GET /api/v1/analysis/backtest?symbol=BTCUSDT&interval=1h&limit=500`
-- EMA crossover historical simulation with estimated fees/slippage and an out-of-sample segment. Results are not a guarantee of future performance.
-
-## Data handling and limitations
-
-- Public Binance endpoints are used; no API key is required for these public reads.
-- Analysis routes filter out the currently forming candle and use closed candles only.
-- Exchange failures, malformed responses, insufficient history, and missing taker-buy data result in explicit errors rather than fabricated estimates. Taker-buy base volume is persisted with candle rows; startup applies a safe additive migration for existing databases.
-- Current implementation does not include full order-book depth, DOM/footprint, absorption, liquidation heatmaps, long-running session CVD, calibrated ML probabilities, or signal notifications. The liquidation WebSocket is a live pass-through only and is not stored.
-
-
-## Combined intelligence
-
-- `GET /api/v1/analysis/intelligence?symbol=BTCUSDT&intervals=15m,1h,4h&limit=200&order_flow_interval=5m&derivatives_period=5m`
-- Combines closed-candle technical analysis across selected timeframes, confirmed structure analysis, a bounded kline taker-volume delta window, open-interest change, and the latest funding rate.
-- BUY or SELL is intentionally strict: all requested technical timeframes, structure, and order-flow proxy must agree. Otherwise the combined result is NO TRADE.
-- The three-point score counts technical alignment, market structure, and order-flow pressure. It is not a probability, confidence calibration, or expected win rate.
-- Open interest and funding are returned as contextual notes only; neither is treated as directional proof or a standalone signal.
-
-## Live liquidation events
-
-- WebSocket: `/api/v1/analysis/liquidations/stream?symbol=BTCUSDT`
-- Proxies the Binance USD-M Futures symbol-specific `forceOrder` stream and normalizes liquidation side, price, quantity, notional, and event time.
-- Binance force-order events are a real-time feed, not a complete historical liquidation tape or liquidation heatmap. BUY liquidation events correspond to short liquidations; SELL events correspond to long liquidations.
-- The stream is client-driven and does not persist events. A client disconnect or upstream failure ends the stream; durable collection, aggregation, alerting, and heatmap construction remain future work.
+The current EMA crossover backtest is a separate baseline strategy and does not validate the combined intelligence decision. It uses estimated fees/slippage and a chronological in/out-of-sample split. Historical results do not guarantee future performance.
