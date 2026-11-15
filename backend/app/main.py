@@ -10,6 +10,7 @@ from app.database.session import engine
 from app.database.migrations import migrate_schema
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
+import app.models.cvd_bucket  # noqa: F401
 
 settings = get_settings()
 configure_logging()
