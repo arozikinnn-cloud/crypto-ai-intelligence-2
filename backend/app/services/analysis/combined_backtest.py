@@ -102,9 +102,13 @@ def run_combined_backtest(
             "oos_drawdown_below_20pct": _stats(test)["max_drawdown_pct"] < 20,
         },
         "limitations": [
-            "AggTrades/CVD and liquidation history are not replayed historically; this backtest uses technical, structure and kline order-flow only.",
-            "The current signal rules are deterministic heuristics, not a trained probability model.",
-            "No funding, spread variation, market impact, partial fills or intrabar stop/target simulation.",
-            "Signals are evaluated on closed candles; entry is next candle open and exit uses a fixed horizon.",
+            "AggTrades/CVD and liquidation history are not replayed historically; "
+            "this backtest uses technical, structure and kline order-flow only.",
+            "The current signal rules are deterministic heuristics, "
+            "not a trained probability model.",
+            "No funding, spread variation, market impact, partial fills, "
+            "or intrabar stop/target simulation.",
+            "Signals are evaluated on closed candles; entry is next candle open "
+            "and exit uses a fixed horizon.",
         ],
     }
