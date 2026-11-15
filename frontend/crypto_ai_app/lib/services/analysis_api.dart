@@ -8,25 +8,47 @@ class AnalysisApi {
         _baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'API_BASE_URL',
-                  defaultValue: 'http://10.0.2.2:8000/api/v1',
+                  defaultValue: '',
                 ))
             .replaceFirst(RegExp(r'/+$'), '');
 
   final http.Client _client;
   final String _baseUrl;
 
+  Uri _endpoint(String path, [Map<String, String>? query]) {
+    if (_baseUrl.isEmpty) {
+      throw StateError(
+        'Alamat Backend belum dikonfigurasi. Build APK dengan '
+        '--dart-define=API_BASE_URL=https://alamat-server/api/v1. '
+        'Untuk HP dan komputer di Wi-Fi yang sama, gunakan alamat IP '
+        'LAN komputer, bukan 10.0.2.2.',
+      );
+    }
+    final base = Uri.tryParse(_baseUrl);
+    if (base == null || !base.hasScheme || base.host.isEmpty) {
+      throw StateError('API_BASE_URL tidak valid: $_baseUrl');
+    }
+    return base.replace(
+      path: '${base.path.replaceFirst(RegExp(r'/+$'), '')}/$path',
+      queryParameters: query,
+    );
+  }
+
   Future<Map<String, dynamic>> fetchIntelligence({
     String symbol = 'BTCUSDT',
     String intervals = '15m,1h,4h',
   }) async {
-    final uri = Uri.parse('$_baseUrl/analysis/intelligence').replace(
-      queryParameters: {'symbol': symbol, 'intervals': intervals},
-    );
+    final uri = _endpoint('analysis/intelligence', {
+      'symbol': symbol,
+      'intervals': intervals,
+    });
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) {
-      throw Exception('API error ${response.statusCode}: ${_errorMessage(response.body)}');
+      throw Exception(
+        'API error ${response.statusCode}: ${_errorMessage(response.body)}',
+      );
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
@@ -38,15 +60,16 @@ class AnalysisApi {
   Future<List<Map<String, dynamic>>> fetchNotifications({
     bool unreadOnly = false,
   }) async {
-    final uri = Uri.parse('$_baseUrl/signals/notifications').replace(
-      queryParameters: {'unread_only': unreadOnly.toString()},
-    );
+    final uri = _endpoint('signals/notifications', {
+      'unread_only': unreadOnly.toString(),
+    });
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) {
       throw Exception(
-        'Notification API error ${response.statusCode}: ${_errorMessage(response.body)}',
+        'Notification API error ${response.statusCode}: '
+        '${_errorMessage(response.body)}',
       );
     }
     final decoded = jsonDecode(response.body);
@@ -59,7 +82,7 @@ class AnalysisApi {
   }
 
   Future<void> markNotificationRead(int notificationId) async {
-    final uri = Uri.parse('$_baseUrl/signals/notifications/$notificationId/read');
+    final uri = _endpoint('signals/notifications/$notificationId/read');
     final response = await _client
         .post(uri, headers: const {'Accept': 'application/json'})
         .timeout(const Duration(seconds: 20));
