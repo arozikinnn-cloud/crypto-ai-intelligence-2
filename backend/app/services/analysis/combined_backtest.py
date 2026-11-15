@@ -10,7 +10,7 @@ from app.services.market_data.base import NormalizedCandle
 def _stats(returns: list[float]) -> dict:
     equity = peak = 1.0
     max_drawdown = 0.0
-    wins = 0
+    wins = losses_count = flats = 0
     gains = losses = 0.0
     for value in returns:
         equity *= 1 + value
@@ -20,16 +20,20 @@ def _stats(returns: list[float]) -> dict:
             wins += 1
             gains += value
         elif value < 0:
+            losses_count += 1
             losses += abs(value)
+        else:
+            flats += 1
     count = len(returns)
     return {
         "trades": count,
         "wins": wins,
-        "losses": count - wins,
+        "losses": losses_count,
+        "flats": flats,
         "win_rate_pct": wins / count * 100 if count else 0.0,
         "total_return_pct": (equity - 1) * 100,
         "expectancy_pct": sum(returns) / count * 100 if count else 0.0,
-        "profit_factor": gains / losses if losses else (None if not gains else 999.0),
+        "profit_factor": gains / losses if losses else None,
         "max_drawdown_pct": max_drawdown * 100,
     }
 
@@ -52,8 +56,11 @@ def run_combined_backtest(
 
     split = int(len(candles) * train_ratio)
     observations = []
-    # Every decision uses only candles available at that decision timestamp.
+    next_available_index = 120
+    # One position at a time; signals are evaluated only after the prior position exits.
     for index in range(120, len(candles) - horizon):
+        if index < next_available_index:
+            continue
         history = candles[: index + 1]
         try:
             technical = analyze_market(history)
@@ -69,7 +76,12 @@ def run_combined_backtest(
             continue
         entry = candles[index + 1].open
         exit_price = candles[index + horizon].close
-        if entry <= 0 or not isfinite(entry) or not isfinite(exit_price):
+        if (
+            entry <= 0
+            or exit_price <= 0
+            or not isfinite(entry)
+            or not isfinite(exit_price)
+        ):
             continue
         direction = 1 if side == "BUY" else -1
         slip = slippage_bps / 10000
@@ -78,6 +90,7 @@ def run_combined_backtest(
         executed_exit = exit_price * (1 - slip * direction)
         result = direction * (executed_exit - executed_entry) / executed_entry - 2 * fee
         observations.append({"index": index, "side": side, "return": result})
+        next_available_index = index + horizon
 
     train = [x["return"] for x in observations if x["index"] + horizon < split]
     test = [x["return"] for x in observations if x["index"] >= split]
@@ -95,7 +108,9 @@ def run_combined_backtest(
         "out_of_sample": _stats(test),
         "overall": _stats(all_returns),
         "signal_count": len(observations),
-        "no_trade_count": max(0, len(candles) - 121 - horizon - len(observations)),
+        "no_trade_count": max(
+            0, len(candles) - horizon - 120 - len(observations)
+        ),
         "quality_checks": {
             "minimum_oos_trades_met": len(test) >= 30,
             "positive_oos_expectancy": bool(test) and sum(test) / len(test) > 0,
