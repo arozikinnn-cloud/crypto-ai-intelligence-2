@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import httpx
+from app.services.market_data.http import get_json_with_retry
 from app.services.market_data.base import MarketDataError, NormalizedCandle
 from app.services.market_data.quality import validate_candles
 
@@ -22,16 +23,13 @@ class BinanceMarketData:
         if not 1 <= limit <= 1000:
             raise MarketDataError("Limit must be between 1 and 1000.")
 
-        try:
-            async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-                response = await client.get(
-                    "/api/v3/klines",
-                    params={"symbol": normalized_symbol, "interval": interval, "limit": limit},
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise MarketDataError("Binance market-data request failed.") from exc
+        async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
+            payload = await get_json_with_retry(
+                client,
+                "/api/v3/klines",
+                {"symbol": normalized_symbol, "interval": interval, "limit": limit},
+                "Binance market data",
+            )
 
         if not isinstance(payload, list):
             raise MarketDataError("Unexpected exchange response format.")
