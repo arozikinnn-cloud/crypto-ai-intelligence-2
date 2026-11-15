@@ -1,7 +1,12 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy.orm import Session
+
+from app.database.session import get_db
+from app.schemas.liquidations import LiquidationHistoryResponse
+from app.services.market_data.liquidation_storage import read_liquidation_history
 
 from app.schemas.liquidations import LiquidationEvent
 from app.services.market_data.liquidations import normalize_liquidation_message
@@ -45,3 +50,19 @@ async def liquidation_stream(websocket: WebSocket, symbol: str = "BTCUSDT"):
             )
         except Exception:
             pass
+
+
+
+@router.get("/liquidations/history", response_model=LiquidationHistoryResponse)
+def liquidation_history(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+    hours: int = Query(default=24, ge=1, le=168),
+    db: Session = Depends(get_db),
+) -> LiquidationHistoryResponse:
+    try:
+        result = read_liquidation_history(db, symbol, hours)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return LiquidationHistoryResponse(**result)
