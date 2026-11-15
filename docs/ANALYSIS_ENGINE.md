@@ -34,7 +34,7 @@ The API is research-only. It does not place exchange orders and does not promise
 - `GET /api/v1/analysis/derivatives?symbol=BTCUSDT&period=5m`
 - Fetches public Binance USD-M Futures open-interest history and the latest funding-rate record.
 - Open-interest change compares the last two available records in the selected period. OI rising does not identify whether new positions are long or short. Positive funding means longs pay shorts; negative funding means shorts pay longs.
-- Derivatives context is separate from the spot order-flow proxy. Do not combine these into a directional signal without additional validation.
+- Derivatives context is separate from the spot order-flow proxy. The combined endpoint displays it as context and does not use it to force a directional signal.
 
 ## Backtest
 
@@ -53,8 +53,9 @@ The API is research-only. It does not place exchange orders and does not promise
 
 - `GET /api/v1/analysis/intelligence?symbol=BTCUSDT&intervals=15m,1h,4h&limit=200&order_flow_interval=5m&derivatives_period=5m`
 - Combines closed-candle technical analysis across selected timeframes, confirmed structure analysis, a bounded kline taker-volume delta window, open-interest change, and the latest funding rate.
-- BUY or SELL is intentionally strict: all requested technical timeframes, structure, order-flow pressure, rising OI, and the funding filter must agree. Otherwise the combined result is NO TRADE.
-- The five-point score is a count of heuristic checks, not a probability, confidence calibration, or expected win rate. Funding thresholds are provisional heuristics and require empirical validation.
+- BUY or SELL is intentionally strict: all requested technical timeframes, structure, and order-flow proxy must agree. Otherwise the combined result is NO TRADE.
+- The three-point score counts technical alignment, market structure, and order-flow pressure. It is not a probability, confidence calibration, or expected win rate.
+- Open interest and funding are returned as contextual notes only; neither is treated as directional proof or a standalone signal.
 
 ## Live liquidation events
 
