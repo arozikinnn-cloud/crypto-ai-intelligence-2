@@ -27,12 +27,12 @@ The API is research-only. It does not place exchange orders and does not promise
 - `GET /api/v1/analysis/order-flow?symbol=BTCUSDT&interval=5m&lookback=20`
 - Binance Spot kline taker-buy base volume is used as the buy-aggressor estimate. Sell-aggressor volume is estimated as total base volume minus taker-buy volume.
 - Per-candle delta is buy estimate minus sell estimate. The response's `cumulative_delta` is the sum of those deltas only across the selected lookback window.
-- The response is a kline-derived proxy, not DOM, footprint, tick-by-tick CVD, absorption, or liquidation data. It must not be described as those measures.
+- The response is explicitly labelled as Binance Spot kline data. It is a kline-derived proxy, not DOM, footprint, tick-by-tick CVD, absorption, or liquidation data. It must not be described as those measures.
 
 ## Futures derivatives context
 
 - `GET /api/v1/analysis/derivatives?symbol=BTCUSDT&period=5m`
-- Fetches public Binance USD-M Futures open-interest history and the latest funding-rate record.
+- Fetches public Binance USD-M Futures open-interest history (reported in contracts) and the latest funding-rate record. The response labels the Futures source separately from the Spot order-flow source.
 - Open-interest change compares the last two available records in the selected period. OI rising does not identify whether new positions are long or short. Positive funding means longs pay shorts; negative funding means shorts pay longs.
 - Derivatives context is separate from the spot order-flow proxy. The combined endpoint displays it as context and does not use it to force a directional signal.
 
