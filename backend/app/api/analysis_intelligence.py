@@ -126,7 +126,7 @@ async def combined_intelligence(
         decision["side"],
         selected,
         decision["reasons"],
-        candle_sets[0][-1].close_time.isoformat(),
+        str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
     )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
