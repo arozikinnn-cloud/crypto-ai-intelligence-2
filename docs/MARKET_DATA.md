@@ -2,7 +2,7 @@
 
 ## Current provider
 - Binance public Spot REST klines via the /api/v3/klines endpoint for historical OHLCV candles.
-- Binance public WebSocket kline consumer is provided as an opt-in service; it reconnects with bounded exponential backoff and is not started automatically by the API.
+- Binance public WebSocket kline consumer normalizes stream messages into the same UTC candle structure; it reconnects with bounded exponential backoff and is not started automatically by the API.
 
 ## Normalization and quality
 All exchange timestamps are converted from Unix milliseconds to timezone-aware UTC datetimes. OHLCV and trade-count fields are normalized into a provider-neutral candle structure. Validation rejects malformed rows, negative values, inconsistent OHLC ranges, invalid time ordering, and duplicate timestamps.
