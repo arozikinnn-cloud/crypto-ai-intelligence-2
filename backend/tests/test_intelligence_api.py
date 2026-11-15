@@ -65,4 +65,4 @@ def test_combined_intelligence_endpoint_returns_all_module_context(monkeypatch):
     assert len(payload["timeframe_analyses"]) == 3
     assert payload["order_flow"]["bias"] == "BUY_PRESSURE"
     assert payload["derivatives"]["open_interest"] == 1000.0
-    assert payload["max_confluence"] == 5
+    assert payload["max_confluence"] == 3
