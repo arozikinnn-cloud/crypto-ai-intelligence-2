@@ -133,10 +133,13 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
         return {
             "trend": "range_or_unconfirmed",
             "event": "none",
+            "liquidity_sweep": "none",
             "last_swing_high": 110.0,
             "last_swing_low": 90.0,
             "bullish_fvg": None,
             "bearish_fvg": None,
+            "bullish_order_block": None,
+            "bearish_order_block": None,
             "pivot_count": 4,
             "method_note": "Test structure.",
         }
