@@ -3,6 +3,7 @@ def build_intelligence_decision(
     structure: dict,
     order_flow: dict,
     derivatives: dict,
+    trade_order_flow: dict | None = None,
 ) -> dict:
     if not technical_sides:
         raise ValueError("At least one technical timeframe is required.")
@@ -39,36 +40,65 @@ def build_intelligence_decision(
         bearish_structure,
         order_flow.get("bias") == "SELL_PRESSURE",
     ]
+    checks = {
+        "technical_bullish_alignment": all_bullish,
+        "technical_bearish_alignment": all_bearish,
+        "bullish_structure": bullish_structure,
+        "bearish_structure": bearish_structure,
+        "buy_pressure_kline": order_flow.get("bias") == "BUY_PRESSURE",
+        "sell_pressure_kline": order_flow.get("bias") == "SELL_PRESSURE",
+    }
 
+    if trade_order_flow is not None:
+        trade_buy = trade_order_flow.get("bias") == "BUY_PRESSURE"
+        trade_sell = trade_order_flow.get("bias") == "SELL_PRESSURE"
+        bullish_checks.append(trade_buy)
+        bearish_checks.append(trade_sell)
+        checks["buy_pressure_aggtrades"] = trade_buy
+        checks["sell_pressure_aggtrades"] = trade_sell
+
+    max_confluence = len(bullish_checks)
     if all(bullish_checks):
         side = "BUY"
+        score = max_confluence
         reasons = [
             "Seluruh timeframe teknikal yang diminta memberi sinyal BUY.",
-            "Struktur pasar mendukung arah bullish tanpa event bearish yang berlawanan.",
-            "Order-flow proxy menunjukkan tekanan beli pada lookback terpilih.",
+            "Struktur pasar mendukung arah bullish.",
+            "Order-flow kline menunjukkan tekanan beli.",
         ]
-        score = sum(bullish_checks)
+        if trade_order_flow is not None:
+            reasons.append("Data Binance Spot aggTrades juga menunjukkan tekanan beli.")
     elif all(bearish_checks):
         side = "SELL"
+        score = max_confluence
         reasons = [
             "Seluruh timeframe teknikal yang diminta memberi sinyal SELL.",
-            "Struktur pasar mendukung arah bearish tanpa event bullish yang berlawanan.",
-            "Order-flow proxy menunjukkan tekanan jual pada lookback terpilih.",
+            "Struktur pasar mendukung arah bearish.",
+            "Order-flow kline menunjukkan tekanan jual.",
         ]
-        score = sum(bearish_checks)
+        if trade_order_flow is not None:
+            reasons.append("Data Binance Spot aggTrades juga menunjukkan tekanan jual.")
     else:
         side = "NO TRADE"
         score = max(sum(bullish_checks), sum(bearish_checks))
         reasons = [
             "Konfirmasi teknikal, struktur, dan order flow belum seluruhnya searah.",
-            "Sistem memilih NO TRADE daripada memaksakan sinyal dari indikator yang terpisah.",
+            "Sistem memilih NO TRADE daripada memaksakan sinyal.",
         ]
+        if trade_order_flow is not None and trade_buy != trade_sell:
+            reasons.append(
+                "Tekanan transaksi aggTrades tidak mengonfirmasi kedua sisi secara bersamaan."
+            )
 
     oi_change = derivatives.get("open_interest_change_percent")
     funding = derivatives.get("funding_rate")
     context_notes = [
-        "Open interest dan funding ditampilkan sebagai konteks derivatif, bukan konfirmasi arah.",
+        "Open interest dan funding adalah konteks derivatif, bukan konfirmasi arah.",
     ]
+    if trade_order_flow is not None:
+        context_notes.append(
+            "AggTrades/CVD hanya mencakup batch terbaru yang dikembalikan API, bukan CVD sesi penuh."
+        )
     if oi_change is None:
         context_notes.append("Perubahan open interest belum tersedia untuk dibandingkan.")
     elif oi_change > 0:
@@ -88,23 +118,16 @@ def build_intelligence_decision(
         else:
             context_notes.append("Funding rate berada di sekitar nol.")
 
+    score_note = (
+        f"Skor adalah jumlah dari {max_confluence} kondisi konfirmasi; bukan probabilitas "
+        "atau win-rate. OI/funding hanya konteks dan tidak menentukan arah."
+    )
     return {
         "side": side,
         "confluence_score": score,
-        "max_confluence": 3,
-        "score_note": (
-            "Skor adalah jumlah dari tiga kondisi konfirmasi (timeframe teknikal, "
-            "struktur, order-flow proxy), bukan probabilitas atau win-rate. OI/funding "
-            "hanya konteks dan tidak menentukan arah."
-        ),
+        "max_confluence": max_confluence,
+        "score_note": score_note,
         "reasons": reasons,
         "context_notes": context_notes,
-        "checks": {
-            "technical_bullish_alignment": all_bullish,
-            "technical_bearish_alignment": all_bearish,
-            "bullish_structure": bullish_structure,
-            "bearish_structure": bearish_structure,
-            "buy_pressure": order_flow.get("bias") == "BUY_PRESSURE",
-            "sell_pressure": order_flow.get("bias") == "SELL_PRESSURE",
-        },
+        "checks": checks,
     }
