@@ -25,7 +25,7 @@ from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
 from app.services.market_data.binance_order_book import BinanceOrderBookMarketData
-from app.services.market_data.cvd_storage import persist_aggtrades_cvd, read_cvd_history
+from app.services.market_data.cvd_storage import read_cvd_history
 from app.services.market_data.liquidation_storage import read_liquidation_history
 
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
@@ -116,9 +116,6 @@ async def combined_intelligence(
         derivatives_data = results[len(selected) + 1]
         aggtrades_data = results[len(selected) + 2]
         order_book_data = results[len(selected) + 3]
-        if aggtrades_data.get("cvd_scope") == "returned_batch_only":
-            aggtrades_data = persist_aggtrades_cvd(db, aggtrades_data)
-
         analyses = [analyze_market(items) for items in candle_sets]
         structure_index = selected.index("1h") if "1h" in selected else 0
         structure_data = analyze_structure(candle_sets[structure_index])
