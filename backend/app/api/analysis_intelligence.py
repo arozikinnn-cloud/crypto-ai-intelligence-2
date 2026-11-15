@@ -1,8 +1,10 @@
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
+from app.database.session import get_db
 from app.schemas.analysis import AnalysisResponse
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.order_flow import (
@@ -19,6 +21,7 @@ from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
+from app.services.market_data.cvd_storage import persist_aggtrades_cvd
 
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
 
@@ -58,6 +61,7 @@ async def combined_intelligence(
     limit: int = Query(default=200, ge=60, le=500),
     order_flow_interval: str = Query(default="5m"),
     derivatives_period: str = Query(default="5m"),
+    db: Session = Depends(get_db),
 ) -> IntelligenceResponse:
     selected = [item.strip() for item in intervals.split(",") if item.strip()]
     if not selected or len(selected) > 4 or len(set(selected)) != len(selected):
@@ -90,6 +94,8 @@ async def combined_intelligence(
         flow_candles = results[len(selected)]
         derivatives_data = results[len(selected) + 1]
         aggtrades_data = results[len(selected) + 2]
+        if aggtrades_data.get("cvd_scope") == "returned_batch_only":
+            aggtrades_data = persist_aggtrades_cvd(db, aggtrades_data)
 
         analyses = [analyze_market(items) for items in candle_sets]
         structure_index = selected.index("1h") if "1h" in selected else 0
@@ -108,6 +114,9 @@ async def combined_intelligence(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
 
     timestamp = datetime.now(timezone.utc)
     structure_response = StructureResponse(
