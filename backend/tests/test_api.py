@@ -56,6 +56,8 @@ def test_derivatives_endpoint_returns_public_context(monkeypatch):
     async def fake_fetch(self, symbol, period):
         return {
             "symbol": symbol,
+            "source_market": "binance_usdm_futures",
+            "open_interest_unit": "contracts",
             "open_interest": 1234.5,
             "open_interest_change_percent": 1.2,
             "open_interest_period": period,
