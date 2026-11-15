@@ -4,7 +4,8 @@ from app.services.analysis.engine import analyze_market
 from app.services.analysis.intelligence import build_intelligence_decision
 from app.services.analysis.order_flow import analyze_order_flow
 from app.services.analysis.structure import analyze_structure
-from app.services.market_data.base import NormalizedCandle
+from app.services.market_data.base import MarketDataError, NormalizedCandle
+from app.services.market_data.quality import validate_candles, validate_candle_continuity
 
 
 def _stats(returns: list[float]) -> dict:
@@ -53,6 +54,14 @@ def run_combined_backtest(
         raise ValueError("Horizon must be between 1 and 24 candles.")
     if not 0.5 <= train_ratio <= 0.9:
         raise ValueError("Train ratio must be between 0.5 and 0.9.")
+    validate_candles(candles)
+    if any(
+        candle.symbol != candles[0].symbol
+        or candle.timeframe != candles[0].timeframe
+        for candle in candles
+    ):
+        raise MarketDataError("Backtest candles must use one symbol and timeframe.")
+    validate_candle_continuity(candles)
 
     split = int(len(candles) * train_ratio)
     observations = []
