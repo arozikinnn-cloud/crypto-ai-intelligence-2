@@ -4,10 +4,20 @@ from app.services.market_data.base import MarketDataError, NormalizedCandle
 def validate_candles(candles: list[NormalizedCandle]) -> None:
     previous_open_time = None
     for candle in candles:
-        values = (candle.open, candle.high, candle.low, candle.close, candle.volume, candle.quote_volume)
+        values = (
+            candle.open,
+            candle.high,
+            candle.low,
+            candle.close,
+            candle.volume,
+            candle.quote_volume,
+        )
         if any(value < 0 for value in values):
             raise MarketDataError("Exchange returned a negative market value.")
-        if candle.low > min(candle.open, candle.close) or candle.high < max(candle.open, candle.close):
+        if (
+            candle.low > min(candle.open, candle.close)
+            or candle.high < max(candle.open, candle.close)
+        ):
             raise MarketDataError("Candle OHLC values are inconsistent.")
         if candle.low > candle.high:
             raise MarketDataError("Candle low exceeds candle high.")
