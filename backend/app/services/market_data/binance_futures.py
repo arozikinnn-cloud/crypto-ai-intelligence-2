@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from app.services.market_data.base import MarketDataError
 
@@ -15,7 +16,7 @@ class BinanceFuturesMarketData:
 
         try:
             async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-                oi_response, funding_response = await __import__("asyncio").gather(
+                oi_response, funding_response = await asyncio.gather(
                     client.get(
                         "/futures/data/openInterestHist",
                         params={"symbol": normalized, "period": period, "limit": 2},
