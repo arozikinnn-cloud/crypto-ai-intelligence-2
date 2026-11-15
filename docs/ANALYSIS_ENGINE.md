@@ -29,6 +29,13 @@ The API is research-only. It does not place exchange orders and does not promise
 - Per-candle delta is buy estimate minus sell estimate. The response's `cumulative_delta` is the sum of those deltas only across the selected lookback window.
 - The response is explicitly labelled as Binance Spot kline data. It is a kline-derived proxy, not DOM, footprint, tick-by-tick CVD, absorption, or liquidation data. It must not be described as those measures.
 
+## Trade-level aggregated-trades order flow
+
+- `GET /api/v1/analysis/order-flow/aggtrades?symbol=BTCUSDT&limit=500`
+- Uses Binance Spot public aggregated trades. The exchange's buyer-is-maker flag is interpreted correctly: when true, the seller was the aggressor; when false, the buyer was the aggressor.
+- Reports buy-aggressor volume, sell-aggressor volume, net delta, delta percentage, trade count, and the timestamp range represented by the returned batch.
+- This is a trade-level aggregated-trade batch, not a full-session CVD, DOM, footprint, order-book absorption, or futures liquidation feed. The API currently reads the most recent batch (up to 1,000 records); historical pagination and durable CVD accumulation are future work.
+
 ## Futures derivatives context
 
 - `GET /api/v1/analysis/derivatives?symbol=BTCUSDT&period=5m`
@@ -45,7 +52,7 @@ The API is research-only. It does not place exchange orders and does not promise
 
 - Public Binance endpoints are used; no API key is required for these public reads.
 - Analysis routes filter out the currently forming candle and use closed candles only.
-- Exchange failures, malformed responses, insufficient history, and missing taker-buy data result in explicit errors rather than fabricated estimates.
+- Exchange failures, malformed responses, insufficient history, and missing taker-buy data result in explicit errors rather than fabricated estimates. Taker-buy base volume is persisted with candle rows; startup applies a safe additive migration for existing databases.
 - Current implementation does not include full order-book depth, DOM/footprint, absorption, liquidation heatmaps, long-running session CVD, calibrated ML probabilities, or signal notifications. The liquidation WebSocket is a live pass-through only and is not stored.
 
 
