@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.schemas.order_flow import (
     AggTradesOrderFlowResponse,
+    CvdHistoryResponse,
     DerivativesContextResponse,
     OrderFlowResponse,
 )
@@ -12,7 +13,10 @@ from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
-from app.services.market_data.cvd_storage import persist_aggtrades_cvd
+from app.services.market_data.cvd_storage import (
+    persist_aggtrades_cvd,
+    read_cvd_history,
+)
 
 router = APIRouter(prefix="/analysis", tags=["order-flow and derivatives"])
 
@@ -59,6 +63,23 @@ async def aggtrades_order_flow(
         db.rollback()
         raise
     return AggTradesOrderFlowResponse(**result)
+
+
+
+
+@router.get("/order-flow/cvd-history", response_model=CvdHistoryResponse)
+def cvd_history(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> CvdHistoryResponse:
+    try:
+        result = read_cvd_history(db, symbol, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return CvdHistoryResponse(**result)
 
 
 @router.get("/derivatives", response_model=DerivativesContextResponse)
