@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -51,6 +52,6 @@ def test_liquidation_events_are_deduplicated_and_aggregated_by_minute():
         assert len(history["points"]) == 2
         sell = next(point for point in history["points"] if point["side"] == "SELL")
         assert sell["event_count"] == 2
-        assert sell["total_quantity"] == 0.3
-        assert sell["total_notional"] == 29800.0
+        assert sell["total_quantity"] == pytest.approx(0.3)
+        assert sell["total_notional"] == pytest.approx(29800.0)
     engine.dispose()
