@@ -13,6 +13,7 @@ class IntelligenceResponse(BaseModel):
     max_confluence: int
     score_note: str
     reasons: list[str]
+    context_notes: list[str]
     checks: dict[str, bool]
     timeframe_analyses: list[AnalysisResponse]
     structure: StructureResponse
