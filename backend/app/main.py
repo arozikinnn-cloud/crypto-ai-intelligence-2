@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from app.database.migrations import migrate_schema
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
+import app.models.cvd_collector_state  # noqa: F401
+from app.services.market_data.cvd_collector import stream_binance_aggtrades
 
 settings = get_settings()
 configure_logging()
@@ -20,7 +23,28 @@ configure_logging()
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     migrate_schema(engine)
-    yield
+    stop_event = asyncio.Event()
+    collector_tasks = []
+    if settings.cvd_collector_enabled:
+        collector_tasks = [
+            asyncio.create_task(
+                stream_binance_aggtrades(
+                    symbol,
+                    stop_event,
+                    settings.cvd_collector_flush_interval_seconds,
+                ),
+                name=f"cvd-collector-{symbol}",
+            )
+            for symbol in settings.cvd_collector_symbol_list
+        ]
+    try:
+        yield
+    finally:
+        stop_event.set()
+        for task in collector_tasks:
+            task.cancel()
+        if collector_tasks:
+            await asyncio.gather(*collector_tasks, return_exceptions=True)
 
 
 app = FastAPI(
