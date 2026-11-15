@@ -4,7 +4,7 @@
 Repository structure, FastAPI app, versioned API, configuration, logging, error handling, CORS baseline, SQLAlchemy session/model, health probes, tests, CI, architecture/API/database docs, and Flutter shell.
 
 ## Phase 2 — Market data
-Public exchange market-data adapters, REST/WebSocket ingestion, normalization, timestamps, historical candle storage, and data-quality checks.
+Public Binance Spot REST candle ingestion, normalized UTC OHLCV schema, candle quality validation, historical candle persistence/upsert, market-data API, and an opt-in reconnecting Binance WebSocket consumer. Provider credentials are not required for public market data.
 
 ## Phase 3 — Analysis engine
 Trend/market structure, support/resistance, volatility and volume features, explainable strategy rules, and backtesting with fees, slippage, and out-of-sample evaluation.
