@@ -12,7 +12,7 @@ class BinanceMarketData:
     }
 
     async def fetch_klines(
-        self, symbol: str, interval: str, limit: int = 200
+        self, symbol: str, interval: str, limit: int = 200, closed_only: bool = False
     ) -> list[NormalizedCandle]:
         normalized_symbol = symbol.upper().strip()
         if not normalized_symbol.isalnum() or not 5 <= len(normalized_symbol) <= 20:
@@ -61,4 +61,7 @@ class BinanceMarketData:
             raise MarketDataError("Binance returned malformed candle data.") from exc
 
         validate_candles(candles)
+        if closed_only:
+            now = datetime.now(timezone.utc)
+            candles = [candle for candle in candles if candle.close_time < now]
         return candles
