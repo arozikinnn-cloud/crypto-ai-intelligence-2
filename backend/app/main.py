@@ -13,7 +13,9 @@ import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
 import app.models.cvd_collector_state  # noqa: F401
+import app.models.liquidation_record  # noqa: F401
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
+from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
 settings = get_settings()
 configure_logging()
@@ -26,7 +28,7 @@ async def lifespan(_app: FastAPI):
     stop_event = asyncio.Event()
     collector_tasks = []
     if settings.cvd_collector_enabled:
-        collector_tasks = [
+        collector_tasks.extend(
             asyncio.create_task(
                 stream_binance_aggtrades(
                     symbol,
@@ -36,7 +38,19 @@ async def lifespan(_app: FastAPI):
                 name=f"cvd-collector-{symbol}",
             )
             for symbol in settings.cvd_collector_symbol_list
-        ]
+        )
+    if settings.liquidation_collector_enabled:
+        collector_tasks.extend(
+            asyncio.create_task(
+                stream_binance_liquidations(
+                    symbol,
+                    stop_event,
+                    settings.liquidation_collector_flush_interval_seconds,
+                ),
+                name=f"liquidation-collector-{symbol}",
+            )
+            for symbol in settings.liquidation_collector_symbol_list
+        )
     try:
         yield
     finally:
