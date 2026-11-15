@@ -7,7 +7,7 @@ Repository structure, FastAPI app, versioned API, configuration, logging, error 
 Public Binance Spot REST candle ingestion, normalized UTC OHLCV schema, candle quality validation, historical candle persistence/upsert, market-data API, and an opt-in reconnecting Binance WebSocket consumer. Provider credentials are not required for public market data.
 
 ## Phase 3 — Analysis engine
-Trend/market structure, support/resistance, volatility and volume features, explainable strategy rules, and backtesting with fees, slippage, and out-of-sample evaluation.
+Initial explainable technical analysis API with EMA20/EMA50, RSI14, MACD, ATR14, volume ratio, rolling support/resistance, rule-based BUY/SELL/NO TRADE decisions, ATR-based reference SL/TP, and EMA crossover backtesting with fees, slippage, and a 70/30 in-sample/out-of-sample split. This is a technical baseline, not a calibrated AI probability model. Advanced SMC/order-flow/liquidation/open-interest/fundamental/sentiment and multi-timeframe confluence remain future extensions.
 
 ## Phase 4 — Signals and notifications
 Signal lifecycle, deduplication, push notifications, user preferences, and alert audit trail.
