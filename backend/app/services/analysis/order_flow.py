@@ -1,29 +1,44 @@
+from math import isfinite
 from app.services.market_data.base import NormalizedCandle
 
 
 def analyze_order_flow(candles: list[NormalizedCandle], lookback: int = 20) -> dict:
-    if lookback < 2 or lookback > 100:
+    if not 2 <= lookback <= 100:
         raise ValueError("lookback must be between 2 and 100.")
-    selected = candles[-lookback:]
-    if len(selected) < 2:
-        raise ValueError("At least 2 candles are required for order-flow analysis.")
-    if any(item.taker_buy_volume is None for item in selected):
-        raise ValueError("Taker-buy volume is unavailable for one or more candles.")
+    if len(candles) < lookback:
+        raise ValueError(f"At least {lookback} candles are required.")
 
-    deltas = []
+    selected = candles[-lookback:]
+    symbol = selected[0].symbol
+    timeframe = selected[0].timeframe
+    previous_time = None
+    deltas: list[float] = []
+    buy_volumes: list[float] = []
+    sell_volumes: list[float] = []
+
     for candle in selected:
-        buy = float(candle.taker_buy_volume)
+        if candle.symbol != symbol or candle.timeframe != timeframe:
+            raise ValueError("Candles must have one consistent symbol and timeframe.")
+        if previous_time is not None and candle.open_time <= previous_time:
+            raise ValueError("Candles must be in chronological order without duplicates.")
+        previous_time = candle.open_time
+        if candle.taker_buy_volume is None:
+            raise ValueError("Taker-buy volume is unavailable for one or more candles.")
+        values = (candle.volume, candle.taker_buy_volume)
+        if not all(isfinite(value) for value in values):
+            raise ValueError("Order-flow input contains a non-finite value.")
+        buy = candle.taker_buy_volume
         sell = candle.volume - buy
-        if buy < 0 or sell < -1e-8:
+        if candle.volume < 0 or buy < 0 or sell < -1e-8:
             raise ValueError("Invalid taker-buy volume in candle data.")
         sell = max(0.0, sell)
+        buy_volumes.append(buy)
+        sell_volumes.append(sell)
         deltas.append(buy - sell)
 
+    total_volume = sum(buy_volumes) + sum(sell_volumes)
     total_delta = sum(deltas)
-    total_volume = sum(item.volume for item in selected)
-    buy_volume = sum(float(item.taker_buy_volume) for item in selected)
-    sell_volume = total_volume - buy_volume
-    delta_percent = (total_delta / total_volume * 100) if total_volume else 0.0
+    delta_percent = total_delta / total_volume * 100 if total_volume else 0.0
     if delta_percent >= 5:
         bias = "BUY_PRESSURE"
     elif delta_percent <= -5:
@@ -32,15 +47,19 @@ def analyze_order_flow(candles: list[NormalizedCandle], lookback: int = 20) -> d
         bias = "BALANCED"
 
     return {
+        "symbol": symbol,
+        "timeframe": timeframe,
         "lookback": len(selected),
-        "buy_volume": buy_volume,
-        "sell_volume": sell_volume,
+        "buy_volume": sum(buy_volumes),
+        "sell_volume": sum(sell_volumes),
         "net_delta": total_delta,
         "delta_percent": delta_percent,
         "cumulative_delta": total_delta,
         "bias": bias,
         "method_note": (
-            "Delta dihitung dari taker-buy base volume dikurangi estimasi sell "
-            "agresif (total volume - taker buy); bukan data DOM atau footprint."
+            "Delta/CVD window dihitung per candle dari taker-buy base volume dikurangi "
+            "estimasi sell-aggressor volume (total volume - taker buy), lalu dijumlahkan "
+            "pada lookback terpilih. Ini proxy dari kline, bukan DOM/footprint atau "
+            "riwayat CVD penuh sejak awal sesi."
         ),
     }
