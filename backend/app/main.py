@@ -23,7 +23,10 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.2.0",
-    description="Research-first crypto market intelligence API. Public market data only; no order execution.",
+    description=(
+        "Research-first crypto market intelligence API. "
+        "Public market data only; no order execution."
+    ),
     debug=settings.debug,
     lifespan=lifespan,
 )
