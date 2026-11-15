@@ -86,6 +86,7 @@ async def stream_binance_aggtrades(
                     if asyncio.get_running_loop().time() - last_flush >= flush_interval:
                         await flush()
         except asyncio.CancelledError:
+            await flush()
             raise
         except Exception:
             logger.exception("CVD websocket disconnected for %s; reconnecting", normalized)
