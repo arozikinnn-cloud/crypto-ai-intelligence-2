@@ -24,3 +24,4 @@ class IntelligenceResponse(BaseModel):
     order_flow: OrderFlowResponse
     aggtrades_order_flow: AggTradesOrderFlowResponse
     derivatives: DerivativesContextResponse
+    market_context: dict
