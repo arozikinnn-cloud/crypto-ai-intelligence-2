@@ -36,7 +36,8 @@ async def multi_timeframe_analysis(
 
     sides = [item["side"] for item in analyses]
     active_sides = [side for side in sides if side in {"BUY", "SELL"}]
-    overall = active_sides[0] if len(active_sides) == len(sides) and len(set(active_sides)) == 1 else "NO TRADE"
+    all_aligned = len(active_sides) == len(sides) and len(set(active_sides)) == 1
+    overall = active_sides[0] if all_aligned else "NO TRADE"
     reasons = (
         [f"Semua {len(selected)} timeframe sepakat {overall}."]
         if overall != "NO TRADE"
