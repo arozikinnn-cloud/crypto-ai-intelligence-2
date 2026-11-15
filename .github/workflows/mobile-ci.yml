@@ -29,3 +29,14 @@ jobs:
       - run: dart format lib test
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
+      - name: Generate Android platform project
+        run: flutter create --platforms=android --org com.cryptoai .
+      - name: Build Android debug APK
+        run: flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: crypto-ai-intelligence-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
