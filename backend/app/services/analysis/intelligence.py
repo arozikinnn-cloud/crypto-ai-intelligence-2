@@ -4,6 +4,7 @@ def build_intelligence_decision(
     order_flow: dict,
     derivatives: dict,
     trade_order_flow: dict | None = None,
+    market_context: dict | None = None,
 ) -> dict:
     if not technical_sides:
         raise ValueError("At least one technical timeframe is required.")
@@ -57,6 +58,25 @@ def build_intelligence_decision(
         checks["buy_pressure_aggtrades"] = trade_buy
         checks["sell_pressure_aggtrades"] = trade_sell
 
+    context = market_context or {}
+    cvd = context.get("cvd_history", {})
+    if cvd.get("available"):
+        cvd_buy = cvd.get("bias") == "BUY_PRESSURE"
+        cvd_sell = cvd.get("bias") == "SELL_PRESSURE"
+        bullish_checks.append(cvd_buy)
+        bearish_checks.append(cvd_sell)
+        checks["buy_pressure_persistent_cvd"] = cvd_buy
+        checks["sell_pressure_persistent_cvd"] = cvd_sell
+
+    order_book = context.get("order_book", {})
+    if order_book.get("available"):
+        book_buy = order_book.get("bias") == "BUY_DEPTH"
+        book_sell = order_book.get("bias") == "SELL_DEPTH"
+        bullish_checks.append(book_buy)
+        bearish_checks.append(book_sell)
+        checks["buy_depth_order_book"] = book_buy
+        checks["sell_depth_order_book"] = book_sell
+
     max_confluence = len(bullish_checks)
     if all(bullish_checks):
         side = "BUY"
@@ -68,6 +88,10 @@ def build_intelligence_decision(
         ]
         if trade_order_flow is not None:
             reasons.append("Data Binance Spot aggTrades juga menunjukkan tekanan beli.")
+        if cvd.get("available"):
+            reasons.append("Riwayat CVD tersimpan mengonfirmasi tekanan beli.")
+        if order_book.get("available"):
+            reasons.append("Snapshot order book menunjukkan kedalaman bid lebih besar.")
     elif all(bearish_checks):
         side = "SELL"
         score = max_confluence
@@ -78,6 +102,10 @@ def build_intelligence_decision(
         ]
         if trade_order_flow is not None:
             reasons.append("Data Binance Spot aggTrades juga menunjukkan tekanan jual.")
+        if cvd.get("available"):
+            reasons.append("Riwayat CVD tersimpan mengonfirmasi tekanan jual.")
+        if order_book.get("available"):
+            reasons.append("Snapshot order book menunjukkan kedalaman ask lebih besar.")
     else:
         side = "NO TRADE"
         score = max(sum(bullish_checks), sum(bearish_checks))
@@ -97,8 +125,22 @@ def build_intelligence_decision(
     ]
     if trade_order_flow is not None:
         context_notes.append(
-            "AggTrades/CVD hanya mencakup batch terbaru yang dikembalikan API, "
-            "bukan CVD sesi penuh."
+            "AggTrades mencakup batch terbaru; gunakan riwayat CVD persisten untuk konteks "
+            "lebih panjang, dengan kemungkinan gap collector."
+        )
+    if cvd.get("note"):
+        context_notes.append(cvd["note"])
+    if order_book.get("note"):
+        context_notes.append(order_book["note"])
+    liquidations = context.get("liquidations", {})
+    if liquidations.get("note"):
+        context_notes.append(liquidations["note"])
+    if liquidations.get("available"):
+        context_notes.append(
+            "Likuidasi teramati: short "
+            f"{liquidations['short_liquidation_notional']:.2f} dan long "
+            f"{liquidations['long_liquidation_notional']:.2f} notional; ini konteks, "
+            "bukan sinyal arah tunggal."
         )
     if oi_change is None:
         context_notes.append("Perubahan open interest belum tersedia untuk dibandingkan.")
