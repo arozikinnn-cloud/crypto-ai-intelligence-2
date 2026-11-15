@@ -13,8 +13,19 @@ class Settings(BaseSettings):
     cvd_collector_enabled: bool = True
     cvd_collector_symbols: str = "BTCUSDT"
     cvd_collector_flush_interval_seconds: float = 2.0
+    liquidation_collector_enabled: bool = True
+    liquidation_collector_symbols: str = "BTCUSDT"
+    liquidation_collector_flush_interval_seconds: float = 2.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def liquidation_collector_symbol_list(self) -> list[str]:
+        return [
+            symbol.strip().upper()
+            for symbol in self.liquidation_collector_symbols.split(",")
+            if symbol.strip()
+        ]
 
     @property
     def cvd_collector_symbol_list(self) -> list[str]:
