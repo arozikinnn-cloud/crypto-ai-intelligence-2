@@ -24,4 +24,5 @@ class Candle(Base):
     volume: Mapped[float] = mapped_column(Float)
     quote_volume: Mapped[float] = mapped_column(Float)
     trades: Mapped[int] = mapped_column()
+    taker_buy_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
