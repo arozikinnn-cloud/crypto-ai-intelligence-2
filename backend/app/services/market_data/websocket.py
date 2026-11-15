@@ -17,7 +17,8 @@ async def stream_binance_klines(
     try:
         import websockets
     except ImportError as exc:
-        raise MarketDataError("Install the optional websockets dependency to use streaming.") from exc
+        message = "Install the optional websockets dependency to use streaming."
+        raise MarketDataError(message) from exc
 
     stream = f"{symbol.lower()}@kline_{interval}"
     url = f"wss://stream.binance.com:9443/ws/{stream}"
