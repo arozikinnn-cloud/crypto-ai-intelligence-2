@@ -10,6 +10,7 @@ The engine consumes normalized Binance Spot OHLCV candles and returns an explain
 - ATR 14 volatility estimate.
 - Current volume relative to the previous 20-candle average.
 - Rolling 20-candle support and resistance bounds.
+- Basic 20-versus-previous-20 swing structure classification (higher highs/higher lows, lower highs/lower lows, or mixed/range).
 
 ## Rule-based assessment
 BUY requires at least three of four bullish checks: bullish EMA alignment, RSI 50–70, MACD above its signal, and volume ratio >= 1. SELL uses mirrored bearish checks. Otherwise the result is NO TRADE. This is deliberately conservative and transparent.
