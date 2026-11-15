@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
+from app.api.signals import record_signal
 from app.schemas.analysis import AnalysisResponse
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.order_flow import (
@@ -119,6 +120,14 @@ async def combined_intelligence(
         raise
 
     timestamp = datetime.now(timezone.utc)
+    record_signal(
+        db,
+        symbol,
+        decision["side"],
+        selected,
+        decision["reasons"],
+        candle_sets[0][-1].close_time.isoformat(),
+    )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
         timeframe="1h" if "1h" in selected else selected[0],
