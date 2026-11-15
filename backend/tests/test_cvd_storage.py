@@ -57,7 +57,6 @@ def test_cvd_storage_is_idempotent_and_rebuilds_cumulative_history():
     engine.dispose()
 
 
-
 def test_read_cvd_history_returns_persisted_points_and_cumulative_offset():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
