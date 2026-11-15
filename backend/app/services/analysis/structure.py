@@ -13,9 +13,11 @@ def analyze_structure(candles: list[NormalizedCandle], pivot_span: int = 2) -> d
         window = candles[index - pivot_span:index + pivot_span + 1]
         high = candles[index].high
         low = candles[index].low
-        if high == max(item.high for item in window) and sum(item.high == high for item in window) == 1:
+        is_unique_high = sum(item.high == high for item in window) == 1
+        if high == max(item.high for item in window) and is_unique_high:
             highs.append((index, high))
-        if low == min(item.low for item in window) and sum(item.low == low for item in window) == 1:
+        is_unique_low = sum(item.low == low for item in window) == 1
+        if low == min(item.low for item in window) and is_unique_low:
             lows.append((index, low))
 
     last_close = candles[-1].close
@@ -58,5 +60,5 @@ def analyze_structure(candles: list[NormalizedCandle], pivot_span: int = 2) -> d
         "bullish_fvg": bullish_fvg,
         "bearish_fvg": bearish_fvg,
         "pivot_count": len(highs) + len(lows),
-        "method_note": "Pivot memakai 2 candle kiri/kanan; BOS/CHOCH hanya dikonfirmasi saat candle terakhir ditutup melewati swing. FVG adalah gap tiga-candle sederhana.",
+        "method_note": (\n            "Pivot memakai 2 candle kiri/kanan; BOS/CHOCH dikonfirmasi saat candle terakhir\n"\n            "ditutup melewati swing. FVG adalah gap tiga-candle sederhana."\n        ),
     }
