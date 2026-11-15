@@ -26,7 +26,10 @@ async def multi_timeframe_analysis(
     try:
         provider = BinanceMarketData()
         candle_sets = await asyncio.gather(
-            *(provider.fetch_klines(symbol, interval, limit, closed_only=True) for interval in selected)
+            *(
+                provider.fetch_klines(symbol, interval, limit, closed_only=True)
+                for interval in selected
+            )
         )
         analyses = [analyze_market(items) for items in candle_sets]
     except MarketDataError as exc:
