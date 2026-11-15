@@ -72,7 +72,9 @@ def build_intelligence_decision(
     if oi_change is None:
         context_notes.append("Perubahan open interest belum tersedia untuk dibandingkan.")
     elif oi_change > 0:
-        context_notes.append(\n            "Open interest meningkat; posisi terbuka bertambah, arah long/short tidak diketahui."\n        )
+        context_notes.append(
+            "Open interest meningkat; posisi terbuka bertambah, arah long/short tidak diketahui."
+        )
     elif oi_change < 0:
         context_notes.append("Open interest menurun; posisi terbuka berkurang.")
     else:
