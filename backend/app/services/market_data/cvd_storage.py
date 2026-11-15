@@ -82,7 +82,6 @@ def persist_aggtrades_cvd(db: Session, result: dict) -> dict:
     }
 
 
-
 def read_cvd_history(db: Session, symbol: str, limit: int = 500) -> dict:
     normalized = symbol.upper().strip()
     if not normalized.isalnum() or not 5 <= len(normalized) <= 20:
@@ -124,7 +123,10 @@ def read_cvd_history(db: Session, symbol: str, limit: int = 500) -> dict:
         running += row.delta
         points.append(
             {
-                "bucket_start_time": int(row.bucket_start_time.replace(tzinfo=timezone.utc).timestamp() * 1000),
+                "bucket_start_time": int(
+                    row.bucket_start_time.replace(tzinfo=timezone.utc).timestamp()
+                    * 1000
+                ),
                 "buy_volume": row.buy_volume,
                 "sell_volume": row.sell_volume,
                 "delta": row.delta,
