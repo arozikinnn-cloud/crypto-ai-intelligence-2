@@ -16,7 +16,7 @@ async def technical_analysis(
     limit: int = Query(default=200, ge=60, le=1000),
 ) -> AnalysisResponse:
     try:
-        candles = await BinanceMarketData().fetch_klines(symbol, interval, limit)
+        candles = await BinanceMarketData().fetch_klines(symbol, interval, limit, closed_only=True)
         result = analyze_market(candles)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
