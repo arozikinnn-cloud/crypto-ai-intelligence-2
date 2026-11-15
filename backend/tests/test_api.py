@@ -190,6 +190,33 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
             "checks": {"technical_bullish_alignment": False},
         }
 
+    async def fake_order_book(_symbol):
+        return {"available": False, "bias": "UNAVAILABLE", "note": "No book in test."}
+
+    def fake_cvd_history(_db, symbol, limit):
+        return {
+            "symbol": symbol,
+            "source_market": "binance_spot_aggtrades",
+            "cvd_bucket_interval": "1m",
+            "cvd_scope": "persisted_observed_history",
+            "points": [],
+            "cumulative_delta": 0.0,
+            "note": "No persisted CVD in test.",
+        }
+
+    def fake_liquidation_history(_db, symbol, hours):
+        return {
+            "symbol": symbol,
+            "source_market": "binance_usdm_futures_force_order",
+            "hours": hours,
+            "event_count": 0,
+            "points": [],
+            "note": "No liquidations in test.",
+        }
+
+    monkeypatch.setattr(api, "_fetch_order_book_or_unavailable", fake_order_book)
+    monkeypatch.setattr(api, "read_cvd_history", fake_cvd_history)
+    monkeypatch.setattr(api, "read_liquidation_history", fake_liquidation_history)
     monkeypatch.setattr(BinanceMarketData, "fetch_klines", fake_klines)
     monkeypatch.setattr(
         BinanceFuturesMarketData, "fetch_derivatives_context", fake_derivatives
