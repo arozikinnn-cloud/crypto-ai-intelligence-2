@@ -37,4 +37,6 @@ class SignalNotification(Base):
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
