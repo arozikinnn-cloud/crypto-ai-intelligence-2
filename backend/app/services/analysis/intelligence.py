@@ -79,6 +79,7 @@ def build_intelligence_decision(
         context_notes.append("Open interest menurun; posisi terbuka berkurang.")
     else:
         context_notes.append("Open interest relatif tidak berubah pada dua sampel terakhir.")
+
     if funding is not None:
         if funding > 0:
             context_notes.append("Funding positif: posisi long membayar posisi short.")
