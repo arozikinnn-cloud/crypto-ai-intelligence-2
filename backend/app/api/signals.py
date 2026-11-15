@@ -57,7 +57,11 @@ def record_signal(
 
 
 @router.get("", response_model=list[SignalEventResponse])
-def list_signals(status: str = Query(default="ACTIVE", pattern="^(ACTIVE|CLOSED|INVALIDATED|all)$"), limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
+def list_signals(
+    status: str = Query(default="ACTIVE", pattern="^(ACTIVE|CLOSED|INVALIDATED|all)$"),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
     statement = select(SignalEvent).order_by(SignalEvent.created_at.desc()).limit(limit)
     if status != "all":
         statement = statement.where(SignalEvent.status == status)
@@ -69,7 +73,11 @@ def list_signals(status: str = Query(default="ACTIVE", pattern="^(ACTIVE|CLOSED|
 
 
 @router.get("/notifications", response_model=list[SignalNotificationResponse])
-def list_notifications(unread_only: bool = False, limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
+def list_notifications(
+    unread_only: bool = False,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
     statement = (
         select(SignalNotification)
         .order_by(SignalNotification.created_at.desc())
