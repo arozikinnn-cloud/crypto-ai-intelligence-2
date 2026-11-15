@@ -35,6 +35,41 @@ class AnalysisApi {
     return decoded;
   }
 
+  Future<List<Map<String, dynamic>>> fetchNotifications({
+    bool unreadOnly = false,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/signals/notifications').replace(
+      queryParameters: {'unread_only': unreadOnly.toString()},
+    );
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Notification API error ${response.statusCode}: ${_errorMessage(response.body)}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      throw const FormatException('Invalid notification response format.');
+    }
+    return decoded
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  Future<void> markNotificationRead(int notificationId) async {
+    final uri = Uri.parse('$_baseUrl/signals/notifications/$notificationId/read');
+    final response = await _client
+        .post(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Unable to mark notification read: ${response.statusCode}',
+      );
+    }
+  }
+
   String _errorMessage(String body) {
     try {
       final decoded = jsonDecode(body);
