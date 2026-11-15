@@ -45,7 +45,7 @@ async def combined_intelligence(
         flow_candles = results[len(selected)]
         derivatives_data = results[len(selected) + 1]
         analyses = [analyze_market(items) for items in candle_sets]
-        structure_data = analyze_structure(candle_sets[selected.index("1h")] if "1h" in selected else candle_sets[0])
+        structure_index = selected.index("1h") if "1h" in selected else 0\n        structure_data = analyze_structure(candle_sets[structure_index])
         flow_data = analyze_order_flow(flow_candles, lookback=min(100, len(flow_candles)))
         decision = build_intelligence_decision(
             [item["side"] for item in analyses],
