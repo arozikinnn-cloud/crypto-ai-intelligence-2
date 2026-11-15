@@ -31,6 +31,7 @@ def candles(count=180):
 def test_combined_backtest_reports_out_of_sample_and_quality_gates():
     result = run_combined_backtest(candles())
     assert result["candles"] == 180
+    assert result["signal_count"] <= 20
     assert "out_of_sample" in result
     assert set(result["quality_checks"]) == {
         "minimum_oos_trades_met", "positive_oos_expectancy", "oos_drawdown_below_20pct"
@@ -74,3 +75,17 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
         record_signal(db, "BTCUSDT", "NO TRADE", ["15m", "1h"], [], "2026-11-15T12:00:00+00:00")
         assert db.scalar(select(SignalEvent).where(SignalEvent.status == "ACTIVE")) is None
     engine.dispose()
+
+
+
+def test_backtest_rejects_gaps_in_historical_candles():
+    rows = candles()
+    rows[150] = NormalizedCandle(
+        **{
+            **rows[150].__dict__,
+            "open_time": rows[150].open_time + timedelta(hours=1),
+            "close_time": rows[150].close_time + timedelta(hours=1),
+        }
+    )
+    with pytest.raises(Exception, match="missing|irregular"):
+        run_combined_backtest(rows)
