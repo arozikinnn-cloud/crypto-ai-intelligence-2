@@ -43,8 +43,8 @@ async def combined_intelligence(
     futures = BinanceFuturesMarketData()
     try:
         tasks = [
-            *(market.fetch_klines(symbol, interval, limit) for interval in selected),
-            market.fetch_klines(symbol, order_flow_interval, min(limit, 100)),
+            *(market.fetch_klines(symbol, interval, limit, closed_only=True) for interval in selected),
+            market.fetch_klines(\n                symbol, order_flow_interval, min(limit, 100), closed_only=True\n            ),
             futures.fetch_derivatives_context(symbol, derivatives_period),
         ]
         results = await asyncio.gather(*tasks)
