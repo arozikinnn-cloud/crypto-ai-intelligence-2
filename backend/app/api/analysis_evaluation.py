@@ -66,5 +66,9 @@ async def timeframe_performance(
     return TimeframePerformanceResponse(
         symbol=symbol.upper(),
         results=results,
-        note="Perbandingan memakai jumlah candle dan horizon candle yang sama, bukan durasi kalender yang sama. Bandingkan juga jumlah trade dan kualitas out-of-sample.",
+        note=(
+            "Perbandingan memakai jumlah candle dan horizon candle yang sama, "
+            "bukan durasi kalender yang sama. Bandingkan jumlah trade dan "
+            "kualitas out-of-sample."
+        ),
     )
