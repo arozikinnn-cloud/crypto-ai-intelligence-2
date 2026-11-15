@@ -46,4 +46,19 @@ The API is research-only. It does not place exchange orders and does not promise
 - Public Binance endpoints are used; no API key is required for these public reads.
 - Analysis routes filter out the currently forming candle and use closed candles only.
 - Exchange failures, malformed responses, insufficient history, and missing taker-buy data result in explicit errors rather than fabricated estimates.
-- Current implementation does not include full order-book depth, DOM/footprint, liquidation heatmaps, long-running session CVD, calibrated ML probabilities, or signal notifications.
+- Current implementation does not include full order-book depth, DOM/footprint, absorption, liquidation heatmaps, long-running session CVD, calibrated ML probabilities, or signal notifications. The liquidation WebSocket is a live pass-through only and is not stored.
+
+
+## Combined intelligence
+
+- `GET /api/v1/analysis/intelligence?symbol=BTCUSDT&intervals=15m,1h,4h&limit=200&order_flow_interval=5m&derivatives_period=5m`
+- Combines closed-candle technical analysis across selected timeframes, confirmed structure analysis, a bounded kline taker-volume delta window, open-interest change, and the latest funding rate.
+- BUY or SELL is intentionally strict: all requested technical timeframes, structure, order-flow pressure, rising OI, and the funding filter must agree. Otherwise the combined result is NO TRADE.
+- The five-point score is a count of heuristic checks, not a probability, confidence calibration, or expected win rate. Funding thresholds are provisional heuristics and require empirical validation.
+
+## Live liquidation events
+
+- WebSocket: `/api/v1/analysis/liquidations/stream?symbol=BTCUSDT`
+- Proxies the Binance USD-M Futures symbol-specific `forceOrder` stream and normalizes liquidation side, price, quantity, notional, and event time.
+- Binance force-order events are a real-time feed, not a complete historical liquidation tape or liquidation heatmap. BUY liquidation events correspond to short liquidations; SELL events correspond to long liquidations.
+- The stream is client-driven and does not persist events. A client disconnect or upstream failure ends the stream; durable collection, aggregation, alerting, and heatmap construction remain future work.
