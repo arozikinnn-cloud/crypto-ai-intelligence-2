@@ -79,6 +79,7 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     from app.api import analysis_intelligence as api
     from app.services.market_data.binance import BinanceMarketData
     from app.services.market_data.binance_futures import BinanceFuturesMarketData
+    from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 
     async def fake_klines(self, symbol, interval, limit, closed_only=False):
         assert closed_only is True
@@ -95,6 +96,25 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
             "funding_rate": 0.0001,
             "funding_time": 1767225600000,
             "interpretation": "Context only.",
+        }
+
+    async def fake_aggtrades(self, symbol, limit):
+        return {
+            "symbol": symbol,
+            "source_market": "binance_spot_aggtrades",
+            "trade_count": 10,
+            "buy_aggressor_volume": 5.0,
+            "sell_aggressor_volume": 4.0,
+            "net_delta": 1.0,
+            "delta_percent": 11.11,
+            "cumulative_delta": 1.0,
+            "cvd_bucket_interval": "1m",
+            "cvd_scope": "returned_batch_only",
+            "cvd_points": [],
+            "bias": "BUY_PRESSURE",
+            "first_trade_time": 1767225600000,
+            "last_trade_time": 1767225660000,
+            "method_note": "Test aggTrades data.",
         }
 
     now = datetime.now(timezone.utc)
@@ -174,6 +194,9 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     monkeypatch.setattr(
         BinanceFuturesMarketData, "fetch_derivatives_context", fake_derivatives
     )
+    monkeypatch.setattr(
+        BinanceAggTradesMarketData, "fetch_order_flow", fake_aggtrades
+    )
     monkeypatch.setattr(api, "analyze_market", fake_technical)
     monkeypatch.setattr(api, "analyze_structure", fake_structure)
     monkeypatch.setattr(api, "analyze_order_flow", fake_flow)
@@ -185,3 +208,4 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     assert payload["side"] == "NO TRADE"
     assert payload["order_flow"]["source_market"] == "binance_spot_klines"
     assert payload["derivatives"]["source_market"] == "binance_usdm_futures"
+    assert payload["aggtrades_order_flow"]["bias"] == "BUY_PRESSURE"
