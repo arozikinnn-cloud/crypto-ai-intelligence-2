@@ -17,6 +17,11 @@ def validate_candles(candles: list[NormalizedCandle]) -> None:
             raise MarketDataError("Candle contains a non-finite numeric value.")
         if any(value < 0 for value in values):
             raise MarketDataError("Exchange returned a negative market value.")
+        if candle.taker_buy_volume is not None:
+            if not math.isfinite(candle.taker_buy_volume):
+                raise MarketDataError("Taker-buy volume is not finite.")
+            if candle.taker_buy_volume < 0 or candle.taker_buy_volume > candle.volume:
+                raise MarketDataError("Taker-buy volume is outside total candle volume.")
         if (
             candle.low > min(candle.open, candle.close)
             or candle.high < max(candle.open, candle.close)
