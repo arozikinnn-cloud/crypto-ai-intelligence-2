@@ -225,18 +225,6 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
         BinanceAggTradesMarketData, "fetch_order_flow", fake_aggtrades
     )
 
-    async def fake_order_book(_symbol):
-        return {"available": False, "bias": "UNAVAILABLE", "note": "No book in test."}
-
-    def fake_cvd_history(_db, symbol, limit):
-        return {"symbol": symbol, "points": [], "note": "No CVD in test."}
-
-    def fake_liquidation_history(_db, symbol, hours):
-        return {"symbol": symbol, "event_count": 0, "points": [], "note": "No liquidations."}
-
-    monkeypatch.setattr(api, "_fetch_order_book_or_unavailable", fake_order_book)
-    monkeypatch.setattr(api, "read_cvd_history", fake_cvd_history)
-    monkeypatch.setattr(api, "read_liquidation_history", fake_liquidation_history)
     monkeypatch.setattr(api, "record_signal", lambda *_args: None)
     monkeypatch.setattr(api, "analyze_market", fake_technical)
     monkeypatch.setattr(api, "analyze_structure", fake_structure)
