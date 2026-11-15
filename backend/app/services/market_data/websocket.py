@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import math
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from app.services.market_data.base import MarketDataError, NormalizedCandle
