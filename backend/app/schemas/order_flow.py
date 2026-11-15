@@ -52,3 +52,14 @@ class DerivativesContextResponse(BaseModel):
     funding_rate: float
     funding_time: int
     interpretation: str
+
+
+
+class CvdHistoryResponse(BaseModel):
+    symbol: str
+    source_market: str
+    cvd_bucket_interval: str
+    cvd_scope: str
+    points: list[CvdPoint]
+    cumulative_delta: float
+    note: str
