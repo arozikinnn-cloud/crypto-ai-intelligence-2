@@ -1,0 +1,21 @@
+# Project roadmap
+
+## Phase 1 — Foundation
+Repository structure, FastAPI app, versioned API, configuration, logging, error handling, CORS baseline, SQLAlchemy session/model, health probes, tests, CI, architecture/API/database docs, and Flutter shell.
+
+## Phase 2 — Market data
+Public exchange market-data adapters, REST/WebSocket ingestion, normalization, timestamps, historical candle storage, and data-quality checks.
+
+## Phase 3 — Analysis engine
+Trend/market structure, support/resistance, volatility and volume features, explainable strategy rules, and backtesting with fees, slippage, and out-of-sample evaluation.
+
+## Phase 4 — Signals and notifications
+Signal lifecycle, deduplication, push notifications, user preferences, and alert audit trail.
+
+## Phase 5 — App integration and hardening
+Flutter dashboards, watchlists, signal details, authentication, rate limits, observability, security review, and deployment readiness.
+
+## Phase 6 — Paper trading and evaluation
+Simulated execution only, risk limits, and performance reporting. Live trading requires a separate explicit design and safety review.
+
+Each phase is gated by tests and acceptance review. No profit guarantee.
