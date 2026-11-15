@@ -1,0 +1,20 @@
+from datetime import datetime
+from pydantic import BaseModel
+from app.schemas.analysis import AnalysisResponse
+from app.schemas.order_flow import OrderFlowResponse, DerivativesContextResponse
+from app.schemas.structure import StructureResponse
+
+
+class IntelligenceResponse(BaseModel):
+    symbol: str
+    timestamp: datetime
+    side: str
+    confluence_score: int
+    max_confluence: int
+    score_note: str
+    reasons: list[str]
+    checks: dict[str, bool]
+    timeframe_analyses: list[AnalysisResponse]
+    structure: StructureResponse
+    order_flow: OrderFlowResponse
+    derivatives: DerivativesContextResponse
