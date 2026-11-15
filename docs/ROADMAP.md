@@ -6,16 +6,16 @@ Repository structure, FastAPI app, versioned API, configuration, logging, error 
 ## Phase 2 — Market data
 Public Binance Spot REST candle ingestion, normalized UTC OHLCV schema, candle quality validation, historical candle persistence/upsert, market-data API, and an opt-in reconnecting Binance WebSocket consumer. Provider credentials are not required for public market data.
 
-## Phase 3 — Analysis engine
-Explainable technical analysis, closed-candle multi-timeframe confluence, SMC heuristics (confirmed pivots/BOS/CHOCH, liquidity sweeps, last-opposing-candle order-block zones, FVG mitigation flags), Binance Spot kline-derived order-flow delta/CVD-window proxy, trade-level Binance Spot aggTrades aggressor delta, persistent 1-minute observed-history CVD with a reconnecting background collector and history API, persisted taker-buy candle volume, separate Binance USD-M Futures OI/funding context, reconnecting Futures force-order collector with deduplicated event storage and minute/side liquidation-history API, combined evidence-gated NO TRADE/BUY/SELL endpoint, and EMA crossover baseline backtesting. Collector symbols and flush cadence are configurable through environment variables. This remains a deterministic rule-based research engine, not a calibrated AI probability model. Remaining gaps include completeness/backfill during outages, order-book/footprint, validated absorption, news/fundamental/sentiment, durable signal lifecycle, and a combined-intelligence backtest.
+## Phase 3 — Analysis engine — implemented baseline; validation still required
+Explainable technical analysis, closed-candle multi-timeframe confluence, SMC heuristics, kline and aggTrades order flow, persistent observed-history CVD collector/API, separate Futures OI/funding context, force-order liquidation collector/history API, evidence-gated combined intelligence, EMA baseline backtest, combined-intelligence historical backtest, out-of-sample metrics/quality gates, and timeframe comparison endpoint are present in the backend. This is a deterministic rule-based research engine, not a calibrated AI probability model. Remaining gaps: reliable historical backfill and completeness during outages, order-book/footprint, validated absorption, historical replay of aggTrades/liquidations/OI/funding/news, broad multi-symbol validation, and independent walk-forward evaluation.
 
-## Phase 4 — Signals and notifications
-Signal lifecycle, deduplication, push notifications, user preferences, and alert audit trail.
+## Phase 4 — Signals and notifications — partial
+Persistent signal events, active-signal deduplication, opposite-signal/NO TRADE invalidation, manual close, notification inbox polling, and read/unread state are implemented. Remaining: Android push delivery (FCM), device-token registration, per-user preferences, notification delivery retries, authentication/ownership isolation, and alert audit/analytics. Current notification inbox requires the app to poll the API; it does not send a push while the app is closed.
 
 ## Phase 5 — App integration and hardening
-Flutter dashboards, watchlists, signal details, authentication, rate limits, observability, security review, and deployment readiness.
+Flutter dashboards, watchlists, signal details, authenticated user accounts, rate limits, observability, security review, notification UI/push integration, and deployment readiness.
 
 ## Phase 6 — Paper trading and evaluation
-Simulated execution only, risk limits, and performance reporting. Live trading requires a separate explicit design and safety review.
+Simulated execution only, risk limits, walk-forward testing, and performance reporting. Live trading is out of scope and would require a separate explicit design and safety review.
 
 Each phase is gated by tests and acceptance review. No profit guarantee.
