@@ -23,7 +23,7 @@ def _metrics(returns: list[float]) -> dict:
         "trades": len(returns),
         "win_rate_pct": (wins / len(returns) * 100) if returns else 0.0,
         "total_return_pct": (equity - 1) * 100,
-        "profit_factor": positive / negative if negative else (None if positive == 0 else 999.0),
+        "profit_factor": positive / negative if negative else None,
         "max_drawdown_pct": max_drawdown * 100,
     }
 
