@@ -5,6 +5,7 @@ class CombinedBacktestStats(BaseModel):
     trades: int
     wins: int
     losses: int
+    flats: int
     win_rate_pct: float
     total_return_pct: float
     expectancy_pct: float
