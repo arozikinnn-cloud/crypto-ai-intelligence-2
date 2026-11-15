@@ -32,7 +32,10 @@ def normalize_liquidation_message(message: dict) -> dict:
             "notional": price * quantity,
             "timestamp": datetime.fromtimestamp(event_time / 1000, tz=timezone.utc),
             "order_status": str(order["X"]),
-            "event_key": f"{symbol}:{int(order.get('i', event_time))}:{int(order.get('T', event_time))}",
+            "event_key": (
+                f"{symbol}:{int(order.get('i', event_time))}:"
+                f"{int(order.get('T', event_time))}"
+            ),
             "note": (
                 "BUY adalah likuidasi posisi short; SELL adalah likuidasi posisi long "
                 "pada stream force-order Binance USD-M Futures."
