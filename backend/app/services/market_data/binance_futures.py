@@ -63,6 +63,8 @@ class BinanceFuturesMarketData:
 
         return {
             "symbol": normalized,
+            "source_market": "binance_usdm_futures",
+            "open_interest_unit": "contracts",
             "open_interest": latest_oi,
             "open_interest_change_percent": oi_change,
             "open_interest_period": period,
