@@ -5,7 +5,11 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas.analysis import AnalysisResponse
 from app.schemas.intelligence import IntelligenceResponse
-from app.schemas.order_flow import DerivativesContextResponse, OrderFlowResponse
+from app.schemas.order_flow import (
+    AggTradesOrderFlowResponse,
+    DerivativesContextResponse,
+    OrderFlowResponse,
+)
 from app.schemas.structure import StructureResponse
 from app.services.analysis.engine import analyze_market
 from app.services.analysis.intelligence import build_intelligence_decision
@@ -13,6 +17,7 @@ from app.services.analysis.order_flow import analyze_order_flow
 from app.services.analysis.structure import analyze_structure
 from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
+from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
 
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
@@ -41,6 +46,7 @@ async def combined_intelligence(
 
     market = BinanceMarketData()
     futures = BinanceFuturesMarketData()
+    aggtrades = BinanceAggTradesMarketData()
     try:
         tasks = [
             *(
@@ -48,17 +54,17 @@ async def combined_intelligence(
                 for interval in selected
             ),
             market.fetch_klines(
-                symbol,
-                order_flow_interval,
-                min(limit, 100),
-                closed_only=True,
+                symbol, order_flow_interval, min(limit, 100), closed_only=True
             ),
             futures.fetch_derivatives_context(symbol, derivatives_period),
+            aggtrades.fetch_order_flow(symbol, 500),
         ]
         results = await asyncio.gather(*tasks)
         candle_sets = results[:len(selected)]
         flow_candles = results[len(selected)]
         derivatives_data = results[len(selected) + 1]
+        aggtrades_data = results[len(selected) + 2]
+
         analyses = [analyze_market(items) for items in candle_sets]
         structure_index = selected.index("1h") if "1h" in selected else 0
         structure_data = analyze_structure(candle_sets[structure_index])
@@ -70,6 +76,7 @@ async def combined_intelligence(
             structure_data,
             flow_data,
             derivatives_data,
+            aggtrades_data,
         )
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -83,14 +90,13 @@ async def combined_intelligence(
         timestamp=timestamp,
         **structure_data,
     )
-    flow_response = OrderFlowResponse(**flow_data)
-    derivatives_response = DerivativesContextResponse(**derivatives_data)
     return IntelligenceResponse(
         symbol=symbol.upper(),
         timestamp=timestamp,
         timeframe_analyses=[AnalysisResponse(**item) for item in analyses],
         structure=structure_response,
-        order_flow=flow_response,
-        derivatives=derivatives_response,
+        order_flow=OrderFlowResponse(**flow_data),
+        aggtrades_order_flow=AggTradesOrderFlowResponse(**aggtrades_data),
+        derivatives=DerivativesContextResponse(**derivatives_data),
         **decision,
     )
