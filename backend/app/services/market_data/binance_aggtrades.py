@@ -1,5 +1,6 @@
 from math import isfinite
 import httpx
+from app.services.market_data.http import get_json_with_retry
 
 from app.services.market_data.base import MarketDataError
 
@@ -17,16 +18,13 @@ class BinanceAggTradesMarketData:
         if not 10 <= limit <= 1000:
             raise MarketDataError("AggTrades limit must be between 10 and 1000.")
 
-        try:
-            async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-                response = await client.get(
-                    "/api/v3/aggTrades",
-                    params={"symbol": normalized, "limit": limit},
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise MarketDataError("Binance aggregated-trades request failed.") from exc
+        async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
+            payload = await get_json_with_retry(
+                client,
+                "/api/v3/aggTrades",
+                {"symbol": normalized, "limit": limit},
+                "Binance aggregated trades",
+            )
 
         if not isinstance(payload, list) or not payload:
             raise MarketDataError("Binance returned no aggregated-trades data.")
