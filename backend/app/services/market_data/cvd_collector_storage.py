@@ -30,9 +30,13 @@ def persist_aggtrade_events(db: Session, symbol: str, events: list[dict]) -> int
             db.flush()
 
         last_id = state.last_trade_id
+        unique_events = {
+            event["trade_id"]: event
+            for event in events
+            if event["trade_id"] > last_id
+        }
         accepted = sorted(
-            (event for event in events if event["trade_id"] > last_id),
-            key=lambda event: event["trade_id"],
+            unique_events.values(), key=lambda event: event["trade_id"]
         )
         if not accepted:
             db.rollback()
