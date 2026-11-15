@@ -47,6 +47,33 @@ def test_derivatives_do_not_create_directional_signal():
     assert any("Funding positif" in note for note in result["context_notes"])
 
 
+def test_aggtrades_conflict_blocks_buy_signal():
+    result = build_intelligence_decision(
+        ["BUY", "BUY"],
+        {"trend": "bullish", "event": "none"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        {"bias": "SELL_PRESSURE"},
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["max_confluence"] == 4
+    assert result["confluence_score"] < 4
+    assert result["checks"]["sell_pressure_aggtrades"] is True
+
+
+def test_aggtrades_confirmation_adds_fourth_confluence():
+    result = build_intelligence_decision(
+        ["SELL", "SELL"],
+        {"trend": "bearish", "event": "none"},
+        {"bias": "SELL_PRESSURE"},
+        {},
+        {"bias": "SELL_PRESSURE"},
+    )
+    assert result["side"] == "SELL"
+    assert result["confluence_score"] == 4
+    assert result["max_confluence"] == 4
+
+
 def test_unknown_technical_side_is_rejected():
     with pytest.raises(ValueError, match="unsupported"):
         build_intelligence_decision(
