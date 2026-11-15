@@ -23,6 +23,32 @@ from app.services.market_data.binance_futures import BinanceFuturesMarketData
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
 
 
+async def _fetch_aggtrades_or_unavailable(client, symbol: str) -> dict:
+    try:
+        return await client.fetch_order_flow(symbol, 500)
+    except MarketDataError:
+        return {
+            "symbol": symbol.upper(),
+            "source_market": "binance_spot_aggtrades",
+            "trade_count": 0,
+            "buy_aggressor_volume": 0.0,
+            "sell_aggressor_volume": 0.0,
+            "net_delta": 0.0,
+            "delta_percent": 0.0,
+            "cumulative_delta": 0.0,
+            "cvd_bucket_interval": "1m",
+            "cvd_scope": "unavailable",
+            "cvd_points": [],
+            "bias": "UNAVAILABLE",
+            "first_trade_time": None,
+            "last_trade_time": None,
+            "method_note": (
+                "Data aggTrades tidak tersedia dari sumber Binance. "
+                "Konfirmasi transaksi tidak terpenuhi; sistem akan memilih NO TRADE."
+            ),
+        }
+
+
 @router.get("/intelligence", response_model=IntelligenceResponse)
 async def combined_intelligence(
     symbol: str = Query(
@@ -57,7 +83,7 @@ async def combined_intelligence(
                 symbol, order_flow_interval, min(limit, 100), closed_only=True
             ),
             futures.fetch_derivatives_context(symbol, derivatives_period),
-            aggtrades.fetch_order_flow(symbol, 500),
+            _fetch_aggtrades_or_unavailable(aggtrades, symbol),
         ]
         results = await asyncio.gather(*tasks)
         candle_sets = results[:len(selected)]
