@@ -79,7 +79,7 @@ def run_combined_backtest(
         result = direction * (executed_exit - executed_entry) / executed_entry - 2 * fee
         observations.append({"index": index, "side": side, "return": result})
 
-    train = [x["return"] for x in observations if x["index"] < split]
+    train = [x["return"] for x in observations if x["index"] + horizon < split]
     test = [x["return"] for x in observations if x["index"] >= split]
     all_returns = [x["return"] for x in observations]
     return {
