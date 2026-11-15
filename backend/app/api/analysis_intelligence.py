@@ -48,7 +48,10 @@ async def combined_intelligence(
                 for interval in selected
             ),
             market.fetch_klines(
-                symbol, order_flow_interval, min(limit, 100), closed_only=True,
+                symbol,
+                order_flow_interval,
+                min(limit, 100),
+                closed_only=True,
             ),
             futures.fetch_derivatives_context(symbol, derivatives_period),
         ]
