@@ -6,9 +6,14 @@ from app.services.market_data.quality import validate_candles
 
 class BinanceMarketData:
     BASE_URL = "https://api.binance.com"
-    ALLOWED_INTERVALS = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"}
+    ALLOWED_INTERVALS = {
+        "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h",
+        "6h", "8h", "12h", "1d", "3d", "1w", "1M",
+    }
 
-    async def fetch_klines(self, symbol: str, interval: str, limit: int = 200) -> list[NormalizedCandle]:
+    async def fetch_klines(
+        self, symbol: str, interval: str, limit: int = 200
+    ) -> list[NormalizedCandle]:
         normalized_symbol = symbol.upper().strip()
         if not normalized_symbol.isalnum() or not 5 <= len(normalized_symbol) <= 20:
             raise MarketDataError("Invalid trading symbol.")
