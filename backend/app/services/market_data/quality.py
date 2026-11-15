@@ -1,3 +1,4 @@
+import math
 from app.services.market_data.base import MarketDataError, NormalizedCandle
 
 
@@ -12,6 +13,8 @@ def validate_candles(candles: list[NormalizedCandle]) -> None:
             candle.volume,
             candle.quote_volume,
         )
+        if not all(math.isfinite(value) for value in values):
+            raise MarketDataError("Candle contains a non-finite numeric value.")
         if any(value < 0 for value in values):
             raise MarketDataError("Exchange returned a negative market value.")
         if (
