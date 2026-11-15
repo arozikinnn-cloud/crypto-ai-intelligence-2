@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'services/analysis_api.dart';
+import 'risk_calculator_page.dart';
 
 void main() => runApp(const CryptoAIApp());
 
@@ -106,6 +107,17 @@ class _DashboardShellState extends State<DashboardShell>
               tooltip: 'Refresh analysis',
               onPressed: _refresh,
               icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: 'Kalkulator risiko',
+              icon: const Icon(Icons.calculate_outlined),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RiskCalculatorPage(),
+                  ),
+                );
+              },
             ),
           ],
         ),
