@@ -97,8 +97,11 @@ def build_intelligence_decision(
         "reasons": reasons,
         "context_notes": context_notes,
         "checks": {
-            "technical_alignment": all_bullish if side != "SELL" else all_bearish,
-            "market_structure": bullish_checks[1] if side != "SELL" else bearish_checks[1],
-            "order_flow": bullish_checks[2] if side != "SELL" else bearish_checks[2],
+            "technical_bullish_alignment": all_bullish,
+            "technical_bearish_alignment": all_bearish,
+            "bullish_structure": bullish_structure,
+            "bearish_structure": bearish_structure,
+            "buy_pressure": order_flow.get("bias") == "BUY_PRESSURE",
+            "sell_pressure": order_flow.get("bias") == "SELL_PRESSURE",
         },
     }
