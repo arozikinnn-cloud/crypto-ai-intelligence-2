@@ -1,6 +1,7 @@
 from math import isfinite
 
 import httpx
+from app.services.market_data.http import get_json_with_retry
 
 from app.services.market_data.base import MarketDataError
 
@@ -17,16 +18,13 @@ class BinanceOrderBookMarketData:
             raise MarketDataError("Invalid trading symbol.")
         if limit not in self.ALLOWED_LIMITS:
             raise MarketDataError("Unsupported order-book depth limit.")
-        try:
-            async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-                response = await client.get(
-                    "/api/v3/depth",
-                    params={"symbol": normalized, "limit": limit},
-                )
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise MarketDataError("Binance order-book request failed.") from exc
+        async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
+            payload = await get_json_with_retry(
+                client,
+                "/api/v3/depth",
+                {"symbol": normalized, "limit": limit},
+                "Binance order book",
+            )
 
         try:
             bids = [[float(price), float(quantity)] for price, quantity in payload["bids"]]
