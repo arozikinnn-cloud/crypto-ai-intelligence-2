@@ -19,8 +19,8 @@ The API is research-only. It does not place exchange orders and does not promise
 ## Market structure / SMC baseline
 
 - `GET /api/v1/analysis/structure?symbol=BTCUSDT&interval=1h&limit=200`
-- Reports confirmed swing pivots, basic BOS/CHOCH, and the latest simple three-candle bullish/bearish fair-value gap.
-- Pivots require two candles on the right to confirm. FVG is a geometric gap only; it does not prove an unmitigated or tradeable imbalance. This is not a full institutional SMC implementation.
+- Reports confirmed swing pivots, BOS/CHOCH, wick-and-close liquidity sweeps, a simple last-opposing-candle order-block zone on a confirmed break, and the latest three-candle bullish/bearish FVG.
+- FVG output includes touched/mitigated and fully-mitigated flags based only on candles after formation. Pivots require right-side candles to confirm. Order blocks use the full candle range of the last opposing candle in the 20-bar lookback. These are transparent heuristics, not a complete institutional SMC or order-flow model.
 
 ## Order-flow proxy
 
