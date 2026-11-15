@@ -38,6 +38,12 @@ def record_signal(
             db.commit()
             return
         dedupe_key = f"{symbol.upper()}:{timeframe_set}:{side}:{candle_timestamp}"
+        previous_event = db.scalar(
+            select(SignalEvent).where(SignalEvent.dedupe_key == dedupe_key)
+        )
+        if previous_event is not None:
+            db.commit()
+            return
         event = SignalEvent(
             dedupe_key=dedupe_key, symbol=symbol.upper(), side=side, status="ACTIVE",
             timeframe_set=timeframe_set, reasons_json=json.dumps(reasons, ensure_ascii=False),
