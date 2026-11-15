@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
+from app.database.session import get_db
 from app.schemas.order_flow import (
     AggTradesOrderFlowResponse,
     DerivativesContextResponse,
@@ -10,6 +12,7 @@ from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
+from app.services.market_data.cvd_storage import persist_aggtrades_cvd
 
 router = APIRouter(prefix="/analysis", tags=["order-flow and derivatives"])
 
@@ -44,12 +47,17 @@ async def aggtrades_order_flow(
         default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
     ),
     limit: int = Query(default=500, ge=10, le=1000),
+    db: Session = Depends(get_db),
 ) -> AggTradesOrderFlowResponse:
     """Recent trade-level aggressor delta from Binance public aggregated trades."""
     try:
         result = await BinanceAggTradesMarketData().fetch_order_flow(symbol, limit)
+        result = persist_aggtrades_cvd(db, result)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
     return AggTradesOrderFlowResponse(**result)
 
 
