@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.database.base import Base
 from app.models.cvd_bucket import CvdBucket
-from app.services.market_data.cvd_storage import persist_aggtrades_cvd
+from app.services.market_data.cvd_storage import (
+    persist_aggtrades_cvd,
+    read_cvd_history,
+)
 
 
 def make_result(points):
@@ -51,4 +54,24 @@ def test_cvd_storage_is_idempotent_and_rebuilds_cumulative_history():
         rows = db.scalars(select(CvdBucket)).all()
         assert len(rows) == 2
         assert rows[1].delta == -1.0
+    engine.dispose()
+
+
+
+def test_read_cvd_history_returns_persisted_points_and_cumulative_offset():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        persist_aggtrades_cvd(
+            db,
+            make_result([
+                point(1_767_225_600_000, 1.0, 2.0, 1.0),
+                point(1_767_225_660_000, -0.5, 1.0, 1.5),
+            ]),
+        )
+        history = read_cvd_history(db, "BTCUSDT", 10)
+        assert len(history["points"]) == 2
+        assert history["points"][-1]["cumulative_delta"] == 0.5
+        assert history["cumulative_delta"] == 0.5
+        assert history["cvd_scope"] == "persisted_observed_history"
     engine.dispose()
