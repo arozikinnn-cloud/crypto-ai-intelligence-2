@@ -82,3 +82,41 @@ def test_unknown_technical_side_is_rejected():
             {"bias": "BUY_PRESSURE"},
             {},
         )
+
+
+
+def test_persistent_cvd_and_order_book_are_additional_confluence_checks():
+    result = build_intelligence_decision(
+        ["BUY", "BUY"],
+        {"trend": "bullish", "event": "none"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        {"bias": "BUY_PRESSURE"},
+        {
+            "cvd_history": {"available": True, "bias": "BUY_PRESSURE"},
+            "order_book": {"available": True, "bias": "BUY_DEPTH"},
+            "liquidations": {
+                "available": True,
+                "short_liquidation_notional": 1000,
+                "long_liquidation_notional": 200,
+                "note": "Observed only.",
+            },
+        },
+    )
+    assert result["side"] == "BUY"
+    assert result["max_confluence"] == 6
+    assert result["confluence_score"] == 6
+    assert any("Likuidasi teramati" in note for note in result["context_notes"])
+
+
+def test_persistent_cvd_conflict_vetoes_directional_signal():
+    result = build_intelligence_decision(
+        ["BUY"],
+        {"trend": "bullish", "event": "none"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        {"bias": "BUY_PRESSURE"},
+        {"cvd_history": {"available": True, "bias": "SELL_PRESSURE"}},
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["checks"]["sell_pressure_persistent_cvd"] is True
