@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 
 class TechnicalIndicators(BaseModel):
+    market_structure: str
     last_price: float | None
     ema20: float | None
     ema50: float | None
