@@ -15,6 +15,21 @@ class OrderFlowResponse(BaseModel):
     method_note: str
 
 
+class AggTradesOrderFlowResponse(BaseModel):
+    symbol: str
+    source_market: str
+    trade_count: int
+    buy_aggressor_volume: float
+    sell_aggressor_volume: float
+    net_delta: float
+    delta_percent: float
+    cumulative_delta: float
+    bias: str
+    first_trade_time: int | None
+    last_trade_time: int | None
+    method_note: str
+
+
 class DerivativesContextResponse(BaseModel):
     symbol: str
     source_market: str
