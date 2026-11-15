@@ -17,12 +17,16 @@ from app.schemas.structure import StructureResponse
 from app.services.analysis.engine import analyze_market
 from app.services.analysis.intelligence import build_intelligence_decision
 from app.services.analysis.order_flow import analyze_order_flow
+from app.services.analysis.order_book import analyze_order_book
+from app.services.analysis.market_context import summarize_cvd_history, summarize_liquidations
 from app.services.analysis.structure import analyze_structure
 from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
-from app.services.market_data.cvd_storage import persist_aggtrades_cvd
+from app.services.market_data.binance_order_book import BinanceOrderBookMarketData
+from app.services.market_data.cvd_storage import persist_aggtrades_cvd, read_cvd_history
+from app.services.market_data.liquidation_storage import read_liquidation_history
 
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
 
@@ -49,6 +53,21 @@ async def _fetch_aggtrades_or_unavailable(client, symbol: str) -> dict:
             "method_note": (
                 "Data aggTrades tidak tersedia dari sumber Binance. "
                 "Konfirmasi transaksi tidak terpenuhi; sistem akan memilih NO TRADE."
+            ),
+        }
+
+
+async def _fetch_order_book_or_unavailable(symbol: str) -> dict:
+    try:
+        snapshot = await BinanceOrderBookMarketData().fetch_order_book(symbol, 100)
+        return {"available": True, **analyze_order_book(snapshot, depth_levels=20)}
+    except (MarketDataError, ValueError):
+        return {
+            "available": False,
+            "bias": "UNAVAILABLE",
+            "note": (
+                "Snapshot order book tidak tersedia; sistem tidak mengarang "
+                "imbalance dan tidak menganggapnya sebagai absorption."
             ),
         }
 
@@ -89,12 +108,14 @@ async def combined_intelligence(
             ),
             futures.fetch_derivatives_context(symbol, derivatives_period),
             _fetch_aggtrades_or_unavailable(aggtrades, symbol),
+            _fetch_order_book_or_unavailable(symbol),
         ]
         results = await asyncio.gather(*tasks)
         candle_sets = results[:len(selected)]
         flow_candles = results[len(selected)]
         derivatives_data = results[len(selected) + 1]
         aggtrades_data = results[len(selected) + 2]
+        order_book_data = results[len(selected) + 3]
         if aggtrades_data.get("cvd_scope") == "returned_batch_only":
             aggtrades_data = persist_aggtrades_cvd(db, aggtrades_data)
 
@@ -104,12 +125,22 @@ async def combined_intelligence(
         flow_data = analyze_order_flow(
             flow_candles, lookback=min(100, len(flow_candles))
         )
+        cvd_history = summarize_cvd_history(read_cvd_history(db, symbol, limit=60))
+        liquidation_context = summarize_liquidations(
+            read_liquidation_history(db, symbol, hours=24)
+        )
+        market_context = {
+            "cvd_history": cvd_history,
+            "order_book": order_book_data,
+            "liquidations": liquidation_context,
+        }
         decision = build_intelligence_decision(
             [item["side"] for item in analyses],
             structure_data,
             flow_data,
             derivatives_data,
             aggtrades_data,
+            market_context,
         )
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -142,5 +173,6 @@ async def combined_intelligence(
         order_flow=OrderFlowResponse(**flow_data),
         aggtrades_order_flow=AggTradesOrderFlowResponse(**aggtrades_data),
         derivatives=DerivativesContextResponse(**derivatives_data),
+        market_context=market_context,
         **decision,
     )
