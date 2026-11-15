@@ -1,18 +1,31 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.database.base import Base
+from app.database.session import engine
+import app.models.candle  # noqa: F401
+import app.models.market_snapshot  # noqa: F401
 
 settings = get_settings()
 configure_logging()
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
-    description="Research-first crypto market intelligence API. No order execution in Phase 1.",
+    version="0.2.0",
+    description="Research-first crypto market intelligence API. Public market data only; no order execution.",
     debug=settings.debug,
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
