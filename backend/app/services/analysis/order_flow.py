@@ -50,7 +50,6 @@ def analyze_order_flow(candles: list[NormalizedCandle], lookback: int = 20) -> d
         "symbol": symbol,
         "timeframe": timeframe,
         "source_market": "binance_spot_klines",
-        "source_market": "binance_spot_klines",
         "lookback": len(selected),
         "buy_volume": sum(buy_volumes),
         "sell_volume": sum(sell_volumes),
