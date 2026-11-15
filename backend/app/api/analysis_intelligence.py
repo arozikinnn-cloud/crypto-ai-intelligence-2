@@ -44,7 +44,9 @@ async def combined_intelligence(
     try:
         tasks = [
             *(market.fetch_klines(symbol, interval, limit, closed_only=True) for interval in selected),
-            market.fetch_klines(symbol, order_flow_interval, min(limit, 100), closed_only=True),
+            market.fetch_klines(
+                symbol, order_flow_interval, min(limit, 100), closed_only=True,
+            ),
             futures.fetch_derivatives_context(symbol, derivatives_period),
         ]
         results = await asyncio.gather(*tasks)
