@@ -72,3 +72,113 @@ def test_derivatives_endpoint_returns_public_context(monkeypatch):
     response = client.get("/api/v1/analysis/derivatives?symbol=BTCUSDT&period=5m")
     assert response.status_code == 200
     assert response.json()["open_interest"] == 1234.5
+
+
+def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
+    from datetime import datetime, timezone
+    from app.api import analysis_intelligence as api
+    from app.services.market_data.binance import BinanceMarketData
+    from app.services.market_data.binance_futures import BinanceFuturesMarketData
+
+    async def fake_klines(self, symbol, interval, limit, closed_only=False):
+        assert closed_only is True
+        return [interval]
+
+    async def fake_derivatives(self, symbol, period):
+        return {
+            "symbol": symbol,
+            "source_market": "binance_usdm_futures",
+            "open_interest_unit": "contracts",
+            "open_interest": 100.0,
+            "open_interest_change_percent": 1.0,
+            "open_interest_period": period,
+            "funding_rate": 0.0001,
+            "funding_time": 1767225600000,
+            "interpretation": "Context only.",
+        }
+
+    now = datetime.now(timezone.utc)
+
+    def fake_technical(items):
+        return {
+            "symbol": "BTCUSDT",
+            "timeframe": items[0],
+            "timestamp": now,
+            "side": "NO TRADE",
+            "entry": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "risk_reward": None,
+            "confluence_score": 2,
+            "max_confluence": 4,
+            "score_note": "Heuristic only.",
+            "indicators": {
+                "market_structure": "mixed_or_range",
+                "last_price": 100.0,
+                "ema20": 99.0,
+                "ema50": 98.0,
+                "rsi14": 55.0,
+                "macd": 1.0,
+                "macd_signal": 0.5,
+                "atr14": 2.0,
+                "volume_ratio": 1.1,
+                "support_20": 90.0,
+                "resistance_20": 110.0,
+            },
+            "reasons": ["No full alignment."],
+            "candle_count": 60,
+        }
+
+    def fake_structure(_candles):
+        return {
+            "trend": "range_or_unconfirmed",
+            "event": "none",
+            "last_swing_high": 110.0,
+            "last_swing_low": 90.0,
+            "bullish_fvg": None,
+            "bearish_fvg": None,
+            "pivot_count": 4,
+            "method_note": "Test structure.",
+        }
+
+    def fake_flow(candles, lookback):
+        return {
+            "symbol": "BTCUSDT",
+            "timeframe": "5m",
+            "source_market": "binance_spot_klines",
+            "lookback": lookback,
+            "buy_volume": 50.0,
+            "sell_volume": 50.0,
+            "net_delta": 0.0,
+            "delta_percent": 0.0,
+            "cumulative_delta": 0.0,
+            "bias": "BALANCED",
+            "method_note": "Test proxy.",
+        }
+
+    def fake_decision(*_args):
+        return {
+            "side": "NO TRADE",
+            "confluence_score": 0,
+            "max_confluence": 3,
+            "score_note": "Three checks only.",
+            "reasons": ["Test no trade."],
+            "context_notes": ["OI/funding context only."],
+            "checks": {"technical_bullish_alignment": False},
+        }
+
+    monkeypatch.setattr(BinanceMarketData, "fetch_klines", fake_klines)
+    monkeypatch.setattr(
+        BinanceFuturesMarketData, "fetch_derivatives_context", fake_derivatives
+    )
+    monkeypatch.setattr(api, "analyze_market", fake_technical)
+    monkeypatch.setattr(api, "analyze_structure", fake_structure)
+    monkeypatch.setattr(api, "analyze_order_flow", fake_flow)
+    monkeypatch.setattr(api, "build_intelligence_decision", fake_decision)
+
+    response = client.get("/api/v1/analysis/intelligence")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["side"] == "NO TRADE"
+    assert payload["order_flow"]["source_market"] == "binance_spot_klines"
+    assert payload["derivatives"]["source_market"] == "binance_usdm_futures"
