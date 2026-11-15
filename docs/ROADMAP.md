@@ -19,3 +19,25 @@ Flutter dashboards, watchlists, signal details, authenticated user accounts, rat
 Simulated execution only, risk limits, walk-forward testing, and performance reporting. Live trading is out of scope and would require a separate explicit design and safety review.
 
 Each phase is gated by tests and acceptance review. No profit guarantee.
+
+
+## Parallel delivery plan (Phase 3–6)
+
+Workstreams can progress in parallel behind stable API contracts; integration is still gated by CI and end-to-end checks.
+
+| Workstream | Scope | Exit criteria |
+|---|---|---|
+| A — Analysis quality | Phase 3: data continuity, collector gap visibility, multi-symbol/regime evaluation, walk-forward validation | Reproducible tests pass; no look-ahead; meaningful out-of-sample sample; limitations surfaced in API |
+| B — Signal lifecycle | Phase 4: signal deduplication, invalidation, inbox, read state, delivery abstraction | Lifecycle tests cover BUY/SELL/NO TRADE; no duplicate alerts; delivery failures observable |
+| C — Mobile integration | Phase 5: Flutter API client, dashboard, signal list/detail, notification inbox | Android build succeeds; configurable API base URL; loading/error/empty states; no secrets embedded |
+| D — Paper evaluation | Phase 6: simulated fills, fees/slippage, risk limits, trade ledger, performance metrics | No exchange order endpoints; deterministic replay; fees included; drawdown and trade history verified |
+| E — Integration and security | Cross-phase contracts, migrations, rate limits, authentication/ownership, dependency and API review | CI green; migration tested on fresh and existing DB; user data isolated before multi-user release |
+
+### Delivery rules
+
+- Parallel work must not bypass shared schemas, migrations, or API contracts.
+- Every feature is marked implemented only after automated tests; mobile features also require an Android build.
+- Market-data outages must be visible as unavailable/stale, never silently treated as valid confirmation.
+- Push notifications are not considered complete until device registration, delivery, retry, and permission behavior are tested on Android.
+- Paper trading is simulation only. No exchange order placement or live trading is part of this roadmap.
+- Prefer free/public services. Any paid infrastructure requires explicit approval before adoption.
