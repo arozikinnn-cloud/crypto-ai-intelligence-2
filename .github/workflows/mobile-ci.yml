@@ -38,7 +38,7 @@ jobs:
         run: flutter create --platforms=android --org com.cryptoai .
       - name: Build Android debug APK
         env:
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.API_BASE_URL || '' }}
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.API_BASE_URL || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
         run: |
           flutter build apk --debug --dart-define="API_BASE_URL=${API_BASE_URL}"
       - name: Upload debug APK
