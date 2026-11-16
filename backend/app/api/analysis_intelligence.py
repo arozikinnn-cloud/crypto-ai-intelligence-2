@@ -171,10 +171,13 @@ async def combined_intelligence(
     timestamp = datetime.now(timezone.utc)
     if "15m" in selected and candle_sets[selected.index("15m")]:
         tracking_candle = candle_sets[selected.index("15m")][-1]
-        evaluate_active_signals(
-            db, symbol, float(tracking_candle.high), float(tracking_candle.low),
-            str(getattr(tracking_candle, "close_time", tracking_candle)),
-        )
+        candle_high = getattr(tracking_candle, "high", None)
+        candle_low = getattr(tracking_candle, "low", None)
+        if isinstance(candle_high, (int, float)) and isinstance(candle_low, (int, float)):
+            evaluate_active_signals(
+                db, symbol, float(candle_high), float(candle_low),
+                str(getattr(tracking_candle, "close_time", tracking_candle)),
+            )
     record_signal(
         db,
         symbol,
