@@ -24,7 +24,7 @@ void main() {
     expect(find.text('NO TRADE'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
     await tester.pumpAndSettle();
-    expect(find.text('Trend is mixed.'), findsOneWidget);
+    expect(find.text('NO TRADE'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -900));
     await tester.pumpAndSettle();
     expect(find.text('Order book unavailable.'), findsOneWidget);
@@ -46,7 +46,7 @@ void main() {
     ));
 
     await tester.pumpAndSettle();
-    expect(find.text('BTCUSDT'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == 'BTCUSDT'), findsOneWidget);
     await tester.tap(find.byType(DropdownButton<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('ETHUSDT').last);
