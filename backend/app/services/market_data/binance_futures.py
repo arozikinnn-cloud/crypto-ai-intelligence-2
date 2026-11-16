@@ -1,7 +1,11 @@
 import asyncio
 from math import isfinite
 import httpx
+import logging
 from app.services.market_data.base import MarketDataError
+
+
+logger = logging.getLogger(__name__)
 
 
 class BinanceFuturesMarketData:
@@ -58,6 +62,7 @@ class BinanceFuturesMarketData:
                 if previous_oi not in (None, 0) else None
             )
         except (httpx.HTTPError, KeyError, TypeError, ValueError, OverflowError) as exc:
+            logger.warning("Bybit derivatives fetch failed: %r", exc)
             raise MarketDataError(
                 "Public derivatives data provider failed or returned malformed data."
             ) from exc
