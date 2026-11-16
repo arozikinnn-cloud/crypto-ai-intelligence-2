@@ -25,7 +25,7 @@ from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 from app.services.market_data.binance_futures import BinanceFuturesMarketData
 from app.services.market_data.binance_order_book import BinanceOrderBookMarketData
-from app.services.market_data.cvd_storage import read_cvd_history
+from app.services.market_data.cvd_storage import persist_aggtrades_cvd, read_cvd_history
 from app.services.market_data.liquidation_storage import read_liquidation_history
 
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
@@ -142,6 +142,10 @@ async def combined_intelligence(
         flow_data = analyze_order_flow(
             flow_candles, lookback=min(100, len(flow_candles))
         )
+        # The scheduled intelligence scan also persists the newest observed
+        # aggTrades minute buckets. This keeps CVD history progressing on
+        # serverless deployments where long-lived WebSocket collectors are off.
+        aggtrades_data = persist_aggtrades_cvd(db, aggtrades_data)
         cvd_history = summarize_cvd_history(read_cvd_history(db, symbol, limit=60))
         liquidation_context = summarize_liquidations(
             read_liquidation_history(db, symbol, hours=24)
