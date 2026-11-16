@@ -156,8 +156,24 @@ def record_signal(
         same_side = next((row for row in active_rows if row.side == side), None)
         for row in active_rows:
             if row.side != side:
+                try:
+                    previous = json.loads(row.reasons_json)
+                except (TypeError, json.JSONDecodeError):
+                    previous = {"reasons": []}
+                previous["invalidation_reason"] = (
+                    f"Invalidated by a newly confirmed {side} signal. "
+                    + "; ".join(reasons)
+                )
+                previous["invalidated_at"] = now.isoformat()
+                row.reasons_json = json.dumps(previous, ensure_ascii=False)
                 row.status = "INVALIDATED"
                 row.updated_at = now
+                db.add(SignalNotification(
+                    signal_id=row.id,
+                    title=f"{row.symbol} {row.side} invalidated",
+                    message=previous["invalidation_reason"],
+                    created_at=now,
+                ))
         if same_side:
             same_side.updated_at = now
             db.commit()
@@ -224,9 +240,9 @@ def record_signal(
             import logging
             logging.getLogger(__name__).exception("FCM signal push failed; signal remains saved")
     else:
-        for row in active_rows:
-            row.status = "INVALIDATED"
-            row.updated_at = now
+        # NO TRADE means no new setup, not proof that an existing thesis failed.
+        # Keep active signals until a later TP/SL touch or qualified opposite signal.
+        pass
     db.commit()
 
 
@@ -309,7 +325,22 @@ def close_signal(signal_id: int, db: Session = Depends(get_db)):
     row = db.get(SignalEvent, signal_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Signal not found.")
+    now = datetime.now(timezone.utc)
+    try:
+        stored = json.loads(row.reasons_json)
+    except (TypeError, json.JSONDecodeError):
+        stored = {"reasons": []}
+    stored["outcome"] = stored.get("outcome") or "MANUAL"
+    stored["close_reason"] = "Manually closed by user."
+    stored["closed_at"] = now.isoformat()
+    row.reasons_json = json.dumps(stored, ensure_ascii=False)
     row.status = "CLOSED"
-    row.updated_at = datetime.now(timezone.utc)
+    row.updated_at = now
+    db.add(SignalNotification(
+        signal_id=row.id,
+        title=f"{row.symbol} {row.side} manually closed",
+        message="Sinyal ditutup secara manual oleh pengguna.",
+        created_at=now,
+    ))
     db.commit()
     return SignalEventResponse(**_event_payload(row))
