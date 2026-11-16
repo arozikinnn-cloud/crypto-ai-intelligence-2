@@ -36,7 +36,7 @@ class AnalysisApi {
 
   Future<Map<String, dynamic>> fetchIntelligence({
     String symbol = 'BTCUSDT',
-    String intervals = '15m,1h,4h',
+    String intervals = '4h,1h,15m',
   }) async {
     final uri = _endpoint('analysis/intelligence', {
       'symbol': symbol,
