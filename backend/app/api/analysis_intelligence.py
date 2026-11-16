@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.api.signals import record_signal
+from app.api.signals import evaluate_active_signals, record_signal
 from app.schemas.analysis import AnalysisResponse
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.order_flow import (
@@ -169,6 +169,11 @@ async def combined_intelligence(
         raise
 
     timestamp = datetime.now(timezone.utc)
+    if "15m" in selected and candle_sets[selected.index("15m")]:
+        tracking_candle = candle_sets[selected.index("15m")][-1]
+        evaluate_active_signals(
+            db, symbol, float(tracking_candle.high), float(tracking_candle.low)
+        )
     record_signal(
         db,
         symbol,
@@ -176,6 +181,7 @@ async def combined_intelligence(
         selected,
         decision["reasons"],
         str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
+        decision.get("trade_plan"),
     )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
