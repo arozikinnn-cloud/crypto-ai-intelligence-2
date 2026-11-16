@@ -50,6 +50,7 @@ def evaluate_active_signals(
         SignalEvent.symbol == symbol.upper(),
         SignalEvent.status == "ACTIVE",
     )))
+    closed_signals: list[tuple[SignalEvent, str, float | None]] = []
     for row in rows:
         try:
             stored = json.loads(row.reasons_json)
@@ -88,15 +89,50 @@ def evaluate_active_signals(
         row.reasons_json = json.dumps(stored, ensure_ascii=False)
         row.status = "CLOSED"
         row.updated_at = now
+        message = ("Hasil sinyal otomatis: " + outcome +
+                   (f" ({realized_r:.2f}R)" if realized_r is not None else
+                    " — urutan TP/SL tidak dapat dipastikan pada candle yang sama."))
         db.add(SignalNotification(
             signal_id=row.id,
             title=f"{row.symbol} {outcome}",
-            message=("Hasil sinyal otomatis: " + outcome +
-                     (f" ({realized_r:.2f}R)" if realized_r is not None else
-                      " — urutan TP/SL tidak dapat dipastikan pada candle yang sama.")),
+            message=message,
             created_at=now,
         ))
+        closed_signals.append((row, outcome, realized_r))
     db.commit()
+
+    # Deliver TP/SL results to devices too; persist the result first so an FCM
+    # outage cannot roll back the signal lifecycle or its performance history.
+    for row, outcome, realized_r in closed_signals:
+        try:
+            from app.services.push_notifications import send_push_to_registered_devices
+
+            stored = json.loads(row.reasons_json)
+            plan = stored.get("trade_plan") or {}
+            send_push_to_registered_devices(
+                db,
+                title=f"{row.symbol} {outcome}",
+                body=(
+                    f"Hasil sinyal {row.side}: {outcome}"
+                    + (f" ({realized_r:.2f}R)" if realized_r is not None else "")
+                ),
+                data={
+                    "type": "trade_result",
+                    "signal_id": str(row.id),
+                    "symbol": row.symbol,
+                    "side": row.side,
+                    "outcome": outcome,
+                    "entry": str(plan.get("entry") or ""),
+                    "stop_loss": str(plan.get("stop_loss") or ""),
+                    "take_profit": str(plan.get("take_profit") or ""),
+                    "realized_r": str(realized_r if realized_r is not None else ""),
+                },
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "FCM result push failed; outcome remains saved"
+            )
 
 
 def record_signal(
