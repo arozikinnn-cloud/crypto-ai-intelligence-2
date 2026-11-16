@@ -79,15 +79,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   late Future<List<Map<String, dynamic>>> signals;
   late Future<Map<String, dynamic>> backtest;
   late Future<Map<String, dynamic>> signalPerformance;
+  late Future<List<Map<String, dynamic>>> candles;
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence(symbol: selectedSymbol);
+  Future<List<Map<String, dynamic>>> loadCandles() => api.fetchCandles(symbol: selectedSymbol, interval: '15m', limit: 80);
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
-    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
@@ -129,6 +131,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     analysis = load();
+    candles = loadCandles();
     notifications = loadNotes();
     scanner = loadScanner();
     signals = loadSignals();
@@ -144,14 +147,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (mounted && !refreshing) setState(() { analysis = load(); signalPerformance = loadSignalPerformance(); });
+      if (mounted && !refreshing) setState(() { analysis = load(); candles = loadCandles(); signalPerformance = loadSignalPerformance(); });
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+      setState(() { analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -163,7 +166,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); });
+    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -199,7 +202,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
-          closeSignal: closeSignal, signalPerformance: signalPerformance);
+          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles);
       },
     )),
   );
@@ -208,7 +211,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
     required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance});
+    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
@@ -221,6 +224,7 @@ class _Dashboard extends StatelessWidget {
   final Future<void> Function(int) markRead;
   final Future<void> Function(int) closeSignal;
   final Future<Map<String, dynamic>> signalPerformance;
+  final Future<List<Map<String, dynamic>>> candles;
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +287,11 @@ class _Dashboard extends StatelessWidget {
                 Text(formatTime(txt(data['timestamp'], '')), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
               ]),
             ]),
+            const SizedBox(height: 16),
+            const _Heading('BTC / MARKET CANDLES', 'Candlestick 15 menit • Binance Spot'),
+            const SizedBox(height: 8),
+            _CandlestickChart(future: candles),
+            const SizedBox(height: 16),
             const SizedBox(height: 15),
             Container(padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -493,6 +502,104 @@ class _Scanner extends StatelessWidget {
       ),
     ),
   );
+}
+
+
+class _CandlestickChart extends StatelessWidget {
+  const _CandlestickChart({required this.future});
+  final Future<List<Map<String, dynamic>>> future;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const SizedBox(height: 190, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          final rows = snap.data ?? [];
+          if (snap.hasError || rows.length < 3) {
+            return SizedBox(height: 190, child: Center(child: Text(
+              snap.hasError ? 'Candlestick belum tersedia: ${snap.error}' : 'Data candle belum cukup.',
+              textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 9))));
+          }
+          final last = rows.last;
+          final firstClose = doubleVal(rows.first['close']);
+          final lastClose = doubleVal(last['close']);
+          final change = firstClose == 0 ? 0.0 : (lastClose - firstClose) / firstClose * 100;
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('15M', style: TextStyle(color: muted, fontSize: 9, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Text(price(last['close']), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+              const SizedBox(width: 8),
+              Text('${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                style: TextStyle(color: change >= 0 ? green : red, fontSize: 9, fontWeight: FontWeight.bold)),
+            ]),
+            const SizedBox(height: 8),
+            SizedBox(height: 175, width: double.infinity,
+              child: CustomPaint(painter: _CandlePainter(rows))),
+            const SizedBox(height: 5),
+            Row(children: [
+              const Text('80 candle terakhir', style: TextStyle(color: muted, fontSize: 8)),
+              const Spacer(),
+              Text('Sumber: Binance Spot', style: const TextStyle(color: muted, fontSize: 8)),
+            ]),
+          ]);
+        },
+      ),
+    ),
+  );
+}
+
+class _CandlePainter extends CustomPainter {
+  _CandlePainter(this.rows);
+  final List<Map<String, dynamic>> rows;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rows.isEmpty || size.width <= 0 || size.height <= 0) return;
+    final values = rows.map((r) => [
+      doubleVal(r['high']), doubleVal(r['low']), doubleVal(r['open']), doubleVal(r['close'])
+    ]).toList();
+    final minPrice = values.map((v) => v[1]).reduce(math.min);
+    final maxPrice = values.map((v) => v[0]).reduce(math.max);
+    final span = (maxPrice - minPrice).abs();
+    if (span == 0) return;
+    final padTop = 7.0, padBottom = 7.0;
+    final chartHeight = size.height - padTop - padBottom;
+    double y(double p) => padTop + (maxPrice - p) / span * chartHeight;
+    final grid = Paint()..color = line.withValues(alpha: .65)..strokeWidth = .6;
+    for (var i = 0; i < 4; i++) {
+      final gy = padTop + chartHeight * i / 3;
+      canvas.drawLine(Offset(0, gy), Offset(size.width, gy), grid);
+    }
+    final step = size.width / rows.length;
+    final bodyWidth = math.max(2.0, step * .58);
+    final wickPaint = Paint()..strokeWidth = 1.0;
+    for (var i = 0; i < values.length; i++) {
+      final v = values[i];
+      final rising = v[3] >= v[2];
+      final color = rising ? green : red;
+      final x = step * (i + .5);
+      wickPaint.color = color;
+      canvas.drawLine(Offset(x, y(v[0])), Offset(x, y(v[1])), wickPaint);
+      final top = math.min(y(v[2]), y(v[3]));
+      final bottom = math.max(y(v[2]), y(v[3]));
+      final body = Rect.fromLTRB(x - bodyWidth / 2, top, x + bodyWidth / 2,
+        math.max(top + 1.2, bottom));
+      canvas.drawRect(body, Paint()..color = color);
+    }
+    final last = values.last[3];
+    final currentY = y(last);
+    final currentLine = Paint()..color = blue.withValues(alpha: .8)..strokeWidth = .8;
+    canvas.drawLine(Offset(0, currentY), Offset(size.width, currentY), currentLine);
+  }
+
+  @override
+  bool shouldRepaint(covariant _CandlePainter oldDelegate) => oldDelegate.rows != rows;
 }
 
 class _Heading extends StatelessWidget {
