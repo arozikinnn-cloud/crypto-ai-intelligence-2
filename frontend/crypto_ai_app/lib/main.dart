@@ -1138,56 +1138,60 @@ class _SignalCenter extends StatelessWidget {
   final Future<List<Map<String, dynamic>>> future;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(10),
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return const SizedBox(height: 2);
-          }
-          if (snap.hasError) {
-            return Text('Riwayat sinyal belum tersedia: ${snap.error}',
-              style: TextStyle(color: muted, fontSize: 9));
-          }
-          final items = snap.data ?? [];
-          if (items.isEmpty) return Text('Belum ada riwayat sinyal tersimpan.',
-            style: TextStyle(color: muted, fontSize: 9));
-          return Column(children: items.take(12).map((item) {
-            final String side = item['side']?.toString() ?? 'UNKNOWN';
-            final String status = item['status']?.toString() ?? 'UNKNOWN';
-            final Color color = switch (side) {
-              'BUY' => green,
-              'SELL' => red,
-              _ => muted,
-            };
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(width: 7, height: 7, margin: const EdgeInsets.only(top: 4),
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                const SizedBox(width: 9),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${txt(item['symbol'], '--')} • $side',
-                    style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 3),
-                  Text('${txt(item['timeframe_set'], '--')} • $status • ${txt(item['outcome'], 'OPEN')}',
-                    style: TextStyle(color: muted, fontSize: 8)),
-                  if (item['entry'] != null) Text('Entry ${price(item['entry'])} • SL ${price(item['stop_loss'])} • TP ${price(item['take_profit'])}',
-                    style: TextStyle(color: muted, fontSize: 8)),
-                  if (strings(item['reasons']).isNotEmpty)
-                    Text(strings(item['reasons']).take(2).join(' '),
-                      maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: muted, fontSize: 8)),
-                ])),
-              ]),
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+              return const SizedBox(height: 2);
+            }
+            if (snap.hasError) {
+              return Text('Riwayat sinyal belum tersedia',
+                  style: TextStyle(color: muted, fontSize: 9));
+            }
+            final items = snap.data;
+            if (items == null || items.isEmpty) {
+              return Text('Belum ada riwayat sinyal tersimpan.',
+                  style: TextStyle(color: muted, fontSize: 9));
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length > 12 ? 12 : items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final side = item['side'];
+                final symbol = item['symbol'];
+                final status = item['status'];
+                final outcome = item['outcome'];
+                final entry = item['entry'];
+                final stop = item['stop_loss'];
+                final target = item['take_profit'];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$symbol • $side',
+                          style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
+                      Text('$status • $outcome',
+                          style: TextStyle(color: muted, fontSize: 8)),
+                      if (entry != null)
+                        Text('Entry $entry • SL $stop • TP $target',
+                            style: TextStyle(color: muted, fontSize: 8)),
+                    ],
+                  ),
+                );
+              },
             );
-          }).toList());
-        },
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _Inbox extends StatelessWidget {
