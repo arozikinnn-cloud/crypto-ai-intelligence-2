@@ -8,7 +8,7 @@ from app.services.market_data.base import MarketDataError
 class BinanceAggTradesMarketData:
     """Trade-level aggressor-volume proxy from Binance public aggregated trades."""
 
-    BASE_URL = "https://api.binance.com"
+    BASE_URL = "https://data-api.binance.vision"
     BUCKET_MS = 60_000
 
     async def fetch_order_flow(self, symbol: str, limit: int = 500) -> dict:
