@@ -158,6 +158,7 @@ async def combined_intelligence(
             derivatives_data,
             aggtrades_data,
             market_context,
+            analyses,
         )
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
