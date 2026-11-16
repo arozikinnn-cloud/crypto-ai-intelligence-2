@@ -93,6 +93,21 @@ class AnalysisApi {
     return decoded.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
+  Future<Map<String, dynamic>> fetchSignalPerformance() async {
+    final uri = _endpoint('signals/performance');
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Signal performance API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid signal performance response.');
+    }
+    return decoded;
+  }
+
   Future<void> closeSignal(int signalId) async {
     final uri = _endpoint('signals/$signalId/close');
     final response = await _client
