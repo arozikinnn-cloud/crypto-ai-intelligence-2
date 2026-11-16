@@ -31,7 +31,7 @@ jobs:
           status="$(curl --silent --show-error --location \
             --connect-timeout 10 --max-time 90 --retry 2 --retry-all-errors --retry-delay 2 \
             --output "$response" --write-out "%{http_code}" \
-            "$API_URL?symbol=${{ matrix.symbol }}&intervals=4h%2C1h%2C15m&limit=200&order_flow_interval=5m")"
+            "$API_URL?symbol=${{ matrix.symbol }}&intervals=5m%2C15m%2C1h&limit=200&order_flow_interval=5m")"
           if [ "$status" != "200" ]; then
             echo "Market scan failed with HTTP $status"
             cat "$response"
