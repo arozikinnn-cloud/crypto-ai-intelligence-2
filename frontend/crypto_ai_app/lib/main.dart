@@ -6,7 +6,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/push_notification_service.dart';
 import 'services/analysis_api.dart';
-import 'services/binance_websocket.dart';
 
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
@@ -73,9 +72,8 @@ class _Tag extends StatelessWidget {
 }
 
 class DashboardShell extends StatefulWidget {
-  const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications, this.enableLiveFeed = true});
+  const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications});
   final Future<Map<String, dynamic>> Function()? loadAnalysis;
-  final bool enableLiveFeed;
   final Future<List<Map<String, dynamic>>> Function()? loadNotifications;
   @override
   State<DashboardShell> createState() => _DashboardShellState();
@@ -83,16 +81,6 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObserver {
   final api = AnalysisApi();
-  final liveFeed = BinanceWebSocketFeed();
-  StreamSubscription<BinanceLiveSnapshot>? liveSubscription;
-  BinanceLiveSnapshot liveSnapshot = const BinanceLiveSnapshot(connected: false);
-  void startLiveFeed() {
-    liveSubscription?.cancel();
-    liveSubscription = liveFeed.stream.listen((snapshot) {
-      if (mounted) setState(() => liveSnapshot = snapshot);
-    });
-    liveFeed.connect(selectedSymbol);
-  }
   late Future<Map<String, dynamic>> analysis;
   late Future<List<Map<String, dynamic>>> notifications;
   late Future<List<Map<String, dynamic>>> scanner;
@@ -129,7 +117,6 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
     setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
-    if (widget.enableLiveFeed) liveFeed.connect(symbol);
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
@@ -178,7 +165,6 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     backtest = loadBacktest();
     signalPerformance = loadSignalPerformance();
     startPolling();
-    if (widget.enableLiveFeed) startLiveFeed();
   }
 
   void startPolling() {
@@ -198,13 +184,11 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
       unawaited(PushNotificationService.initialize());
       setState(() { analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
       startPolling();
-      if (widget.enableLiveFeed) startLiveFeed();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
       poller = null;
       analysisPoller?.cancel();
       analysisPoller = null;
-      if (widget.enableLiveFeed) liveFeed.disconnect();
     }
   }
 
@@ -229,8 +213,6 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     WidgetsBinding.instance.removeObserver(this);
     poller?.cancel();
     analysisPoller?.cancel();
-    liveSubscription?.cancel();
-    liveFeed.dispose();
     api.close();
     super.dispose();
   }
@@ -248,7 +230,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
-          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval, liveSnapshot: liveSnapshot);
+          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval);
       },
     )),
   );
@@ -257,7 +239,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
     required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged, required this.liveSnapshot});
+    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
@@ -273,7 +255,6 @@ class _Dashboard extends StatelessWidget {
   final Future<List<Map<String, dynamic>>> candles;
   final String candleInterval;
   final ValueChanged<String> onCandleIntervalChanged;
-  final BinanceLiveSnapshot liveSnapshot;
 
   @override
   Widget build(BuildContext context) {
@@ -341,9 +322,6 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 8),
-            _LiveMarketCard(snapshot: liveSnapshot),
-            const SizedBox(height: 8),
-            _LiveExecutionCheck(aiSide: side, snapshot: liveSnapshot),
             const SizedBox(height: 16),
             const SizedBox(height: 15),
             Container(padding: const EdgeInsets.all(18),
@@ -486,158 +464,6 @@ class _Dashboard extends StatelessWidget {
 }
 
 
-class _LiveMarketCard extends StatelessWidget {
-  const _LiveMarketCard({required this.snapshot});
-  final BinanceLiveSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final price = snapshot.lastPrice;
-    final change = snapshot.changePercent;
-    final imbalance = snapshot.orderBookImbalance;
-    final priceText = price == null
-        ? 'Menunggu data...'
-        : price.toStringAsFixed(price >= 100 ? 2 : 5);
-    final changeText = change == null
-        ? '—'
-        : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%';
-    final flow = snapshot.tradeSide ?? '—';
-    final flowColor = flow == 'BUY' ? green : flow == 'SELL' ? red : muted;
-    final imbalanceText = imbalance == null
-        ? '—'
-        : '${imbalance >= 0 ? '+' : ''}${imbalance.toStringAsFixed(1)}%';
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.circle, size: 8,
-                  color: snapshot.connected ? green : red),
-              const SizedBox(width: 6),
-              Text(
-                  snapshot.connected
-                      ? 'BINANCE WEBSOCKET LIVE'
-                      : snapshot.connectionMessage.startsWith('Disconnected while app is inactive')
-                          ? 'WEBSOCKET PAUSED'
-                          : 'WEBSOCKET RECONNECTING',
-                  style: TextStyle(
-                      color: snapshot.connected
-                          ? green
-                          : snapshot.connectionMessage.startsWith('Disconnected while app is inactive')
-                              ? muted
-                              : red,
-                      fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .7)),
-              const Spacer(),
-              Text('PUBLIC STREAM • NO API KEY',
-                  style: TextStyle(color: muted, fontSize: 7)),
-            ]),
-            const SizedBox(height: 4),
-            Text(
-              snapshot.connectionMessage,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: muted, fontSize: 8),
-            ),
-            const SizedBox(height: 12),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('LIVE PRICE', style: TextStyle(color: muted, fontSize: 8)),
-                const SizedBox(height: 3),
-                Text(priceText, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-              ])),
-              Text(changeText, style: TextStyle(
-                  color: change == null ? muted : change >= 0 ? green : red,
-                  fontSize: 13, fontWeight: FontWeight.w800)),
-            ]),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: _LiveMetric(label: 'LAST AGGRESSOR', value: flow, color: flowColor)),
-              Expanded(child: _LiveMetric(label: 'BOOK IMBALANCE', value: imbalanceText,
-                  color: imbalance == null ? muted : imbalance >= 0 ? green : red)),
-              Expanded(child: _LiveMetric(label: '24H QUOTE VOL', value:
-                  snapshot.quoteVolume == null ? '—' : snapshot.quoteVolume!.toStringAsFixed(0))),
-            ]),
-            if (snapshot.updatedAt != null) ...[
-              const SizedBox(height: 7),
-              Text('Update: ${snapshot.updatedAt!.toLocal().toString().substring(11, 19)}',
-                  style: const TextStyle(color: muted, fontSize: 8)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveExecutionCheck extends StatelessWidget {
-  const _LiveExecutionCheck({required this.aiSide, required this.snapshot});
-  final String aiSide;
-  final BinanceLiveSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final imbalance = snapshot.orderBookImbalance;
-    final delta = snapshot.buyAggressorVolume - snapshot.sellAggressorVolume;
-    final tradeTime = snapshot.lastTradeAt;
-    final tradeFresh = tradeTime != null &&
-        DateTime.now().difference(tradeTime).inSeconds <= 15;
-    final hasLiveInputs = snapshot.connected && imbalance != null && tradeFresh;
-    final confirmed = hasLiveInputs &&
-        ((aiSide == 'BUY' && delta > 0 && imbalance >= 5) ||
-         (aiSide == 'SELL' && delta < 0 && imbalance <= -5));
-    final waiting = aiSide == 'BUY' || aiSide == 'SELL';
-    final title = !waiting
-        ? 'BELUM ADA SETUP AI'
-        : !hasLiveInputs
-            ? 'MENUNGGU KONFIRMASI LIVE'
-            : confirmed
-                ? 'LIVE FLOW SEARAH DENGAN AI'
-                : 'LIVE FLOW BELUM MENDUKUNG';
-    final color = confirmed ? green : waiting ? blue : muted;
-    final deltaText = delta >= 0 ? '+${delta.toStringAsFixed(3)}' : delta.toStringAsFixed(3);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('LIVE EXECUTION CHECK',
-              style: TextStyle(color: muted, fontSize: 9, letterSpacing: .8)),
-          const SizedBox(height: 7),
-          Row(children: [
-            Icon(Icons.bolt_rounded, color: color, size: 16),
-            const SizedBox(width: 7),
-            Expanded(child: Text(title,
-                style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900))),
-          ]),
-          const SizedBox(height: 6),
-          Text('Taker delta sesi: $deltaText • Book imbalance: ${imbalance == null ? '—' : imbalance.toStringAsFixed(1) + '%'}',
-              style: const TextStyle(color: muted, fontSize: 8)),
-          const SizedBox(height: 4),
-          const Text('Pemeriksaan tambahan dari stream sejak koneksi aktif; tidak mengubah sinyal tersimpan dan bukan instruksi entry otomatis.',
-              style: TextStyle(color: muted, fontSize: 8, height: 1.35)),
-        ]),
-      ),
-    );
-  }
-}
-
-class _LiveMetric extends StatelessWidget {
-  const _LiveMetric({required this.label, required this.value, this.color = Colors.white});
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: const TextStyle(color: muted, fontSize: 7)),
-      const SizedBox(height: 3),
-      Text(value, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
-    ],
-  );
-}
 
 class _Scanner extends StatelessWidget {
   const _Scanner({required this.future, required this.selectedSymbol, required this.onSelect});
