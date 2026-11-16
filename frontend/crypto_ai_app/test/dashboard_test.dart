@@ -32,6 +32,7 @@ void main() {
   testWidgets('allows switching the selected market symbol', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: DashboardShell(
+        enableLiveFeed: false,
         loadNotifications: () async => [],
         loadAnalysis: () async => {
           'symbol': 'BTCUSDT',
@@ -56,6 +57,7 @@ void main() {
   testWidgets('shows recoverable state when API fails', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: DashboardShell(
+        enableLiveFeed: false,
         loadNotifications: () async => [],
         loadAnalysis: () async => throw Exception('Connection refused'),
       ),
