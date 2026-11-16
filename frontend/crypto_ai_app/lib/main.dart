@@ -65,8 +65,9 @@ class _Tag extends StatelessWidget {
 }
 
 class DashboardShell extends StatefulWidget {
-  const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications});
+  const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications, this.enableLiveFeed = true});
   final Future<Map<String, dynamic>> Function()? loadAnalysis;
+  final bool enableLiveFeed;
   final Future<List<Map<String, dynamic>>> Function()? loadNotifications;
   @override
   State<DashboardShell> createState() => _DashboardShellState();
@@ -120,7 +121,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
     setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
-    liveFeed.connect(symbol);
+    if (widget.enableLiveFeed) liveFeed.connect(symbol);
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
@@ -169,7 +170,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     backtest = loadBacktest();
     signalPerformance = loadSignalPerformance();
     startPolling();
-    startLiveFeed();
+    if (widget.enableLiveFeed) startLiveFeed();
   }
 
   void startPolling() {
@@ -188,13 +189,13 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) {
       setState(() { analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
       startPolling();
-      startLiveFeed();
+      if (widget.enableLiveFeed) startLiveFeed();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
       poller = null;
       analysisPoller?.cancel();
       analysisPoller = null;
-      liveFeed.disconnect();
+      if (widget.enableLiveFeed) liveFeed.disconnect();
     }
   }
 
