@@ -46,3 +46,8 @@ Open interest and funding are contextual metrics, not standalone directional sig
 Transient Binance HTTP/network failures use bounded retries with exponential backoff; persistent failure still returns a controlled market-data error. WebSocket collectors reconnect with bounded exponential backoff.
 
 The combined engine remains deterministic and rule-based, not a trained probability model. Backtests are research evidence only, not a guarantee of future performance.
+
+
+## Day-trading timeframes
+
+Combined intelligence uses only M5, M15, and H1 by default. H1 defines directional bias and market structure, M15 defines the setup and ATR-based trade plan, and M5 is the execution confirmation. H4 is not part of the signal decision. BUY/SELL requires aligned H1, M15, and M5 decisions plus order-flow confirmation; otherwise the result is NO TRADE.
