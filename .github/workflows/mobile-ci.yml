@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "frontend/crypto_ai_app/**"
+      - "backend/app/services/analysis/intelligence.py"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
     branches: [main]
