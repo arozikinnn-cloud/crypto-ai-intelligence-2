@@ -943,7 +943,7 @@ class _SignalPerformance extends StatelessWidget {
               style: TextStyle(color: muted, fontSize: 9));
           }
           final wr = data['win_rate_pct'];
-          final winRateLabel = wr == null ? 'N/A' : '${doubleVal(wr).toStringAsFixed(2)}%';
+          final winRateLabel = wr == null ? 'N/A' : '${txt(wr)}%';
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               _Metric(label: 'WIN RATE LIVE', value: winRateLabel),
