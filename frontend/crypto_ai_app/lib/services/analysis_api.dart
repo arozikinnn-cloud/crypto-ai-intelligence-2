@@ -57,6 +57,29 @@ class AnalysisApi {
     return decoded;
   }
 
+  Future<Map<String, dynamic>> fetchBacktest({
+    String symbol = 'BTCUSDT',
+    String interval = '1h',
+    int limit = 500,
+  }) async {
+    final uri = _endpoint('analysis/intelligence/backtest', {
+      'symbol': symbol,
+      'interval': interval,
+      'limit': limit.toString(),
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw Exception('Backtest API error ${response.statusCode}: ${_errorMessage(response.body)}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid backtest response format.');
+    }
+    return decoded;
+  }
+
   Future<List<Map<String, dynamic>>> fetchSignals({String status = 'all', int limit = 50}) async {
     final uri = _endpoint('signals', {'status': status, 'limit': limit.toString()});
     final response = await _client
