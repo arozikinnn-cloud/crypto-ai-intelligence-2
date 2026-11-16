@@ -78,6 +78,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   late Future<List<Map<String, dynamic>>> scanner;
   late Future<List<Map<String, dynamic>>> signals;
   late Future<Map<String, dynamic>> backtest;
+  late Future<Map<String, dynamic>> signalPerformance;
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
@@ -98,7 +99,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     }
   }
 
-  Future<Map<String, dynamic>> loadBacktest() async {
+  Future<Map<String, dynamic>> loadSignalPerformance() async {\n    try { return await api.fetchSignalPerformance(); }\n    catch (error) { return <String, dynamic>{'unavailable_reason': error.toString()}; }\n  }\n\n  Future<Map<String, dynamic>> loadBacktest() async {
     try {
       return await api.fetchBacktest(symbol: selectedSymbol);
     } catch (error) {
@@ -192,7 +193,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
-          closeSignal: closeSignal);
+          closeSignal: closeSignal, signalPerformance: signalPerformance);
       },
     )),
   );
@@ -201,7 +202,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
     required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal});
+    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
@@ -394,7 +395,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 15),
             const _Heading('SIGNAL CENTER', 'Riwayat sinyal dan status yang tersimpan di backend'),
             const SizedBox(height: 9),
-            _SignalCenter(future: signals, closeSignal: closeSignal),
+            _SignalPerformance(future: signalPerformance),\n            const SizedBox(height: 9),\n            _SignalCenter(future: signals, closeSignal: closeSignal),
             const SizedBox(height: 15),
             const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
