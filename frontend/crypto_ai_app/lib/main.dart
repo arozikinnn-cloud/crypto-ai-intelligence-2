@@ -402,11 +402,11 @@ class _Dashboard extends StatelessWidget {
                 const Text('ALUR ANALISIS', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.2)),
                 const SizedBox(height: 9),
                 const Wrap(spacing: 7, runSpacing: 7, children: [
-                  _Tag('H4 • ARAH BESAR'), _Tag('H1 • BIAS'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
+                  _Tag('H1 • BIAS'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
                 ]),
                 const SizedBox(height: 12),
                 if (tradePlan.isEmpty)
-                  const Text('Belum ada rencana entry valid. Tunggu konfirmasi H4 + H1 + M15 + order flow.',
+                  const Text('Belum ada rencana entry valid. Tunggu konfirmasi H1 + M15 + M5 + order flow.',
                     style: TextStyle(color: muted, fontSize: 11, height: 1.4))
                 else ...[
                   Row(children: [
@@ -747,7 +747,7 @@ class _CandlestickChart extends StatelessWidget {
                 underline: const SizedBox.shrink(),
                 dropdownColor: panel,
                 style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                items: ['5m', '15m', '1h', '4h'].map((v) => DropdownMenuItem(value: v, child: Text(v.toUpperCase()))).toList(),
+                items: ['5m', '15m', '1h'].map((v) => DropdownMenuItem(value: v, child: Text(v.toUpperCase()))).toList(),
                 onChanged: (value) { if (value != null) onIntervalChanged(value); },
               ),
               const SizedBox(width: 8),
