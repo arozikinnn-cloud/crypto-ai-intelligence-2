@@ -59,6 +59,52 @@ def test_conflicting_kline_and_tape_flow_blocks_signal():
     assert result["checks"]["m5_or_tape_buy_confirmation"] is False
 
 
+
+def test_m5_no_trade_can_use_directional_order_flow_confirmation():
+    result = decide(
+        ["NO TRADE", "SELL", "SELL"],
+        flow="SELL_PRESSURE",
+        tape="BALANCED",
+        structure="range_or_unconfirmed",
+    )
+    assert result["side"] == "SELL"
+    assert result["confluence_score"] == 3
+    assert result["max_confluence"] == 5
+    assert result["trade_plan"]["source_timeframe"] == "15m"
+
+
+def test_m5_confirmation_can_be_enough_without_structure_or_flow():
+    result = decide(
+        ["BUY", "BUY", "BUY"],
+        flow="BALANCED",
+        tape="BALANCED",
+        structure="range_or_unconfirmed",
+    )
+    assert result["side"] == "BUY"
+    assert result["confluence_score"] == 3
+
+
+def test_no_m5_or_order_flow_confirmation_stays_no_trade():
+    result = decide(
+        ["NO TRADE", "BUY", "BUY"],
+        flow="BALANCED",
+        tape="BALANCED",
+        structure="range_or_unconfirmed",
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+
+
+def test_opposite_m5_confirmation_blocks_signal():
+    result = decide(
+        ["SELL", "BUY", "BUY"],
+        flow="BUY_PRESSURE",
+        tape="BUY_PRESSURE",
+        structure="bullish",
+    )
+    assert result["side"] == "NO TRADE"
+
+
 def test_derivatives_are_context_not_directional_confirmation():
     result = decide(["BUY", "BUY", "BUY"])
     assert result["side"] == "BUY"
