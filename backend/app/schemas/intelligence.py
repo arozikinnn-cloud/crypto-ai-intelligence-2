@@ -25,3 +25,5 @@ class IntelligenceResponse(BaseModel):
     aggtrades_order_flow: AggTradesOrderFlowResponse
     derivatives: DerivativesContextResponse
     market_context: dict
+    strategy_mode: str = "DAY_TRADING"
+    trade_plan: dict | None = None
