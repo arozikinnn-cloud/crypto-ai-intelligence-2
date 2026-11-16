@@ -2,6 +2,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'services/push_notification_service.dart';
 import 'services/analysis_api.dart';
 import 'services/binance_websocket.dart';
 
@@ -10,7 +13,12 @@ const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
 const green = Color(0xFF25D6A2), red = Color(0xFFFF647C), blue = Color(0xFF65A9FF);
 const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
 
-void main() => runApp(const CryptoAIApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await PushNotificationService.initialize();
+  runApp(const CryptoAIApp());
+}
 
 class CryptoAIApp extends StatelessWidget {
   const CryptoAIApp({super.key});
