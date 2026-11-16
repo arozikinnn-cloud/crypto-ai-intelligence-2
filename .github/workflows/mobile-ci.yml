@@ -32,8 +32,6 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: dart format lib test
-      - name: Show analyzer location context
-        run: nl -ba lib/main.dart | sed -n '1155,1165p'
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
       - name: Generate Android platform project
