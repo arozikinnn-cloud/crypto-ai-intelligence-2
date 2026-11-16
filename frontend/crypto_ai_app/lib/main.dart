@@ -1155,9 +1155,13 @@ class _SignalCenter extends StatelessWidget {
           if (items.isEmpty) return Text('Belum ada riwayat sinyal tersimpan.',
             style: TextStyle(color: muted, fontSize: 9));
           return Column(children: items.take(12).map((item) {
-            final side = item['side'] ?? 'UNKNOWN';
-            final status = item['status'] ?? 'UNKNOWN';
-            final color = side == 'BUY' ? green : side == 'SELL' ? red : muted;
+            final String side = item['side']?.toString() ?? 'UNKNOWN';
+            final String status = item['status']?.toString() ?? 'UNKNOWN';
+            final Color color = switch (side) {
+              'BUY' => green,
+              'SELL' => red,
+              _ => muted,
+            };
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
