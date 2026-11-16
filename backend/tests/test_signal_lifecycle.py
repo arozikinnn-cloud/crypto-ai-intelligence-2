@@ -42,15 +42,16 @@ def test_signal_lifecycle_deduplicates_and_invalidates_cleanly():
         assert [event.side for event in events] == ["BUY", "SELL"]
         assert len(notifications) == 2
 
-        # NO TRADE invalidates the currently active setup without creating an alert.
+        # NO TRADE means no new setup; it must not erase a still-valid active signal.
         record_signal(
-            db, "BTCUSDT", "NO TRADE", ["15m", "1h"], ["Confluence lost"], "candle-4"
+            db, "BTCUSDT", "NO TRADE", ["15m", "1h"], ["Temporary confluence loss"], "candle-4"
         )
-        assert all(
-            event.status == "INVALIDATED"
-            for event in db.scalars(select(SignalEvent))
-        )
-        assert len(list(db.scalars(select(SignalNotification)))) == 2
+        events = list(db.scalars(select(SignalEvent).order_by(SignalEvent.id)))
+        assert [event.status for event in events] == ["INVALIDATED", "ACTIVE"]
+        assert len(list(db.scalars(select(SignalNotification)))) == 3
+        old_payload = json.loads(events[0].reasons_json)
+        assert "invalidation_reason" in old_payload
+        assert "newly confirmed SELL" in old_payload["invalidation_reason"]
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
