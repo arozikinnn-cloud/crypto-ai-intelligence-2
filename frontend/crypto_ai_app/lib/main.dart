@@ -513,6 +513,13 @@ class _LiveMarketCard extends StatelessWidget {
               Text('PUBLIC STREAM • NO API KEY',
                   style: TextStyle(color: muted, fontSize: 7)),
             ]),
+            const SizedBox(height: 4),
+            Text(
+              snapshot.connectionMessage,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: muted, fontSize: 8),
+            ),
             const SizedBox(height: 12),
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
