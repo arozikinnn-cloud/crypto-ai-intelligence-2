@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,33 +21,42 @@ from app.services.market_data.liquidation_collector import stream_binance_liquid
 
 settings = get_settings()
 configure_logging()
+IS_VERCEL = os.getenv("VERCEL") == "1"
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    migrate_schema(engine)
-    stop_event = asyncio.Event()
+    # Vercel runs short-lived, concurrent serverless instances. Do not run
+    # create_all()/DDL migrations or persistent WebSocket collectors at startup:
+    # concurrent create_all() calls can race on PostgreSQL's implicit table types
+    # (for example pg_type_typname_nsp_index / candles).
     collector_tasks = []
-    if settings.cvd_collector_enabled:
-        collector_tasks.extend(
-            asyncio.create_task(
-                stream_binance_aggtrades(
-                    symbol, stop_event, settings.cvd_collector_flush_interval_seconds
-                ),
-                name=f"cvd-collector-{symbol}",
-            ) for symbol in settings.cvd_collector_symbol_list
-        )
-    if settings.liquidation_collector_enabled:
-        collector_tasks.extend(
-            asyncio.create_task(
-                stream_binance_liquidations(
-                    symbol, stop_event,
-                    settings.liquidation_collector_flush_interval_seconds
-                ),
-                name=f"liquidation-collector-{symbol}",
-            ) for symbol in settings.liquidation_collector_symbol_list
-        )
+    stop_event = asyncio.Event()
+
+    if not IS_VERCEL:
+        Base.metadata.create_all(bind=engine)
+        migrate_schema(engine)
+
+        if settings.cvd_collector_enabled:
+            collector_tasks.extend(
+                asyncio.create_task(
+                    stream_binance_aggtrades(
+                        symbol, stop_event, settings.cvd_collector_flush_interval_seconds
+                    ),
+                    name=f"cvd-collector-{symbol}",
+                ) for symbol in settings.cvd_collector_symbol_list
+            )
+        if settings.liquidation_collector_enabled:
+            collector_tasks.extend(
+                asyncio.create_task(
+                    stream_binance_liquidations(
+                        symbol, stop_event,
+                        settings.liquidation_collector_flush_interval_seconds
+                    ),
+                    name=f"liquidation-collector-{symbol}",
+                ) for symbol in settings.liquidation_collector_symbol_list
+            )
+
     try:
         yield
     finally:
