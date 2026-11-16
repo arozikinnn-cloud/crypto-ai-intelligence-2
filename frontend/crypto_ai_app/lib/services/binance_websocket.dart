@@ -228,7 +228,7 @@ class BinanceWebSocketFeed {
     if (_disposed || generation != _generation) return;
     _socket = null;
     _reconnectAttempts++;
-    final delaySeconds = (3 * (1 << (_reconnectAttempts - 1).clamp(0, 4))).clamp(3, 30);
+    final delaySeconds = (3 * (1 << (_reconnectAttempts - 1).clamp(0, 4))).clamp(3, 30).toInt();
     _snapshot = _snapshot.copyWith(
       connected: false,
       connectionMessage: '$reason • retry in ${delaySeconds}s',
