@@ -108,8 +108,8 @@ def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
 
 
 def test_signal_creation_and_result_send_push_without_breaking_persistence(monkeypatch):
-    from app.api import signals as signal_api
     from app.api.signals import evaluate_active_signals
+    from app.services import push_notifications
 
     calls = []
 
@@ -117,7 +117,9 @@ def test_signal_creation_and_result_send_push_without_breaking_persistence(monke
         calls.append(kwargs)
         return {"sent": 1, "failed": 0, "configured": 1}
 
-    monkeypatch.setattr(signal_api, "send_push_to_registered_devices", fake_push, raising=False)
+    monkeypatch.setattr(
+        push_notifications, "send_push_to_registered_devices", fake_push
+    )
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
@@ -154,13 +156,15 @@ def test_signal_creation_and_result_send_push_without_breaking_persistence(monke
 
 
 def test_signal_outcome_is_saved_when_push_provider_raises(monkeypatch):
-    from app.api import signals as signal_api
     from app.api.signals import evaluate_active_signals
+    from app.services import push_notifications
 
     def failing_push(*_args, **_kwargs):
         raise RuntimeError("simulated FCM outage")
 
-    monkeypatch.setattr(signal_api, "send_push_to_registered_devices", failing_push, raising=False)
+    monkeypatch.setattr(
+        push_notifications, "send_push_to_registered_devices", failing_push
+    )
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
