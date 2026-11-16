@@ -21,11 +21,10 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == 'BTCUSDT'), findsOneWidget);
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
-    await tester.pumpAndSettle();
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -900));
-    await tester.pumpAndSettle();
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('NO TRADE'), 500, scrollable: scrollable);
     expect(find.text('NO TRADE'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Order book unavailable.'), 500, scrollable: scrollable);
     expect(find.text('Order book unavailable.'), findsOneWidget);
   });
 
