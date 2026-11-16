@@ -16,6 +16,7 @@ import app.models.cvd_bucket  # noqa: F401
 import app.models.cvd_collector_state  # noqa: F401
 import app.models.liquidation_record  # noqa: F401
 import app.models.signal_event  # noqa: F401
+import app.models.device_token  # noqa: F401
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
 from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
