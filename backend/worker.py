@@ -26,6 +26,15 @@ from app.services.market_data.liquidation_collector import stream_binance_liquid
 logger = logging.getLogger("crypto_ai.worker")
 
 
+def validate_worker_database(settings) -> None:
+    """Prevent production workers from silently writing to ephemeral SQLite."""
+    if settings.app_env.lower() == "production" and settings.database_url.strip().lower().startswith("sqlite"):
+        raise RuntimeError(
+            "Production worker requires the same durable PostgreSQL DATABASE_URL "
+            "used by the API; SQLite would create an isolated local database."
+        )
+
+
 def configured_collectors(settings):
     """Return enabled collector jobs as (name, async function, symbol, flush interval)."""
     jobs = []
@@ -59,6 +68,8 @@ async def run_worker() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    validate_worker_database(settings)
+
     # The API and worker share the same database schema. Migrations are
     # idempotent and run before any collector opens a database session.
     Base.metadata.create_all(bind=engine)
@@ -90,10 +101,26 @@ async def run_worker() -> None:
     logger.info("Worker started with %d collector streams: %s", len(tasks), [
         task.get_name() for task in tasks
     ])
+    stop_task = asyncio.create_task(stop_event.wait(), name="worker-shutdown")
     try:
-        await stop_event.wait()
+        done, _ = await asyncio.wait(
+            [stop_task, *tasks], return_when=asyncio.FIRST_COMPLETED
+        )
+        if stop_task not in done:
+            failed_task = next(task for task in tasks if task in done)
+            # A collector normally reconnects forever. If it exits, surface the
+            # failure so the process supervisor can restart the worker.
+            error = failed_task.exception()
+            if error is not None:
+                raise RuntimeError(
+                    f"Collector {failed_task.get_name()} stopped unexpectedly."
+                ) from error
+            raise RuntimeError(
+                f"Collector {failed_task.get_name()} exited unexpectedly."
+            )
     finally:
         logger.info("Shutdown requested; stopping collector streams.")
+        stop_task.cancel()
         stop_event.set()
         for task in tasks:
             task.cancel()
