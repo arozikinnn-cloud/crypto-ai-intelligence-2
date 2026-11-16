@@ -123,6 +123,11 @@ def build_intelligence_decision(
     context_notes = [
         "Open interest dan funding adalah konteks derivatif, bukan konfirmasi arah.",
     ]
+    if derivatives.get("source_market") == "unavailable":
+        context_notes.append(
+            "Data derivatif tidak tersedia; nilai placeholder tidak digunakan sebagai "
+            "konfirmasi BUY/SELL."
+        )
     if trade_order_flow is not None:
         context_notes.append(
             "AggTrades mencakup batch terbaru; gunakan riwayat CVD persisten untuk konteks "
