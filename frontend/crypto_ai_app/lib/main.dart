@@ -734,7 +734,7 @@ class _CandlestickChart extends StatelessWidget {
               child: CustomPaint(painter: _CandlePainter(rows))),
             const SizedBox(height: 5),
             Row(children: [
-              const Text('80 candle terakhir • ${interval.toUpperCase()}', style: TextStyle(color: muted, fontSize: 8)),
+              Text('80 candle terakhir • ${interval.toUpperCase()}', style: TextStyle(color: muted, fontSize: 8)),
               const Spacer(),
               Text('Sumber: Binance Spot', style: const TextStyle(color: muted, fontSize: 8)),
             ]),
