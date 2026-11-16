@@ -76,6 +76,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   late Future<Map<String, dynamic>> analysis;
   late Future<List<Map<String, dynamic>>> notifications;
   late Future<List<Map<String, dynamic>>> scanner;
+  late Future<List<Map<String, dynamic>>> signals;
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
@@ -88,6 +89,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
+  Future<List<Map<String, dynamic>>> loadSignals() => api.fetchSignals(status: 'all', limit: 50);
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
     final results = await Future.wait(supportedSymbols.map((symbol) async {
@@ -108,6 +110,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     analysis = load();
     notifications = loadNotes();
     scanner = loadScanner();
+    signals = loadSignals();
     startPolling();
   }
 
@@ -125,7 +128,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); });
+      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); });
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -137,13 +140,18 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); scanner = loadScanner(); });
+    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
   Future<void> markRead(int id) async {
     await api.markNotificationRead(id);
     if (mounted) setState(() => notifications = loadNotes());
+  }
+
+  Future<void> closeSignal(int id) async {
+    await api.closeSignal(id);
+    if (mounted) setState(() => signals = loadSignals());
   }
 
   @override
@@ -167,7 +175,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
-          scanner: scanner, refresh: refresh, markRead: markRead);
+          scanner: scanner, signals: signals, refresh: refresh, markRead: markRead,
+          closeSignal: closeSignal);
       },
     )),
   );
@@ -176,15 +185,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
     required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.refresh, required this.markRead});
+    required this.signals, required this.refresh, required this.markRead, required this.closeSignal});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
   final String selectedSymbol;
   final ValueChanged<String?> onSymbolChanged;
   final Future<List<Map<String, dynamic>>> scanner;
+  final Future<List<Map<String, dynamic>>> signals;
   final Future<void> Function() refresh;
   final Future<void> Function(int) markRead;
+  final Future<void> Function(int) closeSignal;
 
   @override
   Widget build(BuildContext context) {
@@ -359,6 +370,10 @@ class _Dashboard extends StatelessWidget {
             _TextCard(items: strings(data['reasons']), empty: 'Belum ada alasan sinyal yang memenuhi syarat.'),
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
+            const SizedBox(height: 15),
+            const _Heading('SIGNAL CENTER', 'Riwayat sinyal dan status yang tersimpan di backend'),
+            const SizedBox(height: 9),
+            _SignalCenter(future: signals, closeSignal: closeSignal),
             const SizedBox(height: 15),
             const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
@@ -674,6 +689,65 @@ class _TextCard extends StatelessWidget {
             style: const TextStyle(fontSize: 9, height: 1.4, color: Color(0xFFD2DCE9)))),
         ]))),
     ])));
+}
+
+
+class _SignalCenter extends StatelessWidget {
+  const _SignalCenter({required this.future, required this.closeSignal});
+  final Future<List<Map<String, dynamic>>> future;
+  final Future<void> Function(int) closeSignal;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(10),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const LinearProgressIndicator(minHeight: 2);
+          }
+          if (snap.hasError) {
+            return Text('Riwayat sinyal belum tersedia: ${snap.error}',
+              style: const TextStyle(color: muted, fontSize: 9));
+          }
+          final items = snap.data ?? [];
+          if (items.isEmpty) return const Text('Belum ada riwayat sinyal tersimpan.',
+            style: TextStyle(color: muted, fontSize: 9));
+          return Column(children: items.take(12).map((item) {
+            final id = item['id'] is int ? item['id'] as int : null;
+            final side = txt(item['side'], 'UNKNOWN').toUpperCase();
+            final status = txt(item['status'], 'UNKNOWN').toUpperCase();
+            final color = side == 'BUY' ? green : side == 'SELL' ? red : muted;
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(width: 7, height: 7, margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                const SizedBox(width: 9),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${txt(item['symbol'], '--')} • $side',
+                    style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 3),
+                  Text('${txt(item['timeframe_set'], '--')} • $status',
+                    style: const TextStyle(color: muted, fontSize: 8)),
+                  if (strings(item['reasons']).isNotEmpty)
+                    Text(strings(item['reasons']).take(2).join(' '),
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: muted, fontSize: 8)),
+                ])),
+                if (status == 'ACTIVE')
+                  TextButton(
+                    onPressed: id == null ? null : () => closeSignal(id),
+                    child: const Text('Tutup', style: TextStyle(fontSize: 8)),
+                  ),
+              ]),
+            );
+          }).toList());
+        },
+      ),
+    ),
+  );
 }
 
 class _Inbox extends StatelessWidget {
