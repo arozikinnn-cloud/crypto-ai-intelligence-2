@@ -1157,8 +1157,8 @@ class _SignalCenter extends StatelessWidget {
             style: TextStyle(color: muted, fontSize: 9));
           return Column(children: items.take(12).map((item) {
             final id = item['id'] is int ? item['id'] as int : null;
-            final side = item['side']?.toString() ?? 'UNKNOWN';
-            final status = item['status']?.toString() ?? 'UNKNOWN';
+            final side = item['side'] is String ? item['side'] as String : 'UNKNOWN';
+            final status = item['status'] is String ? item['status'] as String : 'UNKNOWN';
             final color = side == 'BUY' ? green : side == 'SELL' ? red : muted;
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
