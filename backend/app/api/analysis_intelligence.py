@@ -172,7 +172,8 @@ async def combined_intelligence(
     if "15m" in selected and candle_sets[selected.index("15m")]:
         tracking_candle = candle_sets[selected.index("15m")][-1]
         evaluate_active_signals(
-            db, symbol, float(tracking_candle.high), float(tracking_candle.low)
+            db, symbol, float(tracking_candle.high), float(tracking_candle.low),
+            str(getattr(tracking_candle, "close_time", tracking_candle)),
         )
     record_signal(
         db,
@@ -182,6 +183,7 @@ async def combined_intelligence(
         decision["reasons"],
         str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
         decision.get("trade_plan"),
+        str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
     )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
