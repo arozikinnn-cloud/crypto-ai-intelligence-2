@@ -53,33 +53,74 @@ def build_intelligence_decision(
         "bearish_market_structure": bearish_structure,
     }
 
-    if htf_buy and setup_side == "BUY" and m5_side == "BUY" and buy_trigger:
+    # Five-point confluence: H1 bias, M15 setup, M5 confirmation,
+    # order-flow/tape confirmation, and market structure.
+    # H1 + M15 alignment are mandatory. Execution can be confirmed by M5
+    # OR by a directional order-flow/tape reading; structure is supporting
+    # evidence rather than a hard gate. Any clear opposite execution signal
+    # blocks the trade.
+    buy_execution_conflict = (
+        m5_side == "SELL" or flow_sell or tape_sell
+    )
+    sell_execution_conflict = (
+        m5_side == "BUY" or flow_buy or tape_buy
+    )
+    buy_execution_confirmed = m5_side == "BUY" or buy_trigger
+    sell_execution_confirmed = m5_side == "SELL" or sell_trigger
+
+    bullish_score = sum(bullish_checks.values())
+    bearish_score = sum(bearish_checks.values())
+
+    if (
+        htf_buy
+        and setup_side == "BUY"
+        and buy_execution_confirmed
+        and not buy_execution_conflict
+        and bullish_score >= 3
+    ):
         side = "BUY"
-        score = sum(bullish_checks.values())
+        score = bullish_score
         reasons = [
             "Bias H1 bullish.",
             "M15 membentuk setup BUY berdasarkan indikator teknikal.",
-            "M5 dan order flow/aggTrades mengonfirmasi tekanan beli.",
+            (
+                "Konfirmasi entry BUY tersedia dari M5."
+                if m5_side == "BUY"
+                else "Konfirmasi entry BUY tersedia dari order flow/aggTrades."
+            ),
+            f"Skor konfluensi BUY {score}/5 (minimum 3/5).",
         ]
         if bullish_structure:
-            reasons.append("Struktur H1 mendukung skenario bullish.")
-    elif htf_sell and setup_side == "SELL" and m5_side == "SELL" and sell_trigger:
+            reasons.append("Struktur market mendukung skenario bullish.")
+    elif (
+        htf_sell
+        and setup_side == "SELL"
+        and sell_execution_confirmed
+        and not sell_execution_conflict
+        and bearish_score >= 3
+    ):
         side = "SELL"
-        score = sum(bearish_checks.values())
+        score = bearish_score
         reasons = [
             "Bias H1 bearish.",
             "M15 membentuk setup SELL berdasarkan indikator teknikal.",
-            "M5 dan order flow/aggTrades mengonfirmasi tekanan jual.",
+            (
+                "Konfirmasi entry SELL tersedia dari M5."
+                if m5_side == "SELL"
+                else "Konfirmasi entry SELL tersedia dari order flow/aggTrades."
+            ),
+            f"Skor konfluensi SELL {score}/5 (minimum 3/5).",
         ]
         if bearish_structure:
-            reasons.append("Struktur H1 mendukung skenario bearish.")
+            reasons.append("Struktur market mendukung skenario bearish.")
     else:
         side = "NO TRADE"
-        score = max(sum(bullish_checks.values()), sum(bearish_checks.values()))
+        score = max(bullish_score, bearish_score)
         reasons = [
-            "Syarat Day Trading belum lengkap: H1 harus memberi bias, M15 setup, "
-            "serta M5 dan order flow/aggTrades harus mengonfirmasi.",
-            "Sistem tidak memaksakan entry ketika konfirmasi belum terpenuhi.",
+            "Syarat minimum belum terpenuhi: H1 dan M15 harus searah, "
+            "serta minimal satu konfirmasi entry dari M5 atau order flow/aggTrades.",
+            "Konfirmasi eksekusi yang berlawanan tetap memblokir entry.",
+            f"Skor tertinggi saat ini {score}/5; minimum untuk sinyal adalah 3/5.",
         ]
 
     checks = {**bullish_checks, **bearish_checks}
