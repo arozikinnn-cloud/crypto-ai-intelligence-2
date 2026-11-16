@@ -5,6 +5,7 @@ import 'dart:io';
 class BinanceLiveSnapshot {
   const BinanceLiveSnapshot({
     required this.connected,
+    this.connectionMessage = 'Disconnected',
     this.symbol = '',
     this.lastPrice,
     this.changePercent,
@@ -22,6 +23,7 @@ class BinanceLiveSnapshot {
   });
 
   final bool connected;
+  final String connectionMessage;
   final String symbol;
   final double? lastPrice;
   final double? changePercent;
@@ -46,6 +48,7 @@ class BinanceLiveSnapshot {
 
   BinanceLiveSnapshot copyWith({
     bool? connected,
+    String? connectionMessage,
     String? symbol,
     double? lastPrice,
     double? changePercent,
@@ -62,6 +65,7 @@ class BinanceLiveSnapshot {
     DateTime? updatedAt,
   }) => BinanceLiveSnapshot(
     connected: connected ?? this.connected,
+    connectionMessage: connectionMessage ?? this.connectionMessage,
     symbol: symbol ?? this.symbol,
     lastPrice: lastPrice ?? this.lastPrice,
     changePercent: changePercent ?? this.changePercent,
@@ -88,6 +92,7 @@ class BinanceWebSocketFeed {
   Timer? _reconnectTimer;
   String? _symbol;
   int _generation = 0;
+  int _reconnectAttempts = 0;
   bool _disposed = false;
   BinanceLiveSnapshot _snapshot =
       const BinanceLiveSnapshot(connected: false);
@@ -104,6 +109,7 @@ class BinanceWebSocketFeed {
     _symbol = normalized;
     _snapshot = BinanceLiveSnapshot(
       connected: false,
+      connectionMessage: 'Connecting to Binance...',
       symbol: normalized.toUpperCase(),
     );
     _emit();
@@ -120,25 +126,31 @@ class BinanceWebSocketFeed {
       '${symbol}@kline_1m',
     ].join('/');
     final uri = Uri.parse(
-      'wss://stream.binance.com:9443/stream?streams=$streams',
+      'wss://stream.binance.com:443/stream?streams=$streams',
     );
     WebSocket.connect(uri.toString(), compression: CompressionOptions.compressionOff)
+        .timeout(const Duration(seconds: 12))
         .then((socket) async {
       if (_disposed || generation != _generation) {
         await socket.close();
         return;
       }
       _socket = socket;
-      _snapshot = _snapshot.copyWith(connected: true);
+      _reconnectAttempts = 0;
+      socket.pingInterval = const Duration(seconds: 20);
+      _snapshot = _snapshot.copyWith(
+        connected: true,
+        connectionMessage: 'Connected • receiving stream',
+      );
       _emit();
       socket.listen(
         (event) => _handleMessage(event, generation),
-        onError: (_) => _scheduleReconnect(generation),
-        onDone: () => _scheduleReconnect(generation),
+        onError: (error) => _scheduleReconnect(generation, 'Stream error: $error'),
+        onDone: () => _scheduleReconnect(generation, 'Connection closed by server'),
         cancelOnError: true,
       );
-    }).catchError((_) {
-      _scheduleReconnect(generation);
+    }).catchError((error) {
+      _scheduleReconnect(generation, 'Connection failed: $error');
     });
   }
 
@@ -212,13 +224,18 @@ class BinanceWebSocketFeed {
     return total;
   }
 
-  void _scheduleReconnect(int generation) {
+  void _scheduleReconnect(int generation, [String reason = 'Connection interrupted']) {
     if (_disposed || generation != _generation) return;
     _socket = null;
-    _snapshot = _snapshot.copyWith(connected: false);
+    _reconnectAttempts++;
+    final delaySeconds = (3 * (1 << (_reconnectAttempts - 1).clamp(0, 4))).clamp(3, 30);
+    _snapshot = _snapshot.copyWith(
+      connected: false,
+      connectionMessage: '$reason • retry in ${delaySeconds}s',
+    );
     _emit();
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+    _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
       _open(generation);
     });
   }
@@ -243,7 +260,10 @@ class BinanceWebSocketFeed {
     _generation++;
     _reconnectTimer?.cancel();
     await _closeSocket();
-    _snapshot = _snapshot.copyWith(connected: false);
+    _snapshot = _snapshot.copyWith(
+      connected: false,
+      connectionMessage: 'Disconnected while app is inactive',
+    );
     _emit();
   }
 
