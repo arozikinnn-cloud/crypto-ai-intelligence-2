@@ -87,7 +87,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
-    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); backtest = loadBacktest(); });
+    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
@@ -99,7 +99,12 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     }
   }
 
-  Future<Map<String, dynamic>> loadSignalPerformance() async {\n    try { return await api.fetchSignalPerformance(); }\n    catch (error) { return <String, dynamic>{'unavailable_reason': error.toString()}; }\n  }\n\n  Future<Map<String, dynamic>> loadBacktest() async {
+  Future<Map<String, dynamic>> loadSignalPerformance() async {
+    try { return await api.fetchSignalPerformance(); }
+    catch (error) { return <String, dynamic>{'unavailable_reason': error.toString()}; }
+  }
+
+  Future<Map<String, dynamic>> loadBacktest() async {
     try {
       return await api.fetchBacktest(symbol: selectedSymbol);
     } catch (error) {
@@ -128,6 +133,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     scanner = loadScanner();
     signals = loadSignals();
     backtest = loadBacktest();
+    signalPerformance = loadSignalPerformance();
     startPolling();
   }
 
@@ -145,7 +151,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); });
+      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -395,7 +401,9 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 15),
             const _Heading('SIGNAL CENTER', 'Riwayat sinyal dan status yang tersimpan di backend'),
             const SizedBox(height: 9),
-            _SignalPerformance(future: signalPerformance),\n            const SizedBox(height: 9),\n            _SignalCenter(future: signals, closeSignal: closeSignal),
+            _SignalPerformance(future: signalPerformance),
+            const SizedBox(height: 9),
+            _SignalCenter(future: signals, closeSignal: closeSignal),
             const SizedBox(height: 15),
             const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
