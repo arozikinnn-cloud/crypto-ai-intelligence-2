@@ -456,7 +456,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
-            _SignalCenter(future: signals, closeSignal: closeSignal),
+            _SignalCenter(future: signals),
             const SizedBox(height: 15),
             const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
@@ -1134,9 +1134,8 @@ class _SignalPerformance extends StatelessWidget {
 }
 
 class _SignalCenter extends StatelessWidget {
-  const _SignalCenter({required this.future, required this.closeSignal});
+  const _SignalCenter({required this.future});
   final Future<List<Map<String, dynamic>>> future;
-  final Future<void> Function(int) closeSignal;
 
   @override
   Widget build(BuildContext context) => Card(
