@@ -97,7 +97,7 @@ async def combined_intelligence(
     symbol: str = Query(
         default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
     ),
-    intervals: str = Query(default="15m,1h,4h"),
+    intervals: str = Query(default="4h,1h,15m"),
     limit: int = Query(default=200, ge=60, le=500),
     order_flow_interval: str = Query(default="5m"),
     derivatives_period: str = Query(default="5m"),
