@@ -309,7 +309,7 @@ class _Dashboard extends StatelessWidget {
               ]),
             ]),
             const SizedBox(height: 16),
-            const _Heading('BTC / MARKET CANDLES', 'Candlestick 15 menit • Binance Spot'),
+            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Binance Spot'),
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 16),
