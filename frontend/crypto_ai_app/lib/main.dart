@@ -782,6 +782,50 @@ class _BacktestCard extends StatelessWidget {
   );
 }
 
+class _SignalPerformance extends StatelessWidget {
+  const _SignalPerformance({required this.future});
+  final Future<Map<String, dynamic>> future;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: FutureBuilder<Map<String, dynamic>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const LinearProgressIndicator(minHeight: 2);
+          }
+          final data = snap.data ?? {};
+          if (data.isEmpty || data['unavailable_reason'] != null) {
+            return const Text('Statistik sinyal belum tersedia.',
+              style: TextStyle(color: muted, fontSize: 9));
+          }
+          final wr = data['win_rate_pct'];
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              _Metric(label: 'WIN RATE LIVE', value: wr == null ? 'N/A' : '${decimal(wr)}%'),
+              _Metric(label: 'TP / WIN', value: txt(data['wins'], '0')),
+              _Metric(label: 'SL / LOSS', value: txt(data['losses'], '0')),
+              _Metric(label: 'ACTIVE', value: txt(data['active'], '0')),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              _Metric(label: 'TOTAL SIGNAL', value: txt(data['total_signals'], '0')),
+              _Metric(label: 'CLOSED', value: txt(data['completed'], '0')),
+              _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
+              _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
+            ]),
+            const SizedBox(height: 7),
+            Text(txt(data['method_note'], ''),
+              style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
+          ]);
+        },
+      ),
+    ),
+  );
+}
+
 class _SignalCenter extends StatelessWidget {
   const _SignalCenter({required this.future, required this.closeSignal});
   final Future<List<Map<String, dynamic>>> future;
@@ -819,7 +863,9 @@ class _SignalCenter extends StatelessWidget {
                   Text('${txt(item['symbol'], '--')} • $side',
                     style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 3),
-                  Text('${txt(item['timeframe_set'], '--')} • $status',
+                  Text('${txt(item['timeframe_set'], '--')} • $status • ${txt(item['outcome'], 'OPEN')}',
+                    style: const TextStyle(color: muted, fontSize: 8)),
+                  if (item['entry'] != null) Text('Entry ${price(item['entry'])} • SL ${price(item['stop_loss'])} • TP ${price(item['take_profit'])}',
                     style: const TextStyle(color: muted, fontSize: 8)),
                   if (strings(item['reasons']).isNotEmpty)
                     Text(strings(item['reasons']).take(2).join(' '),
