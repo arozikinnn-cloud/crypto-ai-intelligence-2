@@ -1,13 +1,18 @@
 import asyncio
 from math import isfinite
 import httpx
-from app.services.market_data.http import get_json_with_retry
 from app.services.market_data.base import MarketDataError
 
 
 class BinanceFuturesMarketData:
-    BASE_URL = "https://fapi.binance.com"
-    ALLOWED_PERIODS = {"5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"}
+    # Binance Futures is geo-restricted (HTTP 451) from some Vercel regions.
+    # Use Bybit's public linear-perpetual market endpoints as a read-only fallback.
+    BASE_URL = "https://api.bybit.com"
+    PERIOD_MAP = {
+        "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h",
+        "2h": "2h", "4h": "4h", "6h": "6h", "12h": "12h", "1d": "1d",
+    }
+    ALLOWED_PERIODS = set(PERIOD_MAP)
 
     async def fetch_derivatives_context(self, symbol: str, period: str = "5m") -> dict:
         normalized = symbol.upper().strip()
@@ -16,52 +21,50 @@ class BinanceFuturesMarketData:
         if period not in self.ALLOWED_PERIODS:
             raise MarketDataError("Unsupported open-interest period.")
 
-        async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-            oi_payload, funding_payload = await asyncio.gather(
-                get_json_with_retry(
-                    client,
-                    "/futures/data/openInterestHist",
-                    {"symbol": normalized, "period": period, "limit": 2},
-                    "Binance Futures open interest",
-                ),
-                get_json_with_retry(
-                    client,
-                    "/fapi/v1/fundingRate",
-                    {"symbol": normalized, "limit": 1},
-                    "Binance Futures funding",
-                ),
-            )
+        params_oi = {
+            "category": "linear", "symbol": normalized,
+            "intervalTime": self.PERIOD_MAP[period], "limit": "2",
+        }
+        params_funding = {"category": "linear", "symbol": normalized, "limit": "1"}
 
         try:
-            if not isinstance(oi_payload, list) or not oi_payload:
-                raise ValueError("Missing open-interest history.")
-            latest_oi = float(oi_payload[-1]["sumOpenInterest"])
-            previous_oi = (
-                float(oi_payload[-2]["sumOpenInterest"]) if len(oi_payload) > 1 else None
-            )
+            async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
+                oi_response, funding_response = await asyncio.gather(
+                    client.get("/v5/market/open-interest", params=params_oi),
+                    client.get("/v5/market/funding/history", params=params_funding),
+                )
+                oi_response.raise_for_status()
+                funding_response.raise_for_status()
+                oi_payload = oi_response.json()
+                funding_payload = funding_response.json()
+            if oi_payload.get("retCode") != 0 or funding_payload.get("retCode") != 0:
+                raise ValueError("Bybit public market API returned an error.")
+            oi_rows = oi_payload["result"]["list"]
+            funding_rows = funding_payload["result"]["list"]
+            if not oi_rows or not funding_rows:
+                raise ValueError("Missing derivatives history.")
+            latest_oi = float(oi_rows[0]["openInterest"])
+            previous_oi = float(oi_rows[1]["openInterest"]) if len(oi_rows) > 1 else None
+            funding_rate = float(funding_rows[0]["fundingRate"])
+            funding_time = int(funding_rows[0]["fundingRateTimestamp"])
             if not isfinite(latest_oi) or latest_oi < 0:
                 raise ValueError("Invalid open interest.")
             if previous_oi is not None and (not isfinite(previous_oi) or previous_oi < 0):
                 raise ValueError("Invalid previous open interest.")
-            oi_change = (
-                (latest_oi - previous_oi) / previous_oi * 100
-                if previous_oi not in (None, 0)
-                else None
-            )
-            if not isinstance(funding_payload, list) or not funding_payload:
-                raise ValueError("Missing funding-rate history.")
-            funding_rate = float(funding_payload[-1]["fundingRate"])
-            funding_time = int(funding_payload[-1]["fundingTime"])
             if not isfinite(funding_rate):
                 raise ValueError("Invalid funding rate.")
-        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            oi_change = (
+                (latest_oi - previous_oi) / previous_oi * 100
+                if previous_oi not in (None, 0) else None
+            )
+        except (httpx.HTTPError, KeyError, TypeError, ValueError, OverflowError) as exc:
             raise MarketDataError(
-                "Binance Futures returned malformed derivatives data."
+                "Public derivatives data provider failed or returned malformed data."
             ) from exc
 
         return {
             "symbol": normalized,
-            "source_market": "binance_usdm_futures",
+            "source_market": "bybit_linear_perpetual",
             "open_interest_unit": "contracts",
             "open_interest": latest_oi,
             "open_interest_change_percent": oi_change,
@@ -71,6 +74,7 @@ class BinanceFuturesMarketData:
             "interpretation": (
                 "OI mengukur jumlah kontrak terbuka; kenaikan OI tidak otomatis bullish. "
                 "Funding positif berarti long membayar short; funding negatif berarti "
-                "short membayar long. Gunakan bersama harga, volume, dan konteks lain."
+                "short membayar long. Data derivatif berasal dari Bybit linear perpetual, "
+                "bukan Binance Futures. Gunakan bersama harga, volume, dan konteks lain."
             ),
         }
