@@ -1040,7 +1040,7 @@ class _SignalPerformance extends StatelessWidget {
         future: future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return LinearProgressIndicator(minHeight: 2);
+            return const SizedBox(height: 2);
           }
           final data = snap.data ?? <String, dynamic>{};
           if (data.isEmpty || data['unavailable_reason'] != null) {
