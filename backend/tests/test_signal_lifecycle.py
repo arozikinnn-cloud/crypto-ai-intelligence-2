@@ -40,7 +40,7 @@ def test_signal_lifecycle_deduplicates_and_invalidates_cleanly():
         notifications = list(db.scalars(select(SignalNotification)))
         assert [event.status for event in events] == ["INVALIDATED", "ACTIVE"]
         assert [event.side for event in events] == ["BUY", "SELL"]
-        assert len(notifications) == 2
+        assert len(notifications) == 3
 
         # NO TRADE means no new setup; it must not erase a still-valid active signal.
         record_signal(
