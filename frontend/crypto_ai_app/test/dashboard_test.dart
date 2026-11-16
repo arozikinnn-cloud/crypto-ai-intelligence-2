@@ -20,7 +20,7 @@ void main() {
     ));
 
     await tester.pumpAndSettle();
-    expect(find.text('BTCUSDT'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == 'BTCUSDT'), findsOneWidget);
     expect(find.text('NO TRADE'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
     await tester.pumpAndSettle();
@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ETHUSDT').last);
     await tester.pumpAndSettle();
-    expect(find.text('ETHUSDT'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == 'ETHUSDT'), findsOneWidget);
   });
 
   testWidgets('shows recoverable state when API fails', (tester) async {
