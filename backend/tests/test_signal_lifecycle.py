@@ -98,6 +98,23 @@ def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
         assert amb_row.status == "CLOSED"
         assert amb_payload["outcome"] == "AMBIGUOUS"
         assert amb_payload["realized_r"] is None
+
+        record_signal(
+            db, "SLTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
+            "signal-sl", plan, "candle-sl-1",
+        )
+        evaluate_active_signals(db, "SLTEST", 101.0, 97.0, "candle-sl-2")
+        sl_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "SLTEST"))
+        assert json.loads(sl_row.reasons_json)["outcome"] == "SL"
+
+        from app.api.signals import signal_performance
+
+        stats = signal_performance(db)
+        assert stats["completed"] == 2
+        assert stats["wins"] == 1
+        assert stats["losses"] == 1
+        assert stats["ambiguous"] == 1
+        assert stats["win_rate_pct"] == 50.0
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
