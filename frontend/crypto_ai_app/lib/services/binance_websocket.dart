@@ -121,7 +121,10 @@ class BinanceWebSocketFeed {
         _emit();
         _firstMessageTimer?.cancel();
         _firstMessageTimer = Timer(_firstMessageTimeout, () {
-          if (!_disposed && generation == _generation && _snapshot.updatedAt == null) {
+          final lastDataAt = _snapshot.updatedAt;
+          final stale = lastDataAt == null ||
+              DateTime.now().toUtc().difference(lastDataAt) >= _firstMessageTimeout;
+          if (!_disposed && generation == _generation && stale) {
             _scheduleReconnect(generation, 'Connected to $host but no market data arrived');
           }
         });
