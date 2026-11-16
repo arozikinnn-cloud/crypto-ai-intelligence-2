@@ -9,7 +9,7 @@ from app.services.market_data.base import MarketDataError
 class BinanceOrderBookMarketData:
     """Public Spot depth snapshot; this is a snapshot, not historical order flow."""
 
-    BASE_URL = "https://api.binance.com"
+    BASE_URL = "https://data-api.binance.vision"
     ALLOWED_LIMITS = {5, 10, 20, 50, 100, 500, 1000}
 
     async def fetch_order_book(self, symbol: str, limit: int = 100) -> dict:
