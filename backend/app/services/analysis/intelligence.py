@@ -27,8 +27,8 @@ def build_intelligence_decision(
     flow_sell = order_flow.get("bias") == "SELL_PRESSURE"
     tape_buy = (trade_order_flow or {}).get("bias") == "BUY_PRESSURE"
     tape_sell = (trade_order_flow or {}).get("bias") == "SELL_PRESSURE"
-    buy_trigger = flow_buy or tape_buy
-    sell_trigger = flow_sell or tape_sell
+    buy_trigger = (flow_buy or tape_buy) and not (flow_sell or tape_sell)
+    sell_trigger = (flow_sell or tape_sell) and not (flow_buy or tape_buy)
 
     bullish_structure = (
         structure.get("event") in {"bullish_bos", "bullish_choch"}
