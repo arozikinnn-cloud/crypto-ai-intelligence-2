@@ -94,7 +94,7 @@ def build_intelligence_decision(
             "method": "M15 ATR-based stop with 2R target; review before execution.",
         }
 
-    oi_change = derivatives.get("open_interest_change_percent")
+    context = market_context or {}\n    cvd = context.get("cvd_history", {})\n    order_book = context.get("order_book", {})\n    max_confluence = 5\n    oi_change = derivatives.get("open_interest_change_percent")
     funding = derivatives.get("funding_rate")
     context_notes = [
         "Open interest dan funding adalah konteks derivatif, bukan konfirmasi arah.",
