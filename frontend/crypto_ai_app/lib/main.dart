@@ -1156,8 +1156,6 @@ class _SignalCenter extends StatelessWidget {
           if (items.isEmpty) return Text('Belum ada riwayat sinyal tersimpan.',
             style: TextStyle(color: muted, fontSize: 9));
           return Column(children: items.take(12).map((item) {
-            final idValue = item['id'];
-            final id = idValue is int ? idValue : null;
             final side = item['side'] ?? 'UNKNOWN';
             final status = item['status'] ?? 'UNKNOWN';
             final color = side == 'BUY' ? green : side == 'SELL' ? red : muted;
@@ -1180,11 +1178,6 @@ class _SignalCenter extends StatelessWidget {
                       maxLines: 2, overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: muted, fontSize: 8)),
                 ])),
-                if (status == 'ACTIVE')
-                  TextButton(
-                    onPressed: id == null ? null : () => closeSignal(id),
-                    child: const Text('Tutup', style: TextStyle(fontSize: 8)),
-                  ),
               ]),
             );
           }).toList());
