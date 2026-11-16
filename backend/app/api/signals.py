@@ -164,10 +164,14 @@ def record_signal(
                 reward = abs(float(target) - float(entry))
                 rr = reward / risk if risk > 0 else None
             details = []
-            if entry is not None:\n                details.append(f"Entry: {entry}")
-            if stop is not None:\n                details.append(f"SL: {stop}")
-            if target is not None:\n                details.append(f"TP: {target}")
-            if rr is not None:\n                details.append(f"R:R 1:{float(rr):.2f}")
+            if entry is not None:
+                details.append(f"Entry: {entry}")
+            if stop is not None:
+                details.append(f"SL: {stop}")
+            if target is not None:
+                details.append(f"TP: {target}")
+            if rr is not None:
+                details.append(f"R:R 1:{float(rr):.2f}")
             body = " • ".join(details) if details else "; ".join(reasons[:3])
             send_push_to_registered_devices(
                 db,
