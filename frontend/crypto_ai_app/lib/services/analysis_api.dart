@@ -57,6 +57,32 @@ class AnalysisApi {
     return decoded;
   }
 
+
+  Future<List<Map<String, dynamic>>> fetchCandles({
+    String symbol = 'BTCUSDT',
+    String interval = '15m',
+    int limit = 80,
+  }) async {
+    final uri = _endpoint('market/candles', {
+      'symbol': symbol,
+      'interval': interval,
+      'limit': limit.toString(),
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw Exception('Candles API error ${response.statusCode}: ${_errorMessage(response.body)}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic> || decoded['candles'] is! List) {
+      throw const FormatException('Invalid candle response format.');
+    }
+    return (decoded['candles'] as List)
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
   Future<Map<String, dynamic>> fetchBacktest({
     String symbol = 'BTCUSDT',
     String interval = '1h',
