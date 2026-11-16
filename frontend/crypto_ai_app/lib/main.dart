@@ -84,8 +84,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   Timer? analysisPoller;
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
+  String selectedCandleInterval = '15m';
   Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence(symbol: selectedSymbol);
-  Future<List<Map<String, dynamic>>> loadCandles() => api.fetchCandles(symbol: selectedSymbol, interval: '15m', limit: 80);
+  Future<List<Map<String, dynamic>>> loadCandles() => api.fetchCandles(symbol: selectedSymbol, interval: selectedCandleInterval, limit: 80);
+
+  Future<void> changeCandleInterval(String interval) async {
+    if (interval == selectedCandleInterval) return;
+    setState(() {
+      selectedCandleInterval = interval;
+      candles = loadCandles();
+    });
+  }
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
@@ -202,7 +211,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
-          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles);
+          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval);
       },
     )),
   );
@@ -211,7 +220,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
     required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles});
+    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
@@ -225,6 +234,8 @@ class _Dashboard extends StatelessWidget {
   final Future<void> Function(int) closeSignal;
   final Future<Map<String, dynamic>> signalPerformance;
   final Future<List<Map<String, dynamic>>> candles;
+  final String candleInterval;
+  final ValueChanged<String> onCandleIntervalChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -290,7 +301,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 16),
             const _Heading('BTC / MARKET CANDLES', 'Candlestick 15 menit • Binance Spot'),
             const SizedBox(height: 8),
-            _CandlestickChart(future: candles),
+            _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 16),
             const SizedBox(height: 15),
             Container(padding: const EdgeInsets.all(18),
@@ -506,8 +517,10 @@ class _Scanner extends StatelessWidget {
 
 
 class _CandlestickChart extends StatelessWidget {
-  const _CandlestickChart({required this.future});
+  const _CandlestickChart({required this.future, required this.interval, required this.onIntervalChanged});
   final Future<List<Map<String, dynamic>>> future;
+  final String interval;
+  final ValueChanged<String> onIntervalChanged;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -531,8 +544,18 @@ class _CandlestickChart extends StatelessWidget {
           final change = firstClose == 0 ? 0.0 : (lastClose - firstClose) / firstClose * 100;
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Text('15M', style: TextStyle(color: muted, fontSize: 9, fontWeight: FontWeight.bold)),
+              const Text('CANDLESTICK', style: TextStyle(color: muted, fontSize: 9, fontWeight: FontWeight.bold)),
               const Spacer(),
+              DropdownButton<String>(
+                value: interval,
+                isDense: true,
+                underline: const SizedBox.shrink(),
+                dropdownColor: panel,
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                items: const ['5m', '15m', '1h', '4h'].map((v) => DropdownMenuItem(value: v, child: Text(v.toUpperCase()))).toList(),
+                onChanged: (value) { if (value != null) onIntervalChanged(value); },
+              ),
+              const SizedBox(width: 8),
               Text(price(last['close']), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
               const SizedBox(width: 8),
               Text('${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
@@ -543,7 +566,7 @@ class _CandlestickChart extends StatelessWidget {
               child: CustomPaint(painter: _CandlePainter(rows))),
             const SizedBox(height: 5),
             Row(children: [
-              const Text('80 candle terakhir', style: TextStyle(color: muted, fontSize: 8)),
+              const Text('80 candle terakhir • ${interval.toUpperCase()}', style: TextStyle(color: muted, fontSize: 8)),
               const Spacer(),
               Text('Sumber: Binance Spot', style: const TextStyle(color: muted, fontSize: 8)),
             ]),
