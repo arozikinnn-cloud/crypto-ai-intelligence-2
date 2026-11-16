@@ -75,6 +75,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   final api = AnalysisApi();
   late Future<Map<String, dynamic>> analysis;
   late Future<List<Map<String, dynamic>>> notifications;
+  late Future<List<Map<String, dynamic>>> scanner;
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
@@ -88,12 +89,25 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
 
+  Future<List<Map<String, dynamic>>> loadScanner() async {
+    final results = await Future.wait(supportedSymbols.map((symbol) async {
+      try {
+        final result = await api.fetchIntelligence(symbol: symbol);
+        return <String, dynamic>{...result, 'scanner_status': 'OK'};
+      } catch (error) {
+        return <String, dynamic>{'symbol': symbol, 'side': 'UNAVAILABLE', 'scanner_status': error.toString()};
+      }
+    }));
+    return results;
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     analysis = load();
     notifications = loadNotes();
+    scanner = loadScanner();
     startPolling();
   }
 
@@ -111,7 +125,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      setState(() { analysis = load(); notifications = loadNotes(); });
+      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); });
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -123,7 +137,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); });
+    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); scanner = loadScanner(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -153,7 +167,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
-          refresh: refresh, markRead: markRead);
+          scanner: scanner, refresh: refresh, markRead: markRead);
       },
     )),
   );
@@ -161,13 +175,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
-    required this.selectedSymbol, required this.onSymbolChanged,
+    required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
     required this.refresh, required this.markRead});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
   final String selectedSymbol;
   final ValueChanged<String?> onSymbolChanged;
+  final Future<List<Map<String, dynamic>>> scanner;
   final Future<void> Function() refresh;
   final Future<void> Function(int) markRead;
 
@@ -307,6 +322,10 @@ class _Dashboard extends StatelessWidget {
                 ],
               ]),
             ),
+            const SizedBox(height: 15),
+            const _Heading('MULTI-COIN SCANNER', 'Pemindaian setup pada daftar aset yang dipilih'),
+            const SizedBox(height: 9),
+            _Scanner(future: scanner, selectedSymbol: selectedSymbol, onSelect: onSymbolChanged),
             const SizedBox(height: 22),
             const _Heading('MULTI-TIMEFRAME', 'Konfirmasi arah dari beberapa kerangka waktu'),
             const SizedBox(height: 9),
@@ -356,6 +375,78 @@ class _Dashboard extends StatelessWidget {
         ]),
     );
   }
+}
+
+
+class _Scanner extends StatelessWidget {
+  const _Scanner({required this.future, required this.selectedSymbol, required this.onSelect});
+  final Future<List<Map<String, dynamic>>> future;
+  final String selectedSymbol;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(10),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: LinearProgressIndicator(minHeight: 2)),
+            );
+          }
+          if (snap.hasError) {
+            return Text('Scanner tidak tersedia: ${snap.error}',
+              style: const TextStyle(color: muted, fontSize: 9));
+          }
+          final items = snap.data ?? [];
+          if (items.isEmpty) return const Text('Belum ada hasil pemindaian.',
+            style: TextStyle(color: muted, fontSize: 9));
+          return Column(
+            children: items.map((item) {
+              final symbol = txt(item['symbol'], '--');
+              final side = txt(item['side'], 'UNAVAILABLE').toUpperCase();
+              final available = item['scanner_status'] == 'OK';
+              final color = side == 'BUY' ? green : side == 'SELL' ? red : blue;
+              final selected = symbol == selectedSymbol;
+              return InkWell(
+                onTap: available ? () => onSelect(symbol) : null,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: selected ? soft : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(symbol, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 3),
+                        Text(available
+                          ? '${number(item['confluence_score'])}/${number(item['max_confluence'])} confluence'
+                          : 'Data tidak tersedia',
+                          style: const TextStyle(color: muted, fontSize: 8)),
+                      ],
+                    )),
+                    if (available)
+                      Text(side, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900))
+                    else
+                      const Icon(Icons.error_outline, color: muted, size: 15),
+                    const SizedBox(width: 7),
+                    const Icon(Icons.chevron_right, color: muted, size: 16),
+                  ]),
+                ),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    ),
+  );
 }
 
 class _Heading extends StatelessWidget {
