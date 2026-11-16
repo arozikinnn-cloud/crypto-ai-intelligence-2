@@ -1146,7 +1146,7 @@ class _SignalCenter extends StatelessWidget {
         future: future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return LinearProgressIndicator(minHeight: 2);
+            return const SizedBox(height: 2);
           }
           if (snap.hasError) {
             return Text('Riwayat sinyal belum tersedia: ${snap.error}',
@@ -1200,7 +1200,7 @@ class _Inbox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(10),
     child: FutureBuilder<List<Map<String, dynamic>>>(future: future, builder: (context, snap) {
-      if (snap.connectionState == ConnectionState.waiting) return LinearProgressIndicator(minHeight: 2);
+      if (snap.connectionState == ConnectionState.waiting) return const SizedBox(height: 2);
       if (snap.hasError) return Text('Inbox belum tersedia: ' + snap.error.toString(), style: const TextStyle(color: muted, fontSize: 9));
       final items = snap.data ?? [];
       if (items.isEmpty) return const Text('Belum ada notifikasi sinyal.', style: TextStyle(color: muted, fontSize: 9));
