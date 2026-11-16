@@ -29,6 +29,39 @@ class CryptoAIApp extends StatelessWidget {
   );
 }
 
+class _PlanValue extends StatelessWidget {
+  const _PlanValue(this.label, this.value);
+  final String label;
+  final dynamic value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .8)),
+      const SizedBox(height: 4),
+      Text(value == null ? '—' : value.toString(),
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+    ],
+  );
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    decoration: BoxDecoration(
+      color: const Color(0xFF182536),
+      borderRadius: BorderRadius.circular(7),
+      border: Border.all(color: line),
+    ),
+    child: Text(label, style: const TextStyle(color: muted, fontSize: 8, fontWeight: FontWeight.bold)),
+  );
+}
+
 class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications});
   final Future<Map<String, dynamic>> Function()? loadAnalysis;
@@ -130,6 +163,7 @@ class _Dashboard extends StatelessWidget {
     final flow = agg.isNotEmpty ? agg : mapVal(data['order_flow']);
     final market = mapVal(data['market_context']);
     final deriv = mapVal(data['derivatives']);
+    final tradePlan = mapVal(data['trade_plan']);
 
     return RefreshIndicator(
       onRefresh: refresh, color: green, backgroundColor: panel,
@@ -213,6 +247,39 @@ class _Dashboard extends StatelessWidget {
                   Text(txt(data['score_note'], ''), style: const TextStyle(fontSize: 10, color: Color(0xFFD1DBE8), height: 1.4)),
                 ],
               ])),
+            const SizedBox(height: 15),
+            _Heading('DAY TRADING PLAN', txt(data['strategy_mode'], 'DAY_TRADING')),
+            const SizedBox(height: 9),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: panel,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: tradePlan.isNotEmpty ? accent.withValues(alpha: .4) : line),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('ALUR ANALISIS', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.2)),
+                const SizedBox(height: 9),
+                const Wrap(spacing: 7, runSpacing: 7, children: [
+                  _Tag('H4 • ARAH BESAR'), _Tag('H1 • BIAS'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
+                ]),
+                const SizedBox(height: 12),
+                if (tradePlan.isEmpty)
+                  const Text('Belum ada rencana entry valid. Tunggu konfirmasi H4 + H1 + M15 + order flow.',
+                    style: TextStyle(color: muted, fontSize: 11, height: 1.4))
+                else ...[
+                  Row(children: [
+                    Expanded(child: _PlanValue('ENTRY', tradePlan['entry'])),
+                    Expanded(child: _PlanValue('STOP LOSS', tradePlan['stop_loss'])),
+                    Expanded(child: _PlanValue('TAKE PROFIT', tradePlan['take_profit'])),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('Risk/Reward: 1:${txt(tradePlan['risk_reward'], '2.0')} • Acuan M15',
+                    style: const TextStyle(color: muted, fontSize: 10)),
+                ],
+              ]),
+            ),
             const SizedBox(height: 22),
             const _Heading('MULTI-TIMEFRAME', 'Konfirmasi arah dari beberapa kerangka waktu'),
             const SizedBox(height: 9),
