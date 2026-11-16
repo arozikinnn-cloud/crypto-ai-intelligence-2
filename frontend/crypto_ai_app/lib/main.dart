@@ -981,7 +981,7 @@ class _BacktestCard extends StatelessWidget {
         future: future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return LinearProgressIndicator(minHeight: 2);
+            return const SizedBox(height: 2, child: LinearProgressIndicator());
           }
           if (snap.hasError) {
             return Text('Backtest belum tersedia: ${snap.error}',
