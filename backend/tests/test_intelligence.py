@@ -59,7 +59,6 @@ def test_conflicting_kline_and_tape_flow_blocks_signal():
     assert result["checks"]["m5_or_tape_buy_confirmation"] is False
 
 
-
 def test_m5_no_trade_can_use_directional_order_flow_confirmation():
     result = decide(
         ["NO TRADE", "SELL", "SELL"],
