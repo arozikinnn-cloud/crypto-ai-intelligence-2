@@ -10,7 +10,6 @@ from app.core.logging import configure_logging
 from app.database.base import Base
 from app.database.session import engine
 from app.database.migrations import migrate_schema
-from sqlalchemy import text
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
@@ -37,12 +36,8 @@ async def lifespan(_app: FastAPI):
     if IS_VERCEL:
         # Apply only the idempotent additive PostgreSQL migration; never create
         # tables or start persistent collectors inside serverless instances.
-        if engine.dialect.name == "postgresql":
-            with engine.begin() as connection:
-                connection.execute(text("SELECT pg_advisory_xact_lock(731942, 20261116)"))
-                Base.metadata.create_all(bind=connection)
-        else:
-            Base.metadata.create_all(bind=engine)
+        # Tables are provisioned; avoid repeated create_all() DDL on serverless
+        # cold starts and run only the idempotent additive migration.
         migrate_schema(engine)
     else:
         Base.metadata.create_all(bind=engine)
