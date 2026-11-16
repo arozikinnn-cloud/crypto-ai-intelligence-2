@@ -104,3 +104,82 @@ def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+
+def test_signal_creation_and_result_send_push_without_breaking_persistence(monkeypatch):
+    from app.api import signals as signal_api
+    from app.api.signals import evaluate_active_signals
+
+    calls = []
+
+    def fake_push(_db, **kwargs):
+        calls.append(kwargs)
+        return {"sent": 1, "failed": 0, "configured": 1}
+
+    monkeypatch.setattr(signal_api, "send_push_to_registered_devices", fake_push, raising=False)
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        plan = {"entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
+        record_signal(
+            db, "PUSHTEST", "BUY", ["4h", "1h", "15m"], ["aligned"],
+            "push-signal-1", plan, "push-candle-1",
+        )
+        assert len(calls) == 1
+        assert calls[0]["data"]["type"] == "trade_signal"
+
+        record_signal(
+            db, "PUSHTEST", "BUY", ["4h", "1h", "15m"], ["still aligned"],
+            "push-signal-2", plan, "push-candle-2",
+        )
+        assert len(calls) == 1
+
+        evaluate_active_signals(db, "PUSHTEST", 105.0, 99.0, "push-candle-3")
+        assert len(calls) == 2
+        assert calls[1]["data"]["type"] == "trade_result"
+        assert calls[1]["data"]["outcome"] == "TP"
+        event = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "PUSHTEST"))
+        assert event.status == "CLOSED"
+        assert json.loads(event.reasons_json)["outcome"] == "TP"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_signal_outcome_is_saved_when_push_provider_raises(monkeypatch):
+    from app.api import signals as signal_api
+    from app.api.signals import evaluate_active_signals
+
+    def failing_push(*_args, **_kwargs):
+        raise RuntimeError("simulated FCM outage")
+
+    monkeypatch.setattr(signal_api, "send_push_to_registered_devices", failing_push, raising=False)
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db, "PUSHFAIL", "SELL", ["4h", "1h", "15m"], ["aligned"],
+            "fail-signal-1",
+            {"entry": 100.0, "stop_loss": 102.0, "take_profit": 96.0},
+            "fail-candle-1",
+        )
+        evaluate_active_signals(db, "PUSHFAIL", 101.0, 95.0, "fail-candle-2")
+        event = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "PUSHFAIL"))
+        assert event.status == "CLOSED"
+        assert json.loads(event.reasons_json)["outcome"] == "TP"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
