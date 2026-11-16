@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from worker import configured_collectors
+from worker import configured_collectors, validate_worker_database
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
 from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
@@ -39,3 +39,20 @@ def test_configured_collectors_respects_disabled_flags():
     )
 
     assert configured_collectors(settings) == []
+
+
+
+def test_production_worker_rejects_sqlite_database():
+    settings = SimpleNamespace(app_env="production", database_url="sqlite:///./local.db")
+
+    try:
+        validate_worker_database(settings)
+    except RuntimeError as exc:
+        assert "durable PostgreSQL DATABASE_URL" in str(exc)
+    else:
+        raise AssertionError("Production worker must reject isolated SQLite.")
+
+
+def test_development_worker_allows_local_sqlite_database():
+    settings = SimpleNamespace(app_env="development", database_url="sqlite:///./local.db")
+    validate_worker_database(settings)
