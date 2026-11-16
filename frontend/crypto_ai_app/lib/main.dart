@@ -77,6 +77,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   late Future<List<Map<String, dynamic>>> notifications;
   late Future<List<Map<String, dynamic>>> scanner;
   late Future<List<Map<String, dynamic>>> signals;
+  late Future<Map<String, dynamic>> backtest;
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
@@ -85,11 +86,12 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
-    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); });
+    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); backtest = loadBacktest(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
   Future<List<Map<String, dynamic>>> loadSignals() => api.fetchSignals(status: 'all', limit: 50);
+  Future<Map<String, dynamic>> loadBacktest() => api.fetchBacktest(symbol: selectedSymbol);
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
     final results = await Future.wait(supportedSymbols.map((symbol) async {
@@ -111,6 +113,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     notifications = loadNotes();
     scanner = loadScanner();
     signals = loadSignals();
+    backtest = loadBacktest();
     startPolling();
   }
 
@@ -128,7 +131,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); });
+      setState(() { analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); });
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -140,7 +143,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); });
+    setState(() { refreshing = true; analysis = load(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -175,7 +178,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
-          scanner: scanner, signals: signals, refresh: refresh, markRead: markRead,
+          scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
           closeSignal: closeSignal);
       },
     )),
@@ -185,7 +188,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
     required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.signals, required this.refresh, required this.markRead, required this.closeSignal});
+    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
@@ -193,6 +196,7 @@ class _Dashboard extends StatelessWidget {
   final ValueChanged<String?> onSymbolChanged;
   final Future<List<Map<String, dynamic>>> scanner;
   final Future<List<Map<String, dynamic>>> signals;
+  final Future<Map<String, dynamic>> backtest;
   final Future<void> Function() refresh;
   final Future<void> Function(int) markRead;
   final Future<void> Function(int) closeSignal;
@@ -370,6 +374,10 @@ class _Dashboard extends StatelessWidget {
             _TextCard(items: strings(data['reasons']), empty: 'Belum ada alasan sinyal yang memenuhi syarat.'),
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
+            const SizedBox(height: 15),
+            const _Heading('BACKTEST & PERFORMANCE', 'Evaluasi historis dengan biaya transaksi dan data out-of-sample'),
+            const SizedBox(height: 9),
+            _BacktestCard(future: backtest),
             const SizedBox(height: 15),
             const _Heading('SIGNAL CENTER', 'Riwayat sinyal dan status yang tersimpan di backend'),
             const SizedBox(height: 9),
@@ -691,6 +699,66 @@ class _TextCard extends StatelessWidget {
     ])));
 }
 
+
+
+class _BacktestCard extends StatelessWidget {
+  const _BacktestCard({required this.future});
+  final Future<Map<String, dynamic>> future;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: FutureBuilder<Map<String, dynamic>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const LinearProgressIndicator(minHeight: 2);
+          }
+          if (snap.hasError) {
+            return Text('Backtest belum tersedia: ${snap.error}',
+              style: const TextStyle(color: muted, fontSize: 9));
+          }
+          final data = snap.data ?? {};
+          final overall = mapVal(data['overall']);
+          final out = mapVal(data['out_of_sample']);
+          if (overall.isEmpty) return const Text('Belum ada hasil backtest.',
+            style: TextStyle(color: muted, fontSize: 9));
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text('${txt(data['symbol'], '--')} • ${txt(data['timeframe'], '--').toUpperCase()}',
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900))),
+              Text('${number(data['candles'])} candles',
+                style: const TextStyle(color: muted, fontSize: 8)),
+            ]),
+            const SizedBox(height: 10),
+            const Text('OUT-OF-SAMPLE', style: TextStyle(color: blue, fontSize: 8, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Row(children: [
+              _Metric(label: 'WIN RATE', value: '${decimal(out['win_rate_pct'])}%'),
+              _Metric(label: 'TRADES', value: txt(out['trades'], '0')),
+              _Metric(label: 'PROFIT FACTOR', value: out['profit_factor'] == null ? 'N/A' : decimal(out['profit_factor'])),
+              _Metric(label: 'MAX DD', value: '${decimal(out['max_drawdown_pct'])}%'),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              _Metric(label: 'OVERALL RETURN', value: '${decimal(overall['total_return_pct'])}%'),
+              _Metric(label: 'EXPECTANCY', value: '${decimal(overall['expectancy_pct'])}%'),
+              _Metric(label: 'SIGNALS', value: txt(data['signal_count'], '0')),
+              _Metric(label: 'NO TRADE', value: txt(data['no_trade_count'], '0')),
+            ]),
+            const SizedBox(height: 9),
+            Text('Strategi: ${txt(data['strategy'], 'AI intelligence')} • Hasil historis bukan jaminan performa live.',
+              style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
+            if (strings(data['limitations']).isNotEmpty)
+              Text(strings(data['limitations']).first,
+                style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
+          ]);
+        },
+      ),
+    ),
+  );
+}
 
 class _SignalCenter extends StatelessWidget {
   const _SignalCenter({required this.future, required this.closeSignal});
