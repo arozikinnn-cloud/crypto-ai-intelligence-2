@@ -52,6 +52,11 @@ def test_signal_lifecycle_deduplicates_and_invalidates_cleanly():
         old_payload = json.loads(events[0].reasons_json)
         assert "invalidation_reason" in old_payload
         assert "newly confirmed SELL" in old_payload["invalidation_reason"]
+        from app.api.signals import _event_payload
+        assert any(
+            reason.startswith("Alasan invalidasi:")
+            for reason in _event_payload(events[0])["reasons"]
+        )
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
