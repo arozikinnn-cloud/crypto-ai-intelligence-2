@@ -104,6 +104,7 @@ class BinanceWebSocketFeed {
     final normalized = symbol.toLowerCase();
     if (_disposed) return;
     _generation++;
+    _reconnectAttempts = 0;
     _reconnectTimer?.cancel();
     await _closeSocket();
     _symbol = normalized;
@@ -140,7 +141,7 @@ class BinanceWebSocketFeed {
       socket.pingInterval = const Duration(seconds: 20);
       _snapshot = _snapshot.copyWith(
         connected: true,
-        connectionMessage: 'Connected • receiving stream',
+        connectionMessage: 'Connected • waiting for first data',
       );
       _emit();
       socket.listen(
@@ -201,6 +202,9 @@ class BinanceWebSocketFeed {
           );
         }
       }
+      if (next.updatedAt != null && next.updatedAt != _snapshot.updatedAt) {
+        next = next.copyWith(connectionMessage: 'Connected • stream active');
+      }
       _snapshot = next;
       _emit();
     } catch (_) {
@@ -225,7 +229,7 @@ class BinanceWebSocketFeed {
   }
 
   void _scheduleReconnect(int generation, [String reason = 'Connection interrupted']) {
-    if (_disposed || generation != _generation) return;
+    if (_disposed || generation != _generation || (_reconnectTimer?.isActive ?? false)) return;
     _socket = null;
     _reconnectAttempts++;
     final delaySeconds = (3 * (1 << (_reconnectAttempts - 1).clamp(0, 4))).clamp(3, 30).toInt();
