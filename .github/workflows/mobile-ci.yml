@@ -36,11 +36,32 @@ jobs:
       - run: flutter test
       - name: Generate Android platform project
         run: flutter create --platforms=android --org com.cryptoai .
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('frontend/crypto_ai_app/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
       - name: Build Android debug APK
         env:
           API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.API_BASE_URL || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
         run: |
-          flutter build apk --debug --dart-define="API_BASE_URL=${API_BASE_URL}"
+          set +e
+          for attempt in 1 2 3; do
+            flutter build apk --debug --dart-define="API_BASE_URL=${API_BASE_URL}"
+            result=$?
+            if [ "$result" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Android build failed (attempt $attempt); waiting before retry."
+              sleep $((attempt * 30))
+            fi
+          done
+          exit "$result"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
