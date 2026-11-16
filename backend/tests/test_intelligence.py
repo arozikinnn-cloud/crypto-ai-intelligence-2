@@ -1,122 +1,70 @@
 import pytest
+
 from app.services.analysis.intelligence import build_intelligence_decision
 
 
-def test_intelligence_requires_full_bullish_alignment():
-    result = build_intelligence_decision(
-        ["BUY", "BUY", "BUY"],
-        {"trend": "bullish", "event": "none"},
-        {"bias": "BUY_PRESSURE"},
-        {"open_interest_change_percent": 1.2, "funding_rate": 0.0001},
+def _tf(timeframe, side):
+    return {
+        "timeframe": timeframe,
+        "side": side,
+        "entry": 100.0 if side != "NO TRADE" else None,
+        "stop_loss": 98.0 if side == "BUY" else 102.0 if side == "SELL" else None,
+        "take_profit": 104.0 if side == "BUY" else 96.0 if side == "SELL" else None,
+        "risk_reward": 2.0 if side != "NO TRADE" else None,
+    }
+
+
+def decide(sides, flow="BUY_PRESSURE", tape="BALANCED", structure="bullish"):
+    analyses = [_tf(tf, side) for tf, side in zip(("4h", "1h", "15m"), sides)]
+    return build_intelligence_decision(
+        sides,
+        {"trend": structure, "event": "none"},
+        {"bias": flow},
+        {"source_market": "unavailable", "funding_rate": 0.0001},
+        {"bias": tape},
+        {},
+        analyses,
     )
+
+
+def test_day_trading_buy_requires_aligned_higher_timeframes_setup_and_flow():
+    result = decide(["BUY", "BUY", "BUY"])
     assert result["side"] == "BUY"
-    assert result["confluence_score"] == 3
-    assert result["max_confluence"] == 3
-    assert result["context_notes"]
+    assert result["strategy_mode"] == "DAY_TRADING"
+    assert result["trade_plan"]["source_timeframe"] == "15m"
+    assert result["trade_plan"]["risk_reward"] == 2.0
+    assert result["max_confluence"] == 5
 
 
-def test_intelligence_defaults_to_no_trade_when_modules_disagree():
-    result = build_intelligence_decision(
-        ["BUY", "NO TRADE", "BUY"],
-        {"trend": "bullish", "event": "none"},
-        {"bias": "BUY_PRESSURE"},
-        {"open_interest_change_percent": 1.2, "funding_rate": 0.0001},
-    )
-    assert result["side"] == "NO TRADE"
-    assert result["confluence_score"] < 3
-
-
-def test_intelligence_supports_bearish_alignment():
-    result = build_intelligence_decision(
-        ["SELL", "SELL"],
-        {"trend": "bearish", "event": "none"},
-        {"bias": "SELL_PRESSURE"},
-        {"open_interest_change_percent": 0.8, "funding_rate": -0.0001},
-    )
+def test_day_trading_sell_requires_aligned_higher_timeframes_setup_and_flow():
+    result = decide(["SELL", "SELL", "SELL"], flow="SELL_PRESSURE", structure="bearish")
     assert result["side"] == "SELL"
+    assert result["trade_plan"]["source_timeframe"] == "15m"
 
 
-def test_derivatives_do_not_create_directional_signal():
-    result = build_intelligence_decision(
-        ["BUY", "BUY"],
-        {"trend": "bullish", "event": "none"},
-        {"bias": "BUY_PRESSURE"},
-        {"open_interest_change_percent": -1.0, "funding_rate": 0.01},
-    )
+def test_conflicting_higher_timeframes_never_force_signal():
+    result = decide(["BUY", "SELL", "BUY"])
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+
+
+def test_missing_m15_setup_never_forces_signal():
+    result = decide(["BUY", "BUY", "NO TRADE"])
+    assert result["side"] == "NO TRADE"
+
+
+def test_conflicting_kline_and_tape_flow_blocks_signal():
+    result = decide(["BUY", "BUY", "BUY"], flow="BUY_PRESSURE", tape="SELL_PRESSURE")
+    assert result["side"] == "NO TRADE"
+    assert result["checks"]["m5_or_tape_buy_confirmation"] is False
+
+
+def test_derivatives_are_context_not_directional_confirmation():
+    result = decide(["BUY", "BUY", "BUY"])
     assert result["side"] == "BUY"
     assert any("Funding positif" in note for note in result["context_notes"])
 
 
-def test_aggtrades_conflict_blocks_buy_signal():
-    result = build_intelligence_decision(
-        ["BUY", "BUY"],
-        {"trend": "bullish", "event": "none"},
-        {"bias": "BUY_PRESSURE"},
-        {},
-        {"bias": "SELL_PRESSURE"},
-    )
-    assert result["side"] == "NO TRADE"
-    assert result["max_confluence"] == 4
-    assert result["confluence_score"] < 4
-    assert result["checks"]["sell_pressure_aggtrades"] is True
-
-
-def test_aggtrades_confirmation_adds_fourth_confluence():
-    result = build_intelligence_decision(
-        ["SELL", "SELL"],
-        {"trend": "bearish", "event": "none"},
-        {"bias": "SELL_PRESSURE"},
-        {},
-        {"bias": "SELL_PRESSURE"},
-    )
-    assert result["side"] == "SELL"
-    assert result["confluence_score"] == 4
-    assert result["max_confluence"] == 4
-
-
 def test_unknown_technical_side_is_rejected():
     with pytest.raises(ValueError, match="unsupported"):
-        build_intelligence_decision(
-            ["LONG"],
-            {"trend": "bullish"},
-            {"bias": "BUY_PRESSURE"},
-            {},
-        )
-
-
-
-def test_persistent_cvd_and_order_book_are_additional_confluence_checks():
-    result = build_intelligence_decision(
-        ["BUY", "BUY"],
-        {"trend": "bullish", "event": "none"},
-        {"bias": "BUY_PRESSURE"},
-        {},
-        {"bias": "BUY_PRESSURE"},
-        {
-            "cvd_history": {"available": True, "bias": "BUY_PRESSURE"},
-            "order_book": {"available": True, "bias": "BUY_DEPTH"},
-            "liquidations": {
-                "available": True,
-                "short_liquidation_notional": 1000,
-                "long_liquidation_notional": 200,
-                "note": "Observed only.",
-            },
-        },
-    )
-    assert result["side"] == "BUY"
-    assert result["max_confluence"] == 6
-    assert result["confluence_score"] == 6
-    assert any("Likuidasi teramati" in note for note in result["context_notes"])
-
-
-def test_persistent_cvd_conflict_vetoes_directional_signal():
-    result = build_intelligence_decision(
-        ["BUY"],
-        {"trend": "bullish", "event": "none"},
-        {"bias": "BUY_PRESSURE"},
-        {},
-        {"bias": "BUY_PRESSURE"},
-        {"cvd_history": {"available": True, "bias": "SELL_PRESSURE"}},
-    )
-    assert result["side"] == "NO TRADE"
-    assert result["checks"]["sell_pressure_persistent_cvd"] is True
+        build_intelligence_decision(["LONG"], {}, {}, {})
