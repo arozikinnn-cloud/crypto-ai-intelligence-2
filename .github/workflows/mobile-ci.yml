@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       api_base_url:
-        description: "Backend URL reachable by the Android phone, ending in /api/v1 (e.g. https://your-host/api/v1)"
+        description: "Backend URL reachable by the Android phone, ending in /api/v1 (optional; defaults to production)"
         required: false
         type: string
 
@@ -48,7 +48,7 @@ jobs:
             ${{ runner.os }}-gradle-
       - name: Build Android debug APK
         env:
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.API_BASE_URL || 'https://crypto-ai-intelligence-2-backend-git-fi-e9ad1f-arozikinnn-cloud.vercel.app/api/v1' }}
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
         run: |
           set +e
           for attempt in 1 2 3; do
