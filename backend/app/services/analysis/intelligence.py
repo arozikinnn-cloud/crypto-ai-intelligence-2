@@ -77,7 +77,8 @@ def build_intelligence_decision(
         side = "NO TRADE"
         score = max(sum(bullish_checks.values()), sum(bearish_checks.values()))
         reasons = [
-            "Syarat Day Trading belum lengkap: H4 dan H1 harus searah, M15 harus memberi setup, serta M5/aggTrades harus mengonfirmasi.",
+            "Syarat Day Trading belum lengkap: H4 dan H1 harus searah, "
+            "M15 harus memberi setup, serta M5/aggTrades harus mengonfirmasi.",
             "Sistem tidak memaksakan entry ketika konfirmasi belum terpenuhi.",
         ]
 
