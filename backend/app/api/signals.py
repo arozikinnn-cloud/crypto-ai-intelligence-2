@@ -15,7 +15,11 @@ router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"
 def _event_payload(row: SignalEvent) -> dict:
     stored = json.loads(row.reasons_json)
     if isinstance(stored, dict):
-        reasons = stored.get("reasons", [])
+        reasons = list(stored.get("reasons", []))
+        if stored.get("invalidation_reason"):
+            reasons.append("Alasan invalidasi: " + stored["invalidation_reason"])
+        if stored.get("close_reason"):
+            reasons.append("Alasan penutupan: " + stored["close_reason"])
         plan = stored.get("trade_plan") or {}
         outcome = stored.get("outcome")
         return {
@@ -86,6 +90,12 @@ def evaluate_active_signals(
         stored["outcome"] = outcome
         stored["realized_r"] = realized_r
         stored["closed_at"] = now.isoformat()
+        stored["close_candle_timestamp"] = candle_timestamp
+        stored["close_reason"] = (
+            "TP dan SL tersentuh dalam candle yang sama; urutan tidak dapat dipastikan."
+            if outcome == "AMBIGUOUS"
+            else f"Harga candle berikutnya menyentuh {'stop-loss' if outcome == 'SL' else 'take-profit'}."
+        )
         row.reasons_json = json.dumps(stored, ensure_ascii=False)
         row.status = "CLOSED"
         row.updated_at = now
