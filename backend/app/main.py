@@ -36,9 +36,9 @@ async def lifespan(_app: FastAPI):
     if IS_VERCEL:
         # Apply only the idempotent additive PostgreSQL migration; never create
         # tables or start persistent collectors inside serverless instances.
-        # Tables are provisioned; avoid repeated create_all() DDL on serverless
-        # cold starts and run only the idempotent additive migration.
-        migrate_schema(engine)
+        # Schema has already been provisioned. Do not run DDL on serverless
+        # cold starts; database migrations are handled separately.
+        pass
     else:
         Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
