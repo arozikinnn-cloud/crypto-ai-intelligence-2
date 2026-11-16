@@ -48,10 +48,7 @@ def send_push_to_registered_devices(
             tokens=[row.token for row in batch],
             notification=messaging.Notification(title=title, body=body),
             data={str(k): str(v) for k, v in (data or {}).items()},
-            android=messaging.AndroidConfig(
-                priority="high",
-                notification=messaging.AndroidNotification(channel_id="crypto_ai_signals"),
-            ),
+            android=messaging.AndroidConfig(priority="high"),
         )
         try:
             response = messaging.send_each_for_multicast(message, app=app)
