@@ -11,6 +11,12 @@ class SignalEventResponse(BaseModel):
     reasons: list[str]
     created_at: datetime
     updated_at: datetime
+    entry: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    outcome: str | None = None
+    realized_r: float | None = None
+    closed_at: datetime | None = None
 
 
 class SignalNotificationResponse(BaseModel):
