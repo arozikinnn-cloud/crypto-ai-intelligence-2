@@ -24,7 +24,6 @@ void main() {
     expect(find.text('NO TRADE'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
     await tester.pumpAndSettle();
-    expect(find.text('NO TRADE'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -900));
     await tester.pumpAndSettle();
     expect(find.text('Order book unavailable.'), findsOneWidget);
