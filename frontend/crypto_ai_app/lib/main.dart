@@ -90,8 +90,21 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
-  Future<List<Map<String, dynamic>>> loadSignals() => api.fetchSignals(status: 'all', limit: 50);
-  Future<Map<String, dynamic>> loadBacktest() => api.fetchBacktest(symbol: selectedSymbol);
+  Future<List<Map<String, dynamic>>> loadSignals() async {
+    try {
+      return await api.fetchSignals(status: 'all', limit: 50);
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<Map<String, dynamic>> loadBacktest() async {
+    try {
+      return await api.fetchBacktest(symbol: selectedSymbol);
+    } catch (error) {
+      return <String, dynamic>{'unavailable_reason': error.toString()};
+    }
+  }
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
     final results = await Future.wait(supportedSymbols.map((symbol) async {
