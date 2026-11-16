@@ -332,6 +332,8 @@ class _Dashboard extends StatelessWidget {
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 8),
             _LiveMarketCard(snapshot: liveSnapshot),
+            const SizedBox(height: 8),
+            _LiveExecutionCheck(aiSide: side, snapshot: liveSnapshot),
             const SizedBox(height: 16),
             const SizedBox(height: 15),
             Container(padding: const EdgeInsets.all(18),
@@ -537,6 +539,57 @@ class _LiveMarketCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LiveExecutionCheck extends StatelessWidget {
+  const _LiveExecutionCheck({required this.aiSide, required this.snapshot});
+  final String aiSide;
+  final BinanceLiveSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final imbalance = snapshot.orderBookImbalance;
+    final delta = snapshot.buyAggressorVolume - snapshot.sellAggressorVolume;
+    final tradeTime = snapshot.lastTradeAt;
+    final tradeFresh = tradeTime != null &&
+        DateTime.now().difference(tradeTime).inSeconds <= 15;
+    final hasLiveInputs = snapshot.connected && imbalance != null && tradeFresh;
+    final confirmed = hasLiveInputs &&
+        ((aiSide == 'BUY' && delta > 0 && imbalance >= 5) ||
+         (aiSide == 'SELL' && delta < 0 && imbalance <= -5));
+    final waiting = aiSide == 'BUY' || aiSide == 'SELL';
+    final title = !waiting
+        ? 'BELUM ADA SETUP AI'
+        : !hasLiveInputs
+            ? 'MENUNGGU KONFIRMASI LIVE'
+            : confirmed
+                ? 'LIVE FLOW SEARAH DENGAN AI'
+                : 'LIVE FLOW BELUM MENDUKUNG';
+    final color = confirmed ? green : waiting ? blue : muted;
+    final deltaText = delta >= 0 ? '+${delta.toStringAsFixed(3)}' : delta.toStringAsFixed(3);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('LIVE EXECUTION CHECK',
+              style: TextStyle(color: muted, fontSize: 9, letterSpacing: .8)),
+          const SizedBox(height: 7),
+          Row(children: [
+            Icon(Icons.bolt_rounded, color: color, size: 16),
+            const SizedBox(width: 7),
+            Expanded(child: Text(title,
+                style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900))),
+          ]),
+          const SizedBox(height: 6),
+          Text('Taker delta sesi: $deltaText • Book imbalance: ${imbalance == null ? '—' : imbalance.toStringAsFixed(1) + '%'}',
+              style: const TextStyle(color: muted, fontSize: 8)),
+          const SizedBox(height: 4),
+          const Text('Pemeriksaan tambahan dari stream sejak koneksi aktif; tidak mengubah sinyal tersimpan dan bukan instruksi entry otomatis.',
+              style: TextStyle(color: muted, fontSize: 8, height: 1.35)),
+        ]),
       ),
     );
   }
