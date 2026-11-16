@@ -14,7 +14,7 @@ from app.services.market_data.liquidation_storage import (
 def test_liquidation_events_are_deduplicated_and_aggregated_by_minute():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    timestamp = datetime(2026, 11, 15, 10, 0, 30, tzinfo=timezone.utc)
+    timestamp = datetime.now(timezone.utc).replace(microsecond=0)
     events = [
         {
             "event_key": "BTCUSDT:100:1000",
