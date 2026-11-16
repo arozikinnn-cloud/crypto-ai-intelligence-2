@@ -140,11 +140,11 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void startPolling() {
     poller?.cancel();
     poller = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() => notifications = loadNotes());
+      if (mounted) setState(() { notifications = loadNotes(); signals = loadSignals(); signalPerformance = loadSignalPerformance(); });
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (mounted && !refreshing) setState(() => analysis = load());
+      if (mounted && !refreshing) setState(() { analysis = load(); signalPerformance = loadSignalPerformance(); });
     });
   }
 
