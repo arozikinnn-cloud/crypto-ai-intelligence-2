@@ -33,7 +33,11 @@ async def lifespan(_app: FastAPI):
     collector_tasks = []
     stop_event = asyncio.Event()
 
-    if not IS_VERCEL:
+    if IS_VERCEL:
+        # Apply only the idempotent additive PostgreSQL migration; never create
+        # tables or start persistent collectors inside serverless instances.
+        migrate_schema(engine)
+    else:
         Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
 
