@@ -25,8 +25,9 @@ docker run --env-file .env crypto-ai-worker
 
 Required environment:
 
-- `DATABASE_URL`: shared PostgreSQL database URL (recommended for a remote
-  worker and Vercel API).
+- `DATABASE_URL`: shared PostgreSQL database URL. Production worker startup
+  now rejects SQLite so it cannot silently write to an isolated container disk.
+  The URL must point to the same durable database used by the API.
 - `CVD_COLLECTOR_ENABLED=true`
 - `CVD_COLLECTOR_SYMBOLS=BTCUSDT,ETHUSDT` (adjust to available DB capacity)
 - `LIQUIDATION_COLLECTOR_ENABLED=true`
@@ -43,9 +44,11 @@ The current defaults are conservative and collect BTCUSDT only. Never commit
   create a paid resource, or start a production process.
 - A free host may sleep, restart, or impose CPU/network limits. Confirm its
   current free-tier policy before selecting it. No paid plan is authorized.
-- Configure restart-on-failure and inspect worker logs. The collectors
-  reconnect after network interruptions, but database outages can still delay
-  persistence.
+- Configure restart-on-failure and inspect worker logs. The worker exits with
+  an error if a collector task unexpectedly stops, allowing the host supervisor
+  to restart it. The collectors reconnect after network interruptions, but
+  database outages can still delay persistence.
+- The container runs as a non-root user.
 - A WebSocket collector is not itself an AI signal generator. The existing
   scheduled intelligence endpoint remains a separate periodic scan. To claim
   end-to-end 24/7 automated signals, both processes must be deployed, share a
