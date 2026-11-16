@@ -71,9 +71,13 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
         )
         events = db.scalars(select(SignalEvent).order_by(SignalEvent.id)).all()
         assert [event.status for event in events] == ["CLOSED", "ACTIVE"]
-        assert len(db.scalars(select(SignalNotification)).all()) == 2
+        assert len(db.scalars(select(SignalNotification)).all()) == 3
         record_signal(db, "BTCUSDT", "NO TRADE", ["15m", "1h"], [], "2026-11-15T12:00:00+00:00")
-        assert db.scalar(select(SignalEvent).where(SignalEvent.status == "ACTIVE")) is None
+        # A transient NO TRADE reading must not cancel the still-active SELL.
+        active = db.scalar(select(SignalEvent).where(SignalEvent.status == "ACTIVE"))
+        assert active is not None
+        assert active.side == "SELL"
+        assert len(db.scalars(select(SignalNotification)).all()) == 3
     engine.dispose()
 
 
