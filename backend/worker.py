@@ -28,7 +28,9 @@ logger = logging.getLogger("crypto_ai.worker")
 
 def validate_worker_database(settings) -> None:
     """Prevent production workers from silently writing to ephemeral SQLite."""
-    if settings.app_env.lower() == "production" and settings.database_url.strip().lower().startswith("sqlite"):
+    is_production = settings.app_env.lower() == "production"
+    uses_sqlite = settings.database_url.strip().lower().startswith("sqlite")
+    if is_production and uses_sqlite:
         raise RuntimeError(
             "Production worker requires the same durable PostgreSQL DATABASE_URL "
             "used by the API; SQLite would create an isolated local database."
