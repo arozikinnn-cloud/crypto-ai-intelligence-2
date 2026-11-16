@@ -37,7 +37,8 @@ def _event_payload(row: SignalEvent) -> dict:
 
 
 def evaluate_active_signals(
-    db: Session, symbol: str, candle_high: float, candle_low: float
+    db: Session, symbol: str, candle_high: float, candle_low: float,
+    candle_timestamp: str,
 ) -> None:
     """Close tracked signals only when a later candle reaches TP or SL.
 
@@ -55,6 +56,8 @@ def evaluate_active_signals(
         except (TypeError, json.JSONDecodeError):
             continue
         if not isinstance(stored, dict):
+            continue
+        if stored.get("signal_candle_timestamp") == candle_timestamp:
             continue
         plan = stored.get("trade_plan") or {}
         entry = plan.get("entry")
@@ -104,6 +107,7 @@ def record_signal(
     reasons: list[str],
     candle_timestamp: str,
     trade_plan: dict | None = None,
+    signal_candle_timestamp: str | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
     timeframe_set = ",".join(intervals)
@@ -135,6 +139,7 @@ def record_signal(
             reasons_json=json.dumps({
                 "reasons": reasons, "trade_plan": trade_plan or {},
                 "outcome": None, "realized_r": None, "closed_at": None,
+                "signal_candle_timestamp": signal_candle_timestamp,
             }, ensure_ascii=False),
             created_at=now, updated_at=now,
         )
