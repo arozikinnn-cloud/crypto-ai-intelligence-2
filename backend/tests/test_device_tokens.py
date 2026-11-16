@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
-from app.database.session import SessionLocal
+from app.database.base import Base
+from app.database.session import SessionLocal, engine
 from app.main import app
 from app.models.device_token import DeviceToken
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ client = TestClient(app)
 
 
 def test_fcm_device_token_registration_is_idempotent_and_revocable():
+    Base.metadata.create_all(bind=engine)
     token = "fcm-test-token-" + ("x" * 48)
     db = SessionLocal()
     try:
