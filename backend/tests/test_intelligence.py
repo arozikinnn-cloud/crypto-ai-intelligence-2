@@ -15,7 +15,7 @@ def _tf(timeframe, side):
 
 
 def decide(sides, flow="BUY_PRESSURE", tape="BALANCED", structure="bullish"):
-    analyses = [_tf(tf, side) for tf, side in zip(("4h", "1h", "15m"), sides)]
+    analyses = [_tf(tf, side) for tf, side in zip(("5m", "15m", "1h"), sides)]
     return build_intelligence_decision(
         sides,
         {"trend": structure, "event": "none"},
@@ -49,7 +49,7 @@ def test_conflicting_higher_timeframes_never_force_signal():
 
 
 def test_missing_m15_setup_never_forces_signal():
-    result = decide(["BUY", "BUY", "NO TRADE"])
+    result = decide(["BUY", "NO TRADE", "BUY"])
     assert result["side"] == "NO TRADE"
 
 
