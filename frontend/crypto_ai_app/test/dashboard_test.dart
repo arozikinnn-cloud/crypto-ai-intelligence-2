@@ -6,6 +6,7 @@ void main() {
   testWidgets('renders live analysis decision from API payload', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: DashboardShell(
+        enableLiveFeed: false,
         loadNotifications: () async => [],
         loadAnalysis: () async => {
           'symbol': 'BTCUSDT',
