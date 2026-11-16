@@ -1,0 +1,4 @@
+[tool.vercel]
+# Load the existing Vercel adapter; it adds backend/ to sys.path
+# before importing the project's FastAPI app.
+entrypoint = "api.index:app"
