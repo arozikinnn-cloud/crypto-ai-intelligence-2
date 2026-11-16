@@ -149,6 +149,40 @@ def record_signal(
             signal_id=event.id, title=f"{symbol.upper()} {side} signal",
             message="; ".join(reasons), created_at=now,
         ))
+        db.commit()
+        # Push delivery is best-effort: a Firebase outage must never fail analysis.
+        try:
+            from app.services.push_notifications import send_push_to_registered_devices
+
+            plan = trade_plan or {}
+            entry = plan.get("entry")
+            stop = plan.get("stop_loss")
+            target = plan.get("take_profit")
+            rr = plan.get("risk_reward") or plan.get("rr")
+            if rr is None and all(isinstance(v, (int, float)) for v in (entry, stop, target)):
+                risk = abs(float(entry) - float(stop))
+                reward = abs(float(target) - float(entry))
+                rr = reward / risk if risk > 0 else None
+            details = []
+            if entry is not None: details.append(f"Entry: {entry}")
+            if stop is not None: details.append(f"SL: {stop}")
+            if target is not None: details.append(f"TP: {target}")
+            if rr is not None: details.append(f"R:R 1:{float(rr):.2f}")
+            body = " • ".join(details) if details else "; ".join(reasons[:3])
+            send_push_to_registered_devices(
+                db,
+                title=f"{symbol.upper()} {side} signal",
+                body=body or "Sinyal trading baru terdeteksi.",
+                data={
+                    "type": "trade_signal", "signal_id": str(event.id),
+                    "symbol": symbol.upper(), "side": side,
+                    "entry": str(entry or ""), "stop_loss": str(stop or ""),
+                    "take_profit": str(target or ""), "risk_reward": str(rr or ""),
+                },
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("FCM signal push failed; signal remains saved")
     else:
         for row in active_rows:
             row.status = "INVALIDATED"
