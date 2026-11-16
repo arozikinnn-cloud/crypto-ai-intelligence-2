@@ -2,12 +2,18 @@ from sqlalchemy import Engine, inspect, text
 
 
 def migrate_schema(engine: Engine) -> None:
-    """Apply safe, additive compatibility migrations for existing databases.
+    """Apply safe, additive compatibility migrations without recreating tables.
 
-    SQLAlchemy create_all() does not add columns to existing tables. This migration
-    only adds the nullable taker_buy_volume column and never drops or rewrites data.
+    PostgreSQL's IF NOT EXISTS makes this single-column migration safe when
+    several Vercel serverless instances start at the same time.
     """
     with engine.begin() as connection:
+        if connection.dialect.name == "postgresql":
+            connection.execute(text(
+                "ALTER TABLE candles ADD COLUMN IF NOT EXISTS taker_buy_volume FLOAT"
+            ))
+            return
+
         inspector = inspect(connection)
         if not inspector.has_table("candles"):
             return
