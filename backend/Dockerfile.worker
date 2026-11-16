@@ -10,4 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY worker.py ./worker.py
 
+# The worker only needs outbound network access and database connectivity.
+RUN adduser --disabled-password --gecos "" --uid 10001 appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["python", "-m", "worker"]
