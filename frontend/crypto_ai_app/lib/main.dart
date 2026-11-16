@@ -75,6 +75,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   late Future<Map<String, dynamic>> analysis;
   late Future<List<Map<String, dynamic>>> notifications;
   Timer? poller;
+  Timer? analysisPoller;
   bool refreshing = false;
   Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence();
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
@@ -93,6 +94,10 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     poller = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() => notifications = loadNotes());
     });
+    analysisPoller?.cancel();
+    analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (mounted && !refreshing) setState(() => analysis = load());
+    });
   }
 
   @override
@@ -103,6 +108,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
       poller = null;
+      analysisPoller?.cancel();
+      analysisPoller = null;
     }
   }
 
@@ -121,6 +128,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     poller?.cancel();
+    analysisPoller?.cancel();
     api.close();
     super.dispose();
   }
