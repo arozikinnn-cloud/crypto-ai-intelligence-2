@@ -12,6 +12,9 @@ class BinanceLiveSnapshot {
     this.lastTradePrice,
     this.lastTradeQuantity,
     this.tradeSide,
+    this.buyAggressorVolume = 0,
+    this.sellAggressorVolume = 0,
+    this.lastTradeAt,
     this.bidQuantity,
     this.askQuantity,
     this.candleClose,
@@ -26,6 +29,9 @@ class BinanceLiveSnapshot {
   final double? lastTradePrice;
   final double? lastTradeQuantity;
   final String? tradeSide;
+  final double buyAggressorVolume;
+  final double sellAggressorVolume;
+  final DateTime? lastTradeAt;
   final double? bidQuantity;
   final double? askQuantity;
   final double? candleClose;
@@ -47,6 +53,9 @@ class BinanceLiveSnapshot {
     double? lastTradePrice,
     double? lastTradeQuantity,
     String? tradeSide,
+    double? buyAggressorVolume,
+    double? sellAggressorVolume,
+    DateTime? lastTradeAt,
     double? bidQuantity,
     double? askQuantity,
     double? candleClose,
@@ -60,6 +69,9 @@ class BinanceLiveSnapshot {
     lastTradePrice: lastTradePrice ?? this.lastTradePrice,
     lastTradeQuantity: lastTradeQuantity ?? this.lastTradeQuantity,
     tradeSide: tradeSide ?? this.tradeSide,
+    buyAggressorVolume: buyAggressorVolume ?? this.buyAggressorVolume,
+    sellAggressorVolume: sellAggressorVolume ?? this.sellAggressorVolume,
+    lastTradeAt: lastTradeAt ?? this.lastTradeAt,
     bidQuantity: bidQuantity ?? this.bidQuantity,
     askQuantity: askQuantity ?? this.askQuantity,
     candleClose: candleClose ?? this.candleClose,
@@ -149,10 +161,15 @@ class BinanceWebSocketFeed {
           updatedAt: now,
         );
       } else if (type == 'aggTrade') {
+        final quantity = _number(data['q']) ?? 0;
+        final isSellAggressor = data['m'] == true;
         next = next.copyWith(
           lastTradePrice: _number(data['p']),
-          lastTradeQuantity: _number(data['q']),
-          tradeSide: data['m'] == true ? 'SELL' : 'BUY',
+          lastTradeQuantity: quantity,
+          tradeSide: isSellAggressor ? 'SELL' : 'BUY',
+          buyAggressorVolume: next.buyAggressorVolume + (isSellAggressor ? 0 : quantity),
+          sellAggressorVolume: next.sellAggressorVolume + (isSellAggressor ? quantity : 0),
+          lastTradeAt: now,
           updatedAt: now,
         );
         final tradePrice = _number(data['p']);
