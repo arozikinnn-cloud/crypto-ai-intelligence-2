@@ -1097,10 +1097,10 @@ class _SignalCenter extends StatelessWidget {
           }
           if (snap.hasError) {
             return Text('Riwayat sinyal belum tersedia: ${snap.error}',
-              style: const TextStyle(color: muted, fontSize: 9));
+              style: TextStyle(color: muted, fontSize: 9));
           }
           final items = snap.data ?? [];
-          if (items.isEmpty) return const Text('Belum ada riwayat sinyal tersimpan.',
+          if (items.isEmpty) return Text('Belum ada riwayat sinyal tersimpan.',
             style: TextStyle(color: muted, fontSize: 9));
           return Column(children: items.take(12).map((item) {
             final id = item['id'] is int ? item['id'] as int : null;
@@ -1118,13 +1118,13 @@ class _SignalCenter extends StatelessWidget {
                     style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 3),
                   Text('${txt(item['timeframe_set'], '--')} • $status • ${txt(item['outcome'], 'OPEN')}',
-                    style: const TextStyle(color: muted, fontSize: 8)),
+                    style: TextStyle(color: muted, fontSize: 8)),
                   if (item['entry'] != null) Text('Entry ${price(item['entry'])} • SL ${price(item['stop_loss'])} • TP ${price(item['take_profit'])}',
-                    style: const TextStyle(color: muted, fontSize: 8)),
+                    style: TextStyle(color: muted, fontSize: 8)),
                   if (strings(item['reasons']).isNotEmpty)
                     Text(strings(item['reasons']).take(2).join(' '),
                       maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: muted, fontSize: 8)),
+                      style: TextStyle(color: muted, fontSize: 8)),
                 ])),
                 if (status == 'ACTIVE')
                   TextButton(
