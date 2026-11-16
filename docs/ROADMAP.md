@@ -50,3 +50,12 @@ Workstreams can progress in parallel behind stable API contracts; integration is
 - The mobile dashboard polls the in-app signal inbox every 30 seconds only while foregrounded, and refreshes on resume.
 - A green build, device installation test, backend integration test, and Android push test are still required before calling the mobile release complete.
 - No percentage-complete estimate is published until CI and end-to-end acceptance checks are observable.
+
+
+## Current integration notes (2026-11-16)
+
+- Vercel startup migrations now explicitly create the PostgreSQL tables required for candles, market snapshots, CVD buckets/state, observed liquidations, signal events/inbox, and FCM device tokens. This is required because Vercel serverless startup intentionally skips SQLAlchemy `create_all()`.
+- The scheduled `/analysis/intelligence` scan persists the aggTrades minute buckets it observes, allowing the CVD history to grow on serverless deployments. This remains sampled/observed history and can contain gaps; it is not a continuous WebSocket collector.
+- Flutter FCM token registration is now resilient to temporary network/backend failures and retries when the app returns to the foreground. Device registration is idempotent and covered by backend tests.
+- Backend lint and tests pass on the current main commit. Android Dart formatting, static analysis, and Flutter tests pass; Android APK build is still being verified because Maven Central returned HTTP 429 during dependency downloads.
+- Firebase push delivery is still not accepted as complete until the latest backend is deployed, a real Android FCM token is registered, a test push is received, and the app-closed behavior is confirmed on a physical device.
