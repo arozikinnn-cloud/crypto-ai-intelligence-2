@@ -7,6 +7,7 @@ import 'services/analysis_api.dart';
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
 const green = Color(0xFF25D6A2), red = Color(0xFFFF647C), blue = Color(0xFF65A9FF);
+const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
 
 void main() => runApp(const CryptoAIApp());
 
@@ -77,7 +78,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
-  Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence();
+  String selectedSymbol = 'BTCUSDT';
+  Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence(symbol: selectedSymbol);
+
+  Future<void> changeSymbol(String? symbol) async {
+    if (symbol == null || symbol == selectedSymbol || refreshing) return;
+    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); });
+    try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
+  }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
 
   @override
@@ -144,6 +152,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.hasError) return _ErrorView(message: snap.error.toString(), retry: refresh);
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
+          selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           refresh: refresh, markRead: markRead);
       },
     )),
@@ -152,10 +161,13 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
+    required this.selectedSymbol, required this.onSymbolChanged,
     required this.refresh, required this.markRead});
   final Map<String, dynamic> data;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
+  final String selectedSymbol;
+  final ValueChanged<String?> onSymbolChanged;
   final Future<void> Function() refresh;
   final Future<void> Function(int) markRead;
 
@@ -204,7 +216,14 @@ class _Dashboard extends StatelessWidget {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('MARKET OVERVIEW', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.5)),
                 const SizedBox(height: 4),
-                Text(txt(data['symbol'], 'BTCUSDT'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                DropdownButton<String>(
+                  value: supportedSymbols.contains(selectedSymbol) ? selectedSymbol : 'BTCUSDT',
+                  isDense: true, underline: const SizedBox.shrink(),
+                  dropdownColor: panel, iconEnabledColor: green,
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white),
+                  items: supportedSymbols.map((symbol) => DropdownMenuItem(value: symbol, child: Text(symbol))).toList(),
+                  onChanged: refreshing ? null : onSymbolChanged,
+                ),
                 const Text('Spot market • Binance public data', style: TextStyle(color: muted, fontSize: 10)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
