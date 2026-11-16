@@ -935,33 +935,40 @@ class _SignalPerformance extends StatelessWidget {
         future: future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return const LinearProgressIndicator(minHeight: 2);
+            return LinearProgressIndicator(minHeight: 2);
           }
-          final data = snap.data ?? {};
+          final data = snap.data ?? <String, dynamic>{};
           if (data.isEmpty || data['unavailable_reason'] != null) {
-            return const Text('Statistik sinyal belum tersedia.',
-              style: TextStyle(color: muted, fontSize: 9));
+            return Text(
+              'Statistik sinyal belum tersedia.',
+              style: TextStyle(color: muted, fontSize: 9),
+            );
           }
           final wr = data['win_rate_pct'];
-          final winRateLabel = wr == null ? 'N/A' : '${txt(wr)}%';
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              _Metric(label: 'WIN RATE LIVE', value: winRateLabel),
-              _Metric(label: 'TP / WIN', value: txt(data['wins'], '0')),
-              _Metric(label: 'SL / LOSS', value: txt(data['losses'], '0')),
-              _Metric(label: 'ACTIVE', value: txt(data['active'], '0')),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              _Metric(label: 'TOTAL SIGNAL', value: txt(data['total_signals'], '0')),
-              _Metric(label: 'CLOSED', value: txt(data['completed'], '0')),
-              _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
-              _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
-            ]),
-            const SizedBox(height: 7),
-            Text(txt(data['method_note'], ''),
-              style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
-          ]);
+          final winRateLabel = wr == null ? 'N/A' : '${wr}%';
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                _Metric(label: 'WIN RATE LIVE', value: winRateLabel),
+                _Metric(label: 'TP / WIN', value: txt(data['wins'], '0')),
+                _Metric(label: 'SL / LOSS', value: txt(data['losses'], '0')),
+                _Metric(label: 'ACTIVE', value: txt(data['active'], '0')),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                _Metric(label: 'TOTAL SIGNAL', value: txt(data['total_signals'], '0')),
+                _Metric(label: 'CLOSED', value: txt(data['completed'], '0')),
+                _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
+                _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
+              ]),
+              const SizedBox(height: 7),
+              Text(
+                txt(data['method_note'], ''),
+                style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
+              ),
+            ],
+          );
         },
       ),
     ),
