@@ -562,7 +562,7 @@ class _CandlestickChart extends StatelessWidget {
                 underline: const SizedBox.shrink(),
                 dropdownColor: panel,
                 style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                items: const ['5m', '15m', '1h', '4h'].map((v) => DropdownMenuItem(value: v, child: Text(v.toUpperCase()))).toList(),
+                items: ['5m', '15m', '1h', '4h'].map((v) => DropdownMenuItem(value: v, child: Text(v.toUpperCase()))).toList(),
                 onChanged: (value) { if (value != null) onIntervalChanged(value); },
               ),
               const SizedBox(width: 8),
