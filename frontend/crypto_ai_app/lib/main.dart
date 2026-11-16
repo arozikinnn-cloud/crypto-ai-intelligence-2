@@ -1020,6 +1020,10 @@ class _SignalCenter extends StatelessWidget {
                 final symbol = item['symbol'];
                 final status = item['status'];
                 final outcome = item['outcome'];
+                final reasons = strings(item['reasons']);
+                final lifecycleReasons = reasons.where((reason) =>
+                    reason.startsWith('Alasan invalidasi:') ||
+                    reason.startsWith('Alasan penutupan:')).toList();
                 final entry = item['entry'];
                 final stop = item['stop_loss'];
                 final target = item['take_profit'];
@@ -1032,6 +1036,10 @@ class _SignalCenter extends StatelessWidget {
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
                       Text('$status • $outcome',
                           style: TextStyle(color: muted, fontSize: 8)),
+                      if (lifecycleReasons.isNotEmpty)
+                        Text(lifecycleReasons.last,
+                            maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: blue, fontSize: 8)),
                       if (entry != null)
                         Text('Entry $entry • SL $stop • TP $target',
                             style: TextStyle(color: muted, fontSize: 8)),
