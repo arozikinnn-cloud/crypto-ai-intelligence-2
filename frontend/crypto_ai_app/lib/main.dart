@@ -507,8 +507,18 @@ class _LiveMarketCard extends StatelessWidget {
               Icon(Icons.circle, size: 8,
                   color: snapshot.connected ? green : red),
               const SizedBox(width: 6),
-              Text(snapshot.connected ? 'BINANCE WEBSOCKET LIVE' : 'WEBSOCKET RECONNECTING',
-                  style: TextStyle(color: snapshot.connected ? green : red,
+              Text(
+                  snapshot.connected
+                      ? 'BINANCE WEBSOCKET LIVE'
+                      : snapshot.connectionMessage.startsWith('Disconnected while app is inactive')
+                          ? 'WEBSOCKET PAUSED'
+                          : 'WEBSOCKET RECONNECTING',
+                  style: TextStyle(
+                      color: snapshot.connected
+                          ? green
+                          : snapshot.connectionMessage.startsWith('Disconnected while app is inactive')
+                              ? muted
+                              : red,
                       fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .7)),
               const Spacer(),
               Text('PUBLIC STREAM • NO API KEY',
