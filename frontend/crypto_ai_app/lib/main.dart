@@ -86,7 +86,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
   Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence(symbol: selectedSymbol);
-  Future<List<Map<String, dynamic>>> loadCandles() => api.fetchCandles(symbol: selectedSymbol, interval: selectedCandleInterval, limit: 80);
+  Future<List<Map<String, dynamic>>> loadCandles() async {
+    try {
+      return await api.fetchCandles(
+        symbol: selectedSymbol,
+        interval: selectedCandleInterval,
+        limit: 80,
+      );
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
 
   Future<void> changeCandleInterval(String interval) async {
     if (interval == selectedCandleInterval) return;
