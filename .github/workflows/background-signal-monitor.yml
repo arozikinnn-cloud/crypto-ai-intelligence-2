@@ -12,10 +12,14 @@ concurrency:
 
 jobs:
   scan-market:
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Scan BTCUSDT and persist any qualified signal
+      - name: Scan ${{ matrix.symbol }} and persist any qualified signal
         env:
           API_URL: https://crypto-ai-intelligence-2-backend.vercel.app/api/v1/analysis/intelligence
         run: |
