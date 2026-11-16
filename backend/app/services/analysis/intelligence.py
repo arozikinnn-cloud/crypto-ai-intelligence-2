@@ -14,15 +14,15 @@ def build_intelligence_decision(
 
     analyses = timeframe_analyses or []
     by_tf = {str(item.get("timeframe", "")).lower(): item for item in analyses}
-    h4 = by_tf.get("4h", {})
     h1 = by_tf.get("1h", {})
     m15 = by_tf.get("15m", {})
-    h4_side, h1_side, setup_side = h4.get("side"), h1.get("side"), m15.get("side")
+    m5 = by_tf.get("5m", {})
+    h1_side, setup_side, m5_side = h1.get("side"), m15.get("side"), m5.get("side")
 
-    # Day-trading hierarchy: H4/H1 establish directional bias, M15 supplies
-    # the setup, and M5/aggTrades provide a short-term execution confirmation.
-    htf_buy = h4_side == "BUY" and h1_side == "BUY"
-    htf_sell = h4_side == "SELL" and h1_side == "SELL"
+    # Day-trading hierarchy: H1 establishes bias, M15 supplies the setup,
+    # and M5 plus order-flow/aggTrades confirm execution.
+    htf_buy = h1_side == "BUY"
+    htf_sell = h1_side == "SELL"
     flow_buy = order_flow.get("bias") == "BUY_PRESSURE"
     flow_sell = order_flow.get("bias") == "SELL_PRESSURE"
     tape_buy = (trade_order_flow or {}).get("bias") == "BUY_PRESSURE"
@@ -39,37 +39,37 @@ def build_intelligence_decision(
         or structure.get("trend") == "bearish"
     )
     bullish_checks = {
-        "h4_bullish_bias": h4_side == "BUY",
         "h1_bullish_bias": h1_side == "BUY",
         "m15_buy_setup": setup_side == "BUY",
+        "m5_buy_confirmation": m5_side == "BUY",
         "m5_or_tape_buy_confirmation": buy_trigger,
         "bullish_market_structure": bullish_structure,
     }
     bearish_checks = {
-        "h4_bearish_bias": h4_side == "SELL",
         "h1_bearish_bias": h1_side == "SELL",
         "m15_sell_setup": setup_side == "SELL",
+        "m5_sell_confirmation": m5_side == "SELL",
         "m5_or_tape_sell_confirmation": sell_trigger,
         "bearish_market_structure": bearish_structure,
     }
 
-    if htf_buy and setup_side == "BUY" and buy_trigger:
+    if htf_buy and setup_side == "BUY" and m5_side == "BUY" and buy_trigger:
         side = "BUY"
         score = sum(bullish_checks.values())
         reasons = [
-            "Bias H4 dan H1 searah bullish.",
+            "Bias H1 bullish.",
             "M15 membentuk setup BUY berdasarkan indikator teknikal.",
-            "Order flow M5 atau transaksi aggTrades mengonfirmasi tekanan beli.",
+            "M5 dan order flow/aggTrades mengonfirmasi tekanan beli.",
         ]
         if bullish_structure:
             reasons.append("Struktur H1 mendukung skenario bullish.")
-    elif htf_sell and setup_side == "SELL" and sell_trigger:
+    elif htf_sell and setup_side == "SELL" and m5_side == "SELL" and sell_trigger:
         side = "SELL"
         score = sum(bearish_checks.values())
         reasons = [
-            "Bias H4 dan H1 searah bearish.",
+            "Bias H1 bearish.",
             "M15 membentuk setup SELL berdasarkan indikator teknikal.",
-            "Order flow M5 atau transaksi aggTrades mengonfirmasi tekanan jual.",
+            "M5 dan order flow/aggTrades mengonfirmasi tekanan jual.",
         ]
         if bearish_structure:
             reasons.append("Struktur H1 mendukung skenario bearish.")
@@ -77,8 +77,8 @@ def build_intelligence_decision(
         side = "NO TRADE"
         score = max(sum(bullish_checks.values()), sum(bearish_checks.values()))
         reasons = [
-            "Syarat Day Trading belum lengkap: H4 dan H1 harus searah, "
-            "M15 harus memberi setup, serta M5/aggTrades harus mengonfirmasi.",
+            "Syarat Day Trading belum lengkap: H1 harus memberi bias, M15 setup, "
+            "serta M5 dan order flow/aggTrades harus mengonfirmasi.",
             "Sistem tidak memaksakan entry ketika konfirmasi belum terpenuhi.",
         ]
 
