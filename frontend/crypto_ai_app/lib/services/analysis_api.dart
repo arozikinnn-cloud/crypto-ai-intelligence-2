@@ -57,6 +57,29 @@ class AnalysisApi {
     return decoded;
   }
 
+  Future<List<Map<String, dynamic>>> fetchSignals({String status = 'all', int limit = 50}) async {
+    final uri = _endpoint('signals', {'status': status, 'limit': limit.toString()});
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Signal API error ${response.statusCode}: ${_errorMessage(response.body)}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) throw const FormatException('Invalid signal response format.');
+    return decoded.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+
+  Future<void> closeSignal(int signalId) async {
+    final uri = _endpoint('signals/$signalId/close');
+    final response = await _client
+        .post(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Unable to close signal: ${response.statusCode}');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchNotifications({
     bool unreadOnly = false,
   }) async {
