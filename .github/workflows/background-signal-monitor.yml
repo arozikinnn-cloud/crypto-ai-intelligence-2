@@ -1,0 +1,49 @@
+name: Background AI Signal Monitor
+
+on:
+  schedule:
+    # GitHub Actions cron uses UTC. Runs independently of the Android app.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: background-ai-signal-monitor
+  cancel-in-progress: false
+
+jobs:
+  scan-market:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Scan BTCUSDT and persist any qualified signal
+        env:
+          API_URL: https://crypto-ai-intelligence-2-backend.vercel.app/api/v1/analysis/intelligence
+        run: |
+          set -euo pipefail
+          response="$(mktemp)"
+          status="$(curl --silent --show-error --location \
+            --connect-timeout 10 --max-time 90 \
+            --output "$response" --write-out "%{http_code}" \
+            "$API_URL?symbol=BTCUSDT&intervals=4h%2C1h%2C15m&limit=200&order_flow_interval=5m")"
+          if [ "$status" != "200" ]; then
+            echo "Market scan failed with HTTP $status"
+            cat "$response"
+            exit 1
+          fi
+          python - "$response" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              data = json.load(stream)
+          print("Symbol:", data.get("symbol"))
+          print("Decision:", data.get("side"))
+          print("Strategy:", data.get("strategy_mode"))
+          print("Score:", data.get("confluence_score"), "/", data.get("max_confluence"))
+          print("Timestamp:", data.get("timestamp"))
+          plan = data.get("trade_plan") or {}
+          if plan:
+              print("Entry:", plan.get("entry"))
+              print("Stop loss:", plan.get("stop_loss"))
+              print("Take profit:", plan.get("take_profit"))
+          print("The API records qualified BUY/SELL signals and notifications in the database.")
+          PY
+          rm -f "$response"
