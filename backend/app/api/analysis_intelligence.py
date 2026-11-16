@@ -183,7 +183,7 @@ async def combined_intelligence(
         decision["reasons"],
         str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
         decision.get("trade_plan"),
-        str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
+        str(getattr(candle_sets[selected.index("15m")][-1], "close_time", candle_sets[selected.index("15m")][-1])) if "15m" in selected else str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
     )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
