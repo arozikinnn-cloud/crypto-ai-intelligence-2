@@ -57,6 +57,26 @@ async def _fetch_aggtrades_or_unavailable(client, symbol: str) -> dict:
         }
 
 
+async def _fetch_derivatives_or_unavailable(client, symbol: str, period: str) -> dict:
+    try:
+        return await client.fetch_derivatives_context(symbol, period)
+    except MarketDataError:
+        return {
+            "symbol": symbol.upper(),
+            "source_market": "unavailable",
+            "open_interest_unit": "unknown",
+            "open_interest": 0.0,
+            "open_interest_change_percent": None,
+            "open_interest_period": period,
+            "funding_rate": 0.0,
+            "funding_time": 0,
+            "interpretation": (
+                "Data open interest/funding tidak tersedia dari penyedia derivatif. "
+                "Nilai nol di sini adalah placeholder, bukan pembacaan pasar."
+            ),
+        }
+
+
 async def _fetch_order_book_or_unavailable(symbol: str) -> dict:
     try:
         snapshot = await BinanceOrderBookMarketData().fetch_order_book(symbol, 100)
@@ -106,7 +126,7 @@ async def combined_intelligence(
             market.fetch_klines(
                 symbol, order_flow_interval, min(limit, 100), closed_only=True
             ),
-            futures.fetch_derivatives_context(symbol, derivatives_period),
+            _fetch_derivatives_or_unavailable(futures, symbol, derivatives_period),
             _fetch_aggtrades_or_unavailable(aggtrades, symbol),
             _fetch_order_book_or_unavailable(symbol),
         ]
