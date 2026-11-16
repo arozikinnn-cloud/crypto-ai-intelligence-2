@@ -220,6 +220,7 @@ class _Dashboard extends StatelessWidget {
   final Future<void> Function() refresh;
   final Future<void> Function(int) markRead;
   final Future<void> Function(int) closeSignal;
+  final Future<Map<String, dynamic>> signalPerformance;
 
   @override
   Widget build(BuildContext context) {
