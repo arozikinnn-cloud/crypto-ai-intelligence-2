@@ -91,11 +91,16 @@ def evaluate_active_signals(
         stored["realized_r"] = realized_r
         stored["closed_at"] = now.isoformat()
         stored["close_candle_timestamp"] = candle_timestamp
-        stored["close_reason"] = (
-            "TP dan SL tersentuh dalam candle yang sama; urutan tidak dapat dipastikan."
-            if outcome == "AMBIGUOUS"
-            else f"Harga candle berikutnya menyentuh {'stop-loss' if outcome == 'SL' else 'take-profit'}."
-        )
+        if outcome == "AMBIGUOUS":
+            stored["close_reason"] = (
+                "TP dan SL tersentuh dalam candle yang sama; "
+                "urutan tidak dapat dipastikan."
+            )
+        else:
+            level = "stop-loss" if outcome == "SL" else "take-profit"
+            stored["close_reason"] = (
+                f"Harga candle berikutnya menyentuh {level}."
+            )
         row.reasons_json = json.dumps(stored, ensure_ascii=False)
         row.status = "CLOSED"
         row.updated_at = now
