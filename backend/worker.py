@@ -71,7 +71,7 @@ def configured_collectors(settings):
 
 
 async def monitor_active_signals_once(market=None, session_factory=SessionLocal) -> int:
-    """Evaluate active trade plans using the latest closed 15m Binance candle."""
+    """Evaluate active trade plans using the latest closed 1m Binance candle."""
     market = market or BinanceMarketData()
     db = session_factory()
     try:
@@ -87,7 +87,7 @@ async def monitor_active_signals_once(market=None, session_factory=SessionLocal)
     for symbol in symbols:
         try:
             candles = await market.fetch_klines(
-                symbol, "15m", limit=2, closed_only=True
+                symbol, "1m", limit=2, closed_only=True
             )
             if not candles:
                 continue
