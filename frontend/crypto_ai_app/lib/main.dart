@@ -1021,10 +1021,16 @@ class _SignalPerformance extends StatelessWidget {
                 style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
               ),
               const SizedBox(height: 5),
-              Text(
-                'LEGACY: ${txt(data['legacy_total_signals'], '0')} sinyal • ${txt(data['legacy_completed'], '0')} selesai • ${txt(data['legacy_wins'], '0')} TP • ${txt(data['legacy_losses'], '0')} SL. Tidak dicampur ke statistik strategi terbaru.',
-                style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
-              ),
+              if (data.containsKey('legacy_total_signals'))
+                Text(
+                  'LEGACY: ${txt(data['legacy_total_signals'], '0')} sinyal • ${txt(data['legacy_completed'], '0')} selesai • ${txt(data['legacy_wins'], '0')} TP • ${txt(data['legacy_losses'], '0')} SL. Tidak dicampur ke statistik strategi terbaru.',
+                  style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
+                )
+              else
+                const Text(
+                  'PERHATIAN: statistik belum dipisahkan per versi strategi; riwayat lama masih ikut dihitung.',
+                  style: TextStyle(color: muted, fontSize: 8, height: 1.4),
+                ),
             ],
           );
         },
