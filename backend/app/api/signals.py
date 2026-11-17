@@ -162,37 +162,18 @@ def record_signal(
 ) -> None:
     now = datetime.now(timezone.utc)
     timeframe_set = ",".join(intervals)
+    # One active trade thesis per symbol: do not create another BUY or SELL
+    # while any signal for this symbol is still awaiting its TP/SL outcome.
+    # This lock is symbol-wide, so changing side or requested timeframes cannot
+    # bypass it. The existing signal is never invalidated by a fresh analysis.
     active_rows = list(db.scalars(select(SignalEvent).where(
         SignalEvent.symbol == symbol.upper(),
-        SignalEvent.timeframe_set == timeframe_set,
         SignalEvent.status == "ACTIVE",
     )))
+    if side in {"BUY", "SELL"} and active_rows:
+        db.commit()
+        return
     if side in {"BUY", "SELL"}:
-        same_side = next((row for row in active_rows if row.side == side), None)
-        for row in active_rows:
-            if row.side != side:
-                try:
-                    previous = json.loads(row.reasons_json)
-                except (TypeError, json.JSONDecodeError):
-                    previous = {"reasons": []}
-                previous["invalidation_reason"] = (
-                    f"Invalidated by a newly confirmed {side} signal. "
-                    + "; ".join(reasons)
-                )
-                previous["invalidated_at"] = now.isoformat()
-                row.reasons_json = json.dumps(previous, ensure_ascii=False)
-                row.status = "INVALIDATED"
-                row.updated_at = now
-                db.add(SignalNotification(
-                    signal_id=row.id,
-                    title=f"{row.symbol} {row.side} invalidated",
-                    message=previous["invalidation_reason"],
-                    created_at=now,
-                ))
-        if same_side:
-            same_side.updated_at = now
-            db.commit()
-            return
         dedupe_key = f"{symbol.upper()}:{timeframe_set}:{side}:{candle_timestamp}"
         previous_event = db.scalar(
             select(SignalEvent).where(SignalEvent.dedupe_key == dedupe_key)
@@ -255,8 +236,8 @@ def record_signal(
             import logging
             logging.getLogger(__name__).exception("FCM signal push failed; signal remains saved")
     else:
-        # NO TRADE means no new setup, not proof that an existing thesis failed.
-        # Keep active signals until a later TP/SL touch or qualified opposite signal.
+        # NO TRADE means no new setup; it never changes an existing active signal.
+        # The symbol remains locked until its tracked TP/SL outcome is recorded.
         pass
     db.commit()
 
