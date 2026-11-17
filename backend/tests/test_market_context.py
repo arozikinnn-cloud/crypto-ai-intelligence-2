@@ -15,6 +15,8 @@ def test_cvd_history_summary_computes_pressure_from_observed_buckets():
     assert result["bias"] == "BUY_PRESSURE"
     assert result["bucket_count"] == 2
     assert result["net_delta"] == 12.0
+    assert len(result["points"]) == 2
+    assert result["cvd_scope"] == "persisted_observed_history"
 
 
 def test_empty_cvd_history_is_unavailable_not_neutral():
