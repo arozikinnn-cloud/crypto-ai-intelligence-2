@@ -88,7 +88,7 @@ class AnalysisApi {
     String interval = '1h',
     int limit = 500,
   }) async {
-    final uri = _endpoint('analysis/intelligence/backtest', {
+    final uri = _endpoint('analysis/backtest', {
       'symbol': symbol,
       'interval': interval,
       'limit': limit.toString(),
