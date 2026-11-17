@@ -97,7 +97,7 @@ async def combined_intelligence(
     symbol: str = Query(
         default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
     ),
-    intervals: str = Query(default="5m,15m,1h"),
+    intervals: str = Query(default="15m,30m"),
     limit: int = Query(default=200, ge=60, le=500),
     order_flow_interval: str = Query(default="5m"),
     derivatives_period: str = Query(default="5m"),
@@ -137,7 +137,7 @@ async def combined_intelligence(
         aggtrades_data = results[len(selected) + 2]
         order_book_data = results[len(selected) + 3]
         analyses = [analyze_market(items) for items in candle_sets]
-        structure_index = selected.index("1h") if "1h" in selected else 0
+        structure_index = selected.index("30m") if "30m" in selected else 0
         structure_data = analyze_structure(candle_sets[structure_index])
         flow_data = analyze_order_flow(
             flow_candles, lookback=min(100, len(flow_candles))
