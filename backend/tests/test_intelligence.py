@@ -146,3 +146,5 @@ def test_trade_plan_rejects_stop_loss_on_wrong_side():
     )
     assert result["side"] == "NO TRADE"
     assert result["trade_plan"] is None
+
+# Regression coverage for the 1:1.5 signal plan and invalidation guards.
