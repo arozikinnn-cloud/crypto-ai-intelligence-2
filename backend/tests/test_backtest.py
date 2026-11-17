@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from app.services.market_data.base import NormalizedCandle
 from app.services.analysis.backtest import run_strategy_backtest
+from app.schemas.backtest import BacktestResponse
 
 
 def make_series(count: int = 180) -> list[NormalizedCandle]:
@@ -34,6 +35,10 @@ def test_backtest_returns_train_and_out_of_sample_metrics():
     assert "Ichimoku" in result["strategy"]
     assert "not a full H1/M15/M5" in result["warning"]
     assert "overall" in result
+    parsed = BacktestResponse(**result)
+    assert parsed.quality_checks == result["quality_checks"]
+    assert parsed.out_of_sample.expectancy_pct == result["out_of_sample"]["expectancy_pct"]
+    assert parsed.signal_count == result["signal_count"]
 
 
 def test_backtest_rejects_too_little_history():
