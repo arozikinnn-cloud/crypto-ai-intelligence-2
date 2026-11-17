@@ -2,7 +2,9 @@ from math import isfinite
 
 
 def summarize_cvd_history(history: dict, lookback: int = 15) -> dict:
-    points = history.get("points", [])[-lookback:]
+    observed_points = history.get("points", [])
+    points = observed_points[-lookback:]
+    display_points = observed_points[-60:]
     if not points:
         return {
             "available": False,
@@ -31,7 +33,7 @@ def summarize_cvd_history(history: dict, lookback: int = 15) -> dict:
         "net_delta": delta,
         "delta_percent": percent,
         "cvd_scope": history.get("cvd_scope", "persisted_observed_history"),
-        "points": points,
+        "points": display_points,
         "note": (
             "Bias dihitung dari bucket CVD yang tersimpan; kualitasnya bergantung "
             "pada kelengkapan collector dan dapat memiliki gap."
