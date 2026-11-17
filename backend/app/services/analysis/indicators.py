@@ -106,10 +106,19 @@ def calculate_indicators(candles: list[NormalizedCandle]) -> dict:
     ema50_values = _ema(closes, 50)
     ema12_values = _ema(closes, 12)
     ema26_values = _ema(closes, 26)
-    macd_values = [a - b for a, b in zip(ema12_values[-len(ema26_values):], ema26_values)] if ema12_values and ema26_values else []
+    macd_values = []
+    if ema12_values and ema26_values:
+        macd_values = [
+            fast - slow
+            for fast, slow in zip(ema12_values[-len(ema26_values):], ema26_values)
+        ]
     macd_signal_values = _ema(macd_values, 9) if len(macd_values) >= 9 else []
     return {
-        "market_structure": "bullish" if ma40 is not None and price > ma40 else "bearish" if ma40 is not None and price < ma40 else "unavailable",
+        "market_structure": (
+            "bullish" if ma40 is not None and price > ma40
+            else "bearish" if ma40 is not None and price < ma40
+            else "unavailable"
+        ),
         "last_price": price,
         "ma40": ma40,
         "ema20": ema20_values[-1] if ema20_values else None,
@@ -139,8 +148,13 @@ def calculate_indicators(candles: list[NormalizedCandle]) -> dict:
 
 def validate_analysis_input(candles: list[NormalizedCandle]) -> None:
     if len(candles) < 80:
-        raise ValueError("At least 80 closed candles are required for RSI16, MA40 and Ichimoku calculations.")
+        raise ValueError(
+            "At least 80 closed candles are required for RSI16, MA40 and Ichimoku calculations."
+        )
     for candle in candles:
-        values = (candle.open, candle.high, candle.low, candle.close, candle.volume, candle.quote_volume)
+        values = (
+            candle.open, candle.high, candle.low, candle.close,
+            candle.volume, candle.quote_volume,
+        )
         if not all(isfinite(value) for value in values):
             raise ValueError("Candle data contains a non-finite value.")
