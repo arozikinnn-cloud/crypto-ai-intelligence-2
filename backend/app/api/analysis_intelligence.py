@@ -97,17 +97,17 @@ async def combined_intelligence(
     symbol: str = Query(
         default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
     ),
-    intervals: str = Query(default="15m,30m"),
+    intervals: str = Query(default="1h,15m,5m"),
     limit: int = Query(default=200, ge=60, le=500),
     order_flow_interval: str = Query(default="5m"),
     derivatives_period: str = Query(default="5m"),
     db: Session = Depends(get_db),
 ) -> IntelligenceResponse:
     selected = [item.strip() for item in intervals.split(",") if item.strip()]
-    if len(selected) != 2 or set(selected) != {"15m", "30m"}:
+    if len(selected) != 3 or set(selected) != {"1h", "15m", "5m"}:
         raise HTTPException(
             status_code=422,
-            detail="The strategy uses exactly 15m and 30m analysis timeframes.",
+            detail="The strategy requires exactly 1h, 15m and 5m analysis timeframes.",
         )
     if any(item not in BinanceMarketData.ALLOWED_INTERVALS for item in selected):
         raise HTTPException(status_code=422, detail="One or more intervals are unsupported.")
@@ -137,7 +137,7 @@ async def combined_intelligence(
         aggtrades_data = results[len(selected) + 2]
         order_book_data = results[len(selected) + 3]
         analyses = [analyze_market(items) for items in candle_sets]
-        structure_index = selected.index("30m") if "30m" in selected else 0
+        structure_index = selected.index("1h")
         structure_data = analyze_structure(candle_sets[structure_index])
         flow_data = analyze_order_flow(
             flow_candles, lookback=min(100, len(flow_candles))
@@ -174,7 +174,7 @@ async def combined_intelligence(
 
     timestamp = datetime.now(timezone.utc)
     # Track TP/SL on closed 1m candles, independently of the analysis
-    # timeframes. Fall back to the selected 15m candle if Binance 1m data
+    # timeframes. Fall back to the selected 5m candle if Binance 1m data
     # is temporarily unavailable.
     tracking_candles = []
     try:
@@ -185,8 +185,8 @@ async def combined_intelligence(
         pass
     if tracking_candles:
         tracking_candle = tracking_candles[-1]
-    elif "15m" in selected and candle_sets[selected.index("15m")]:
-        tracking_candle = candle_sets[selected.index("15m")][-1]
+    elif "5m" in selected and candle_sets[selected.index("5m")]:
+        tracking_candle = candle_sets[selected.index("5m")][-1]
     else:
         tracking_candle = None
     if tracking_candle is not None:
@@ -217,7 +217,7 @@ async def combined_intelligence(
     )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
-        timeframe="1h" if "1h" in selected else selected[0],
+        timeframe="1h",
         timestamp=timestamp,
         **structure_data,
     )
