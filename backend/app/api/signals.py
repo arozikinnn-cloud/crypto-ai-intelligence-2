@@ -53,6 +53,8 @@ def _event_payload(row: SignalEvent) -> dict:
             "updated_at": row.updated_at, "entry": plan.get("entry"),
             "stop_loss": plan.get("stop_loss"),
             "take_profit": plan.get("take_profit"),
+            "strategy_mode": stored.get("strategy_mode", "LEGACY_UNVERSIONED"),
+            "ambiguous_candle": bool(stored.get("ambiguous_candle")),
             "outcome": outcome, "realized_r": stored.get("realized_r"),
             "closed_at": stored.get("closed_at"),
         }
@@ -180,6 +182,7 @@ def record_signal(
     candle_timestamp: str,
     trade_plan: dict | None = None,
     signal_candle_timestamp: str | None = None,
+    strategy_mode: str | None = None,
 ) -> None:
     if side not in {"BUY", "SELL"} or not _valid_trade_plan(side, trade_plan):
         return
@@ -211,6 +214,7 @@ def record_signal(
                 "reasons": reasons, "trade_plan": trade_plan or {},
                 "outcome": None, "realized_r": None, "closed_at": None,
                 "signal_candle_timestamp": signal_candle_timestamp,
+                "strategy_mode": strategy_mode or "LEGACY_UNVERSIONED",
             }, ensure_ascii=False),
             created_at=now, updated_at=now,
         )
@@ -283,32 +287,53 @@ def list_signals(
 
 @router.get("/performance")
 def signal_performance(db: Session = Depends(get_db)):
-    rows = list(db.scalars(select(SignalEvent)))
-    completed = []
-    for row in rows:
-        payload = _event_payload(row)
-        if payload.get("outcome") in {"TP", "SL"}:
-            completed.append(payload)
-    wins = sum(item["outcome"] == "TP" for item in completed)
-    losses = sum(item["outcome"] == "SL" for item in completed)
-    total_r = sum(float(item.get("realized_r") or 0) for item in completed)
+    current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+    payloads = [_event_payload(row) for row in db.scalars(select(SignalEvent))]
+    current = [
+        item for item in payloads
+        if item.get("strategy_mode") == current_mode
+    ]
+    legacy = [
+        item for item in payloads
+        if item.get("strategy_mode") != current_mode
+    ]
+
+    def summarize(items: list[dict]) -> dict:
+        completed = [
+            item for item in items
+            if item.get("outcome") in {"TP", "SL"}
+        ]
+        wins = sum(item["outcome"] == "TP" for item in completed)
+        losses = sum(item["outcome"] == "SL" for item in completed)
+        total_r = sum(float(item.get("realized_r") or 0) for item in completed)
+        return {
+            "total_signals": len(items),
+            "active": sum(item.get("status") == "ACTIVE" for item in items),
+            "invalidated": sum(item.get("status") == "INVALIDATED" for item in items),
+            "completed": len(completed),
+            "wins": wins,
+            "losses": losses,
+            "ambiguous": sum(bool(item.get("ambiguous_candle")) for item in items),
+            "win_rate_pct": (wins / len(completed) * 100) if completed else None,
+            "total_realized_r": round(total_r, 4),
+        }
+
+    current_stats = summarize(current)
+    legacy_stats = summarize(legacy)
     return {
-        "total_signals": len(rows),
-        "active": sum(row.status == "ACTIVE" for row in rows),
-        "invalidated": sum(row.status == "INVALIDATED" for row in rows),
-        "completed": len(completed),
-        "wins": wins,
-        "losses": losses,
-        "ambiguous": sum(
-            bool(stored.get("ambiguous_candle"))
-            for row in rows
-            if isinstance((stored := json.loads(row.reasons_json)), dict)
-        ),
-        "win_rate_pct": (wins / len(completed) * 100) if completed else None,
-        "total_realized_r": round(total_r, 4),
+        **current_stats,
+        "current_strategy_mode": current_mode,
+        "legacy_total_signals": legacy_stats["total_signals"],
+        "legacy_completed": legacy_stats["completed"],
+        "legacy_wins": legacy_stats["wins"],
+        "legacy_losses": legacy_stats["losses"],
+        "legacy_win_rate_pct": legacy_stats["win_rate_pct"],
         "method_note": (
-            "WR dihitung hanya dari sinyal dengan TP/SL terkonfirmasi. "
-            "Jika TP dan SL tersentuh pada candle yang sama, hasil dihitung SL secara konservatif."
+            "Statistik utama hanya menghitung strategi RSI16 + MA40 + Ichimoku "
+            "H1/M15/M5. Sinyal sebelum penandaan versi strategi dipisahkan sebagai "
+            "riwayat legacy dan tidak dicampur ke win-rate strategi terbaru. "
+            "WR dihitung hanya dari sinyal TP/SL terkonfirmasi; TP dan SL pada "
+            "candle yang sama dihitung sebagai SL secara konservatif."
         ),
     }
 
