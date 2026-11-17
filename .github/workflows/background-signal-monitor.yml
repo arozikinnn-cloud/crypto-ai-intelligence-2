@@ -6,8 +6,9 @@ on:
     paths:
       - ".github/workflows/background-signal-monitor.yml"
   schedule:
-    # GitHub Actions cron uses UTC. Scan every five minutes.
-    - cron: "*/5 * * * *"
+    # Run hourly, then keep scanning every 5 minutes inside the job.
+    # This avoids relying on GitHub's heavily delayed */5 cron queue.
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -18,29 +19,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  discover-symbols:
+  scan-market:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      symbols: ${{ steps.set-matrix.outputs.symbols }}
+    timeout-minutes: 59
     steps:
-      - name: Discover active signal symbols
-        id: set-matrix
+      - name: Poll market and monitor signal lifecycle for 11 cycles
         env:
+          API_URL: https://crypto-ai-intelligence-2-backend.vercel.app/api/v1/analysis/intelligence
           SIGNALS_URL: https://crypto-ai-intelligence-2-backend.vercel.app/api/v1/signals
+        shell: bash
         run: |
           set -euo pipefail
-          response="$(mktemp)"
-          status="$(curl --silent --show-error --location \
-            --connect-timeout 10 --max-time 45 --retry 2 --retry-all-errors --retry-delay 2 \
-            --output "$response" --write-out "%{http_code}" \
-            "$SIGNALS_URL?status=ACTIVE&limit=200")"
-          if [ "$status" != "200" ]; then
-            echo "Unable to discover active signal symbols: HTTP $status"
-            cat "$response"
-            exit 1
-          fi
-          symbols="$(python - "$response" <<'PY'
+          for cycle in $(seq 1 11); do
+            echo "===== Background market scan cycle $cycle/11 ====="
+            active_response="$(mktemp)"
+            active_status="$(curl --silent --show-error --location \
+              --connect-timeout 10 --max-time 45 --retry 2 --retry-all-errors --retry-delay 2 \
+              --output "$active_response" --write-out "%{http_code}" \
+              "$SIGNALS_URL?status=ACTIVE&limit=200")"
+            if [ "$active_status" != "200" ]; then
+              echo "Unable to discover active signal symbols: HTTP $active_status"
+              cat "$active_response"
+              rm -f "$active_response"
+              exit 1
+            fi
+
+            symbols="$(python - "$active_response" <<'PY'
           import json, sys
           with open(sys.argv[1], encoding="utf-8") as stream:
               active = json.load(stream)
@@ -49,51 +53,59 @@ jobs:
               symbol = signal.get("symbol")
               if isinstance(symbol, str) and symbol.isalnum() and 5 <= len(symbol) <= 20:
                   symbols.add(symbol.upper())
-          print(json.dumps(sorted(symbols)))
+          print("\n".join(sorted(symbols)))
           PY
           )"
-          echo "Discovered scan symbols: $symbols"
-          echo "symbols=$symbols" >> "$GITHUB_OUTPUT"
-          rm -f "$response"
+            rm -f "$active_response"
+            echo "Symbols to scan:"
+            printf '%s\n' "$symbols"
 
-  scan-market:
-    needs: discover-symbols
-    strategy:
-      fail-fast: false
-      matrix:
-        symbol: ${{ fromJSON(needs.discover-symbols.outputs.symbols) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 4
-    steps:
-      - name: Scan ${{ matrix.symbol }} and persist any qualified signal
-        env:
-          API_URL: https://crypto-ai-intelligence-2-backend.vercel.app/api/v1/analysis/intelligence
-        run: |
-          set -euo pipefail
-          response="$(mktemp)"
-          status="$(curl --silent --show-error --location \
-            --connect-timeout 10 --max-time 90 --retry 2 --retry-all-errors --retry-delay 2 \
-            --output "$response" --write-out "%{http_code}" \
-            "$API_URL?symbol=${{ matrix.symbol }}&intervals=5m%2C15m%2C1h&limit=200&order_flow_interval=5m")"
-          if [ "$status" != "200" ]; then
-            echo "Market scan failed with HTTP $status"
-            cat "$response"
-            exit 1
-          fi
-          python - "$response" <<'PY'
+            pids=()
+            while IFS= read -r symbol; do
+              [ -n "$symbol" ] || continue
+              (
+                response="$(mktemp)"
+                status="$(curl --silent --show-error --location \
+                  --connect-timeout 10 --max-time 90 --retry 2 --retry-all-errors --retry-delay 2 \
+                  --output "$response" --write-out "%{http_code}" \
+                  "$API_URL?symbol=$symbol&intervals=1h%2C15m%2C5m&limit=200&order_flow_interval=5m")"
+                if [ "$status" != "200" ]; then
+                  echo "Market scan failed for $symbol with HTTP $status"
+                  cat "$response"
+                  rm -f "$response"
+                  exit 1
+                fi
+                python - "$response" <<'PY'
           import json, sys
           with open(sys.argv[1], encoding="utf-8") as stream:
               data = json.load(stream)
-          print("Symbol:", data.get("symbol"))
-          print("Decision:", data.get("side"))
-          print("Strategy:", data.get("strategy_mode"))
-          print("Score:", data.get("confluence_score"), "/", data.get("max_confluence"))
-          print("Timestamp:", data.get("timestamp"))
+          print(
+              data.get("symbol"),
+              "decision=", data.get("side"),
+              "score=", f'{data.get("confluence_score")}/{data.get("max_confluence")}',
+              "strategy=", data.get("strategy_mode"),
+          )
           plan = data.get("trade_plan") or {}
           if plan:
-              print("Entry:", plan.get("entry"))
-              print("Stop loss:", plan.get("stop_loss"))
-              print("Take profit:", plan.get("take_profit"))
-          print("Qualified signals and notifications are persisted by the API.")
+              print("  entry=", plan.get("entry"), "SL=", plan.get("stop_loss"), "TP=", plan.get("take_profit"))
           PY
-          rm -f "$response"
+                rm -f "$response"
+              ) &
+              pids+=("$!")
+            done <<< "$symbols"
+
+            failed=0
+            for pid in "${pids[@]}"; do
+              wait "$pid" || failed=1
+            done
+            if [ "$failed" -ne 0 ]; then
+              echo "At least one symbol scan failed in cycle $cycle."
+              exit 1
+            fi
+            echo "Cycle $cycle completed; existing active signals were checked by the API."
+
+            if [ "$cycle" -lt 11 ]; then
+              sleep 300
+            fi
+          done
+          echo "All 11 background scan cycles completed."
