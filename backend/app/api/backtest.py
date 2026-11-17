@@ -13,7 +13,7 @@ async def backtest(
         default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
     ),
     interval: str = Query(default="1h"),
-    limit: int = Query(default=500, ge=120, le=1000),
+    limit: int = Query(default=1000, ge=120, le=1000),
     fee_bps: float = Query(default=10.0, ge=0, le=100),
     slippage_bps: float = Query(default=5.0, ge=0, le=100),
 ) -> BacktestResponse:

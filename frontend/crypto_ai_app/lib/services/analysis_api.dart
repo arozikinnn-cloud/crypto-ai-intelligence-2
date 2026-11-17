@@ -86,7 +86,7 @@ class AnalysisApi {
   Future<Map<String, dynamic>> fetchBacktest({
     String symbol = 'BTCUSDT',
     String interval = '1h',
-    int limit = 500,
+    int limit = 1000,
   }) async {
     final uri = _endpoint('analysis/backtest', {
       'symbol': symbol,
