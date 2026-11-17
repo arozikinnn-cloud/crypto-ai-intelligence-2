@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BacktestMetrics(BaseModel):
@@ -7,6 +7,10 @@ class BacktestMetrics(BaseModel):
     total_return_pct: float
     profit_factor: float | None
     max_drawdown_pct: float
+    wins: int = 0
+    losses: int = 0
+    flats: int = 0
+    expectancy_pct: float = 0.0
 
 
 class BacktestResponse(BaseModel):
@@ -20,3 +24,7 @@ class BacktestResponse(BaseModel):
     train: BacktestMetrics
     out_of_sample: BacktestMetrics
     warning: str
+    overall: BacktestMetrics | None = None
+    signal_count: int = 0
+    no_trade_count: int = 0
+    quality_checks: dict[str, bool] = Field(default_factory=dict)
