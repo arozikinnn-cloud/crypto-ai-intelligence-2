@@ -7,6 +7,9 @@ def _tf(timeframe, side, price=None, ma_bias=None):
     direction = side if side in {"BUY", "SELL"} else ma_bias
     bullish = direction == "BUY"
     bearish = direction == "SELL"
+    last_price = price
+    if last_price is None:
+        last_price = 105.0 if bullish else 95.0 if bearish else 100.0
     return {
         "timeframe": timeframe,
         "side": side,
@@ -15,7 +18,7 @@ def _tf(timeframe, side, price=None, ma_bias=None):
         "take_profit": 103.0 if side == "BUY" else 97.0 if side == "SELL" else None,
         "risk_reward": 1.5 if side != "NO TRADE" else None,
         "indicators": {
-            "last_price": price if price is not None else 105.0 if bullish else 95.0 if bearish else 100.0,
+            "last_price": last_price,
             "ma40": 100.0,
             "rsi16": 60.0 if bullish else 40.0 if bearish else 50.0,
             "ichimoku_above_cloud": bullish,
