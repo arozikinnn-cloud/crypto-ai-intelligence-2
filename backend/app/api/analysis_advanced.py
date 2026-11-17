@@ -22,12 +22,13 @@ async def multi_timeframe_analysis(
     intervals: str = Query(default="1h,15m,5m"),
     limit: int = Query(default=200, ge=60, le=500),
 ) -> MultiTimeframeResponse:
-    selected = [item.strip() for item in intervals.split(",") if item.strip()]
-    if len(selected) != 3 or set(selected) != {"1h", "15m", "5m"}:
+    requested = [item.strip() for item in intervals.split(",") if item.strip()]
+    if len(requested) != 3 or set(requested) != {"1h", "15m", "5m"}:
         raise HTTPException(
             status_code=422,
             detail="The strategy requires exactly 1h, 15m and 5m analysis timeframes.",
         )
+    selected = ["1h", "15m", "5m"]
     if any(item not in VALID_INTERVALS for item in selected):
         raise HTTPException(
             status_code=422, detail="One or more intervals are unsupported."
