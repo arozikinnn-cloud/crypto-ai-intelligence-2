@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -11,6 +11,13 @@ class SignalEvent(Base):
     __table_args__ = (
         UniqueConstraint("dedupe_key", name="uq_signal_event_dedupe"),
         Index("ix_signal_event_symbol_created", "symbol", "created_at"),
+        Index(
+            "uq_signal_event_one_active_per_symbol",
+            "symbol",
+            unique=True,
+            postgresql_where=text("status = 'ACTIVE'"),
+            sqlite_where=text("status = 'ACTIVE'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

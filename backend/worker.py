@@ -9,10 +9,13 @@ import asyncio
 import logging
 import signal
 
+from sqlalchemy import select
+
+from app.api.signals import evaluate_active_signals
 from app.core.config import get_settings
 from app.database.base import Base
 from app.database.migrations import migrate_schema
-from app.database.session import engine
+from app.database.session import SessionLocal, engine
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
@@ -20,6 +23,9 @@ import app.models.cvd_collector_state  # noqa: F401
 import app.models.liquidation_record  # noqa: F401
 import app.models.signal_event  # noqa: F401
 import app.models.device_token  # noqa: F401
+from app.services.market_data.binance import BinanceMarketData
+from app.services.market_data.base import MarketDataError
+from app.models.signal_event import SignalEvent
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
 from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
@@ -63,6 +69,58 @@ def configured_collectors(settings):
     return jobs
 
 
+
+async def monitor_active_signals_once(market=None, session_factory=SessionLocal) -> int:
+    """Evaluate active trade plans using the latest closed 1m Binance candle."""
+    market = market or BinanceMarketData()
+    db = session_factory()
+    try:
+        symbols = list(db.scalars(
+            select(SignalEvent.symbol)
+            .where(SignalEvent.status == "ACTIVE")
+            .distinct()
+        ))
+    finally:
+        db.close()
+
+    evaluated = 0
+    for symbol in symbols:
+        try:
+            candles = await market.fetch_klines(
+                symbol, "1m", limit=2, closed_only=True
+            )
+            if not candles:
+                continue
+            candle = candles[-1]
+            db = session_factory()
+            try:
+                evaluate_active_signals(
+                    db,
+                    symbol,
+                    float(candle.high),
+                    float(candle.low),
+                    str(candle.close_time),
+                )
+                evaluated += 1
+            finally:
+                db.close()
+        except (MarketDataError, ValueError, TypeError):
+            logger.exception("Signal monitor failed for %s; retrying next cycle", symbol)
+        except Exception:
+            logger.exception("Unexpected signal monitor error for %s", symbol)
+    return evaluated
+
+
+async def monitor_active_signals(stop_event: asyncio.Event, poll_interval: float) -> None:
+    """Keep TP/SL monitoring independent of Android app and API request traffic."""
+    while not stop_event.is_set():
+        await monitor_active_signals_once()
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=max(5.0, poll_interval))
+        except asyncio.TimeoutError:
+            pass
+
+
 async def run_worker() -> None:
     settings = get_settings()
     logging.basicConfig(
@@ -78,10 +136,9 @@ async def run_worker() -> None:
     migrate_schema(engine)
 
     jobs = configured_collectors(settings)
-    if not jobs:
+    if not jobs and not settings.signal_monitor_enabled:
         raise RuntimeError(
-            "No collectors enabled. Enable CVD_COLLECTOR_ENABLED and/or "
-            "LIQUIDATION_COLLECTOR_ENABLED."
+            "No worker tasks enabled. Enable a collector or SIGNAL_MONITOR_ENABLED."
         )
 
     stop_event = asyncio.Event()
@@ -100,7 +157,14 @@ async def run_worker() -> None:
         )
         for name, collector, symbol, flush_interval in jobs
     ]
-    logger.info("Worker started with %d collector streams: %s", len(tasks), [
+    if settings.signal_monitor_enabled:
+        tasks.append(asyncio.create_task(
+            monitor_active_signals(
+                stop_event, settings.signal_monitor_poll_interval_seconds
+            ),
+            name="active-signal-tp-sl-monitor",
+        ))
+    logger.info("Worker started with %d tasks: %s", len(tasks), [
         task.get_name() for task in tasks
     ])
     stop_task = asyncio.create_task(stop_event.wait(), name="worker-shutdown")
@@ -115,13 +179,13 @@ async def run_worker() -> None:
             error = failed_task.exception()
             if error is not None:
                 raise RuntimeError(
-                    f"Collector {failed_task.get_name()} stopped unexpectedly."
+                    f"Worker task {failed_task.get_name()} stopped unexpectedly."
                 ) from error
             raise RuntimeError(
-                f"Collector {failed_task.get_name()} exited unexpectedly."
+                f"Worker task {failed_task.get_name()} exited unexpectedly."
             )
     finally:
-        logger.info("Shutdown requested; stopping collector streams.")
+        logger.info("Shutdown requested; stopping worker tasks.")
         stop_task.cancel()
         stop_event.set()
         for task in tasks:

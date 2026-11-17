@@ -1,8 +1,11 @@
 import json
+import logging
+import math
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -10,10 +13,31 @@ from app.models.signal_event import SignalEvent, SignalNotification
 from app.schemas.signals import SignalEventResponse, SignalNotificationResponse
 
 router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"])
+logger = logging.getLogger(__name__)
+
+
+def _valid_trade_plan(side: str, plan: dict | None) -> bool:
+    if not isinstance(plan, dict):
+        return False
+    values = [plan.get("entry"), plan.get("stop_loss"), plan.get("take_profit")]
+    if not all(
+        isinstance(value, (int, float)) and math.isfinite(float(value))
+        for value in values
+    ):
+        return False
+    entry, stop, target = (float(value) for value in values)
+    if side == "BUY":
+        return stop < entry < target
+    if side == "SELL":
+        return target < entry < stop
+    return False
 
 
 def _event_payload(row: SignalEvent) -> dict:
-    stored = json.loads(row.reasons_json)
+    try:
+        stored = json.loads(row.reasons_json)
+    except (TypeError, json.JSONDecodeError):
+        stored = {"reasons": ["Data alasan sinyal lama tidak dapat dibaca."]}
     if isinstance(stored, dict):
         reasons = list(stored.get("reasons", []))
         if stored.get("invalidation_reason"):
@@ -44,16 +68,16 @@ def evaluate_active_signals(
     db: Session, symbol: str, candle_high: float, candle_low: float,
     candle_timestamp: str,
 ) -> None:
-    """Close tracked signals only when a later candle reaches TP or SL.
+    """Evaluate active signals against a later, fully closed market candle.
 
-    If both levels are crossed inside one candle, mark the result ambiguous
-    rather than guessing which level was hit first.
+    If TP and SL are both crossed in one OHLC candle, conservatively record SL:
+    OHLC data cannot establish intrabar order, and performance must not overstate.
     """
     now = datetime.now(timezone.utc)
     rows = list(db.scalars(select(SignalEvent).where(
         SignalEvent.symbol == symbol.upper(),
         SignalEvent.status == "ACTIVE",
-    )))
+    ).with_for_update(skip_locked=True)))
     closed_signals: list[tuple[SignalEvent, str, float | None]] = []
     for row in rows:
         try:
@@ -68,7 +92,7 @@ def evaluate_active_signals(
         entry = plan.get("entry")
         stop = plan.get("stop_loss")
         target = plan.get("take_profit")
-        if not all(isinstance(value, (int, float)) for value in (entry, stop, target)):
+        if not _valid_trade_plan(row.side, plan):
             continue
         if row.side == "BUY":
             hit_stop, hit_target = candle_low <= stop, candle_high >= target
@@ -80,33 +104,33 @@ def evaluate_active_signals(
             reward = entry - target
         if not hit_stop and not hit_target:
             continue
-        if hit_stop and hit_target:
-            outcome, realized_r = "AMBIGUOUS", None
-        elif hit_stop:
+        ambiguous = hit_stop and hit_target
+        if hit_stop:
             outcome, realized_r = "SL", -1.0
         else:
             outcome = "TP"
             realized_r = reward / risk if risk > 0 else None
+        stored["ambiguous_candle"] = ambiguous
         stored["outcome"] = outcome
         stored["realized_r"] = realized_r
         stored["closed_at"] = now.isoformat()
         stored["close_candle_timestamp"] = candle_timestamp
-        if outcome == "AMBIGUOUS":
+        if ambiguous:
             stored["close_reason"] = (
-                "TP dan SL tersentuh dalam candle yang sama; "
-                "urutan tidak dapat dipastikan."
+                "TP dan SL tersentuh dalam candle yang sama; hasil dicatat "
+                "konservatif sebagai SL karena urutan intrabar tidak tersedia."
             )
         else:
             level = "stop-loss" if outcome == "SL" else "take-profit"
-            stored["close_reason"] = (
-                f"Harga candle berikutnya menyentuh {level}."
-            )
+            stored["close_reason"] = f"Candle tertutup menyentuh {level}."
         row.reasons_json = json.dumps(stored, ensure_ascii=False)
         row.status = "CLOSED"
         row.updated_at = now
-        message = ("Hasil sinyal otomatis: " + outcome +
-                   (f" ({realized_r:.2f}R)" if realized_r is not None else
-                    " — urutan TP/SL tidak dapat dipastikan pada candle yang sama."))
+        message = (
+            f"Hasil sinyal otomatis: {outcome}"
+            + (f" ({realized_r:.2f}R)" if realized_r is not None else "")
+            + (" — TP dan SL satu candle, dicatat konservatif sebagai SL." if ambiguous else "")
+        )
         db.add(SignalNotification(
             signal_id=row.id,
             title=f"{row.symbol} {outcome}",
@@ -144,10 +168,7 @@ def evaluate_active_signals(
                 },
             )
         except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "FCM result push failed; outcome remains saved"
-            )
+            logger.exception("FCM result push failed; outcome remains saved")
 
 
 def record_signal(
@@ -160,6 +181,8 @@ def record_signal(
     trade_plan: dict | None = None,
     signal_candle_timestamp: str | None = None,
 ) -> None:
+    if side not in {"BUY", "SELL"} or not _valid_trade_plan(side, trade_plan):
+        return
     now = datetime.now(timezone.utc)
     timeframe_set = ",".join(intervals)
     # One active trade thesis per symbol: do not create another BUY or SELL
@@ -192,12 +215,17 @@ def record_signal(
             created_at=now, updated_at=now,
         )
         db.add(event)
-        db.flush()
-        db.add(SignalNotification(
-            signal_id=event.id, title=f"{symbol.upper()} {side} signal",
-            message="; ".join(reasons), created_at=now,
-        ))
-        db.commit()
+        try:
+            db.flush()
+            db.add(SignalNotification(
+                signal_id=event.id, title=f"{symbol.upper()} {side} signal",
+                message="; ".join(reasons), created_at=now,
+            ))
+            db.commit()
+        except IntegrityError:
+            # Partial unique index is the final guard against concurrent creates.
+            db.rollback()
+            return
         # Push delivery is best-effort: a Firebase outage must never fail analysis.
         try:
             from app.services.push_notifications import send_push_to_registered_devices
@@ -233,8 +261,7 @@ def record_signal(
                 },
             )
         except Exception:
-            import logging
-            logging.getLogger(__name__).exception("FCM signal push failed; signal remains saved")
+            logger.exception("FCM signal push failed; signal remains saved")
     else:
         # NO TRADE means no new setup; it never changes an existing active signal.
         # The symbol remains locked until its tracked TP/SL outcome is recorded.
@@ -273,13 +300,15 @@ def signal_performance(db: Session = Depends(get_db)):
         "wins": wins,
         "losses": losses,
         "ambiguous": sum(
-            _event_payload(row).get("outcome") == "AMBIGUOUS" for row in rows
+            bool(stored.get("ambiguous_candle"))
+            for row in rows
+            if isinstance((stored := json.loads(row.reasons_json)), dict)
         ),
         "win_rate_pct": (wins / len(completed) * 100) if completed else None,
         "total_realized_r": round(total_r, 4),
         "method_note": (
             "WR dihitung hanya dari sinyal dengan TP/SL terkonfirmasi. "
-            "Jika TP dan SL tersentuh pada candle yang sama, hasil dikecualikan."
+            "Jika TP dan SL tersentuh pada candle yang sama, hasil dihitung SL secara konservatif."
         ),
     }
 
@@ -321,6 +350,8 @@ def close_signal(signal_id: int, db: Session = Depends(get_db)):
     row = db.get(SignalEvent, signal_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Signal not found.")
+    if row.status != "ACTIVE":
+        return SignalEventResponse(**_event_payload(row))
     now = datetime.now(timezone.utc)
     try:
         stored = json.loads(row.reasons_json)

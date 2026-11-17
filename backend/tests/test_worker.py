@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from worker import configured_collectors, validate_worker_database
+from worker import (configured_collectors, monitor_active_signals_once, validate_worker_database)
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
 from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
@@ -56,3 +56,59 @@ def test_production_worker_rejects_sqlite_database():
 def test_development_worker_allows_local_sqlite_database():
     settings = SimpleNamespace(app_env="development", database_url="sqlite:///./local.db")
     validate_worker_database(settings)
+
+
+
+def test_worker_signal_monitor_evaluates_active_signal_from_closed_one_minute_candle():
+    import asyncio
+    import json
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete, select
+
+    from app.api.signals import record_signal
+    from app.database.base import Base
+    from app.database.session import SessionLocal, engine
+    from app.models.signal_event import SignalEvent, SignalNotification
+
+    class FakeMarket:
+        async def fetch_klines(self, symbol, interval, limit, closed_only):
+            assert symbol == "MONITORTEST"
+            assert interval == "1m"
+            assert closed_only is True
+            return [SimpleNamespace(
+                high=104.0,
+                low=99.0,
+                close_time=datetime(2026, 11, 17, 10, 16, tzinfo=timezone.utc),
+            )]
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db, "MONITORTEST", "BUY", ["15m", "30m"], ["setup"],
+            "monitor-signal",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+            "older-signal-candle",
+        )
+    finally:
+        db.close()
+
+    evaluated = asyncio.run(monitor_active_signals_once(FakeMarket(), SessionLocal))
+    assert evaluated == 1
+    db = SessionLocal()
+    try:
+        event = db.scalar(select(SignalEvent).where(
+            SignalEvent.symbol == "MONITORTEST"
+        ))
+        assert event.status == "CLOSED"
+        assert json.loads(event.reasons_json)["outcome"] == "TP"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()

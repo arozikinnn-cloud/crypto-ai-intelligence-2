@@ -51,7 +51,9 @@ def test_only_one_active_signal_per_symbol_until_tp_or_sl():
         # A different symbol can still receive its own signal.
         record_signal(
             db, "ETHUSDT", "SELL", ["15m", "30m"], ["Independent symbol"],
-            "eth-candle-1", plan, "eth-signal-candle-1",
+            "eth-candle-1",
+            {"entry": 100.0, "stop_loss": 102.0, "take_profit": 97.0},
+            "eth-signal-candle-1",
         )
         assert len(list(db.scalars(select(SignalEvent)))) == 2
 
@@ -63,7 +65,9 @@ def test_only_one_active_signal_per_symbol_until_tp_or_sl():
 
         record_signal(
             db, "BTCUSDT", "SELL", ["15m", "30m"], ["New setup after TP"],
-            "candle-5", plan, "signal-candle-5",
+            "candle-5",
+            {"entry": 100.0, "stop_loss": 102.0, "take_profit": 97.0},
+            "signal-candle-5",
         )
         btc_events = list(db.scalars(
             select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT")
@@ -80,7 +84,7 @@ def test_only_one_active_signal_per_symbol_until_tp_or_sl():
         db.close()
 
 
-def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
+def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
     from app.api.signals import evaluate_active_signals
 
     Base.metadata.create_all(bind=engine)
@@ -116,8 +120,9 @@ def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
         amb_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "AMBTEST"))
         amb_payload = json.loads(amb_row.reasons_json)
         assert amb_row.status == "CLOSED"
-        assert amb_payload["outcome"] == "AMBIGUOUS"
-        assert amb_payload["realized_r"] is None
+        assert amb_payload["outcome"] == "SL"
+        assert amb_payload["realized_r"] == -1.0
+        assert amb_payload["ambiguous_candle"] is True
 
         record_signal(
             db, "SLTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
@@ -130,11 +135,11 @@ def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
         from app.api.signals import signal_performance
 
         stats = signal_performance(db)
-        assert stats["completed"] == 2
+        assert stats["completed"] == 3
         assert stats["wins"] == 1
-        assert stats["losses"] == 1
+        assert stats["losses"] == 2
         assert stats["ambiguous"] == 1
-        assert stats["win_rate_pct"] == 50.0
+        assert abs(stats["win_rate_pct"] - (100 / 3)) < 1e-9
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
@@ -218,6 +223,60 @@ def test_signal_outcome_is_saved_when_push_provider_raises(monkeypatch):
         event = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "PUSHFAIL"))
         assert event.status == "CLOSED"
         assert json.loads(event.reasons_json)["outcome"] == "TP"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+
+def test_signal_creation_rejects_invalid_trade_plan():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db, "INVALIDPLAN", "BUY", ["15m", "30m"], ["setup"],
+            "invalid-plan-1", {"entry": 100, "stop_loss": 101, "take_profit": 105},
+        )
+        record_signal(
+            db, "MISSINGPLAN", "SELL", ["15m", "30m"], ["setup"],
+            "missing-plan-1", None,
+        )
+        assert list(db.scalars(select(SignalEvent))) == []
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_manual_close_is_idempotent():
+    from app.api.signals import close_signal
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db, "MANUALTEST", "BUY", ["15m", "30m"], ["setup"],
+            "manual-signal-1",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+        )
+        event = db.scalar(select(SignalEvent))
+        first = close_signal(event.id, db)
+        second = close_signal(event.id, db)
+        assert first.status == "CLOSED"
+        assert second.status == "CLOSED"
+        assert second.outcome == "MANUAL"
+        assert len(list(db.scalars(select(SignalNotification)))) == 2
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))

@@ -128,6 +128,20 @@ def migrate_schema(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_signal_event_symbol_created "
                 "ON signal_events (symbol, created_at)"
             ))
+            # Normalize any legacy duplicates before enforcing the active lock.
+            connection.execute(text("""
+                UPDATE signal_events
+                SET status = 'INVALIDATED', updated_at = NOW()
+                WHERE status = 'ACTIVE'
+                  AND id NOT IN (
+                    SELECT MAX(id) FROM signal_events
+                    WHERE status = 'ACTIVE' GROUP BY symbol
+                  )
+            """))
+            connection.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_signal_event_one_active_per_symbol "
+                "ON signal_events (symbol) WHERE status = 'ACTIVE'"
+            ))
             connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS signal_notifications (
                     id SERIAL PRIMARY KEY,
@@ -186,3 +200,17 @@ def migrate_schema(engine: Engine) -> None:
         connection.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_device_tokens_active ON device_tokens (is_active)"
         ))
+        if inspect(connection).has_table("signal_events"):
+            connection.execute(text("""
+                UPDATE signal_events
+                SET status = 'INVALIDATED'
+                WHERE status = 'ACTIVE'
+                  AND id NOT IN (
+                    SELECT MAX(id) FROM signal_events
+                    WHERE status = 'ACTIVE' GROUP BY symbol
+                  )
+            """))
+            connection.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_signal_event_one_active_per_symbol "
+                "ON signal_events (symbol) WHERE status = 'ACTIVE'"
+            ))

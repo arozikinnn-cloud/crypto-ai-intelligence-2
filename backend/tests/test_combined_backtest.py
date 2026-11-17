@@ -52,7 +52,11 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
-        record_signal(db, "BTCUSDT", "BUY", ["15m", "1h"], ["bullish"], "2026-11-15T10:00:00+00:00")
+        record_signal(
+            db, "BTCUSDT", "BUY", ["15m", "1h"], ["bullish"],
+            "2026-11-15T10:00:00+00:00",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+        )
         record_signal(db, "BTCUSDT", "BUY", ["15m", "1h"], ["bullish"], "2026-11-15T10:00:00+00:00")
         events = db.scalars(select(SignalEvent)).all()
         notices = db.scalars(select(SignalNotification)).all()
@@ -62,12 +66,14 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
         db.commit()
         record_signal(
             db, "BTCUSDT", "BUY", ["15m", "1h"], ["bullish"],
-            "2026-11-15T10:00:00+00:00"
+            "2026-11-15T10:00:00+00:00",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
         )
         assert len(db.scalars(select(SignalEvent)).all()) == 1
         record_signal(
             db, "BTCUSDT", "SELL", ["15m", "1h"], ["bearish"],
-            "2026-11-15T11:00:00+00:00"
+            "2026-11-15T11:00:00+00:00",
+            {"entry": 100, "stop_loss": 102, "take_profit": 97},
         )
         events = db.scalars(select(SignalEvent).order_by(SignalEvent.id)).all()
         assert [event.status for event in events] == ["CLOSED", "ACTIVE"]
