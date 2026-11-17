@@ -102,16 +102,22 @@ def calculate_indicators(candles: list[NormalizedCandle]) -> dict:
         and price < cloud_bottom and price <= candles[-1].open
     )
     volume_base = sum(volumes[-21:-1]) / 20 if len(volumes) >= 21 else None
+    ema20_values = _ema(closes, 20)
+    ema50_values = _ema(closes, 50)
+    ema12_values = _ema(closes, 12)
+    ema26_values = _ema(closes, 26)
+    macd_values = [a - b for a, b in zip(ema12_values[-len(ema26_values):], ema26_values)] if ema12_values and ema26_values else []
+    macd_signal_values = _ema(macd_values, 9) if len(macd_values) >= 9 else []
     return {
         "market_structure": "bullish" if ma40 is not None and price > ma40 else "bearish" if ma40 is not None and price < ma40 else "unavailable",
         "last_price": price,
         "ma40": ma40,
-        "ema20": None,
-        "ema50": None,
+        "ema20": ema20_values[-1] if ema20_values else None,
+        "ema50": ema50_values[-1] if ema50_values else None,
         "rsi16": rsi(closes, 16),
         "rsi14": rsi(closes, 14),
-        "macd": None,
-        "macd_signal": None,
+        "macd": macd_values[-1] if macd_values else None,
+        "macd_signal": macd_signal_values[-1] if macd_signal_values else None,
         "atr14": atr(candles, 14),
         "volume_ratio": volumes[-1] / volume_base if volume_base and volume_base > 0 else None,
         "support_20": min(c.low for c in candles[-20:]) if len(candles) >= 20 else None,
