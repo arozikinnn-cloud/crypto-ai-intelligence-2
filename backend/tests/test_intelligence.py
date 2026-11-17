@@ -10,7 +10,7 @@ def _tf(timeframe, side):
         "entry": 100.0 if side != "NO TRADE" else None,
         "stop_loss": 98.0 if side == "BUY" else 102.0 if side == "SELL" else None,
         "take_profit": 104.0 if side == "BUY" else 96.0 if side == "SELL" else None,
-        "risk_reward": 2.0 if side != "NO TRADE" else None,
+        "risk_reward": 1.5 if side != "NO TRADE" else None,
     }
 
 
@@ -32,8 +32,9 @@ def test_day_trading_buy_requires_aligned_higher_timeframes_setup_and_flow():
     assert result["side"] == "BUY"
     assert result["strategy_mode"] == "DAY_TRADING"
     assert result["trade_plan"]["source_timeframe"] == "15m"
-    assert result["trade_plan"]["risk_reward"] == 2.0
+    assert result["trade_plan"]["risk_reward"] == 1.5
     assert result["max_confluence"] == 5
+    assert result["trade_plan"]["take_profit"] == 103.0
 
 
 def test_day_trading_sell_requires_aligned_higher_timeframes_setup_and_flow():
@@ -113,3 +114,37 @@ def test_derivatives_are_context_not_directional_confirmation():
 def test_unknown_technical_side_is_rejected():
     with pytest.raises(ValueError, match="unsupported"):
         build_intelligence_decision(["LONG"], {}, {}, {})
+
+
+
+def test_opposing_h1_structure_break_blocks_buy():
+    analyses = [_tf("5m", "BUY"), _tf("15m", "BUY"), _tf("1h", "BUY")]
+    result = build_intelligence_decision(
+        ["BUY", "BUY", "BUY"],
+        {"trend": "bullish", "event": "bearish_bos"},
+        {"bias": "BUY_PRESSURE"},
+        {"source_market": "unavailable"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        analyses,
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+
+
+def test_trade_plan_rejects_stop_loss_on_wrong_side():
+    analyses = [_tf("5m", "BUY"), _tf("15m", "BUY"), _tf("1h", "BUY")]
+    analyses[1]["stop_loss"] = 101.0
+    result = build_intelligence_decision(
+        ["BUY", "BUY", "BUY"],
+        {"trend": "bullish", "event": "none"},
+        {"bias": "BUY_PRESSURE"},
+        {"source_market": "unavailable"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        analyses,
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+
+# Regression coverage for the 1:1.5 signal plan and invalidation guards.

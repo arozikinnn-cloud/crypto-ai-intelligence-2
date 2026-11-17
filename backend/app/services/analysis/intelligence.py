@@ -61,9 +61,11 @@ def build_intelligence_decision(
     # blocks the trade.
     buy_execution_conflict = (
         m5_side == "SELL" or flow_sell or tape_sell
+        or structure.get("event") in {"bearish_bos", "bearish_choch"}
     )
     sell_execution_conflict = (
         m5_side == "BUY" or flow_buy or tape_buy
+        or structure.get("event") in {"bullish_bos", "bullish_choch"}
     )
     buy_execution_confirmed = m5_side == "BUY" or buy_trigger
     sell_execution_confirmed = m5_side == "SELL" or sell_trigger
@@ -119,7 +121,7 @@ def build_intelligence_decision(
         reasons = [
             "Syarat minimum belum terpenuhi: H1 dan M15 harus searah, "
             "serta minimal satu konfirmasi entry dari M5 atau order flow/aggTrades.",
-            "Konfirmasi eksekusi yang berlawanan tetap memblokir entry.",
+            "Konfirmasi eksekusi atau break struktur yang berlawanan memblokir entry.",
             f"Skor tertinggi saat ini {score}/5; minimum untuk sinyal adalah 3/5.",
         ]
 
@@ -127,14 +129,32 @@ def build_intelligence_decision(
     setup = m15
     trade_plan = None
     if side in {"BUY", "SELL"} and setup:
-        trade_plan = {
-            "entry": setup.get("entry"),
-            "stop_loss": setup.get("stop_loss"),
-            "take_profit": setup.get("take_profit"),
-            "risk_reward": setup.get("risk_reward"),
-            "source_timeframe": "15m",
-            "method": "M15 ATR-based stop with 2R target; review before execution.",
-        }
+        entry = setup.get("entry")
+        stop_loss = setup.get("stop_loss")
+        valid_stop = (
+            isinstance(entry, (int, float))
+            and isinstance(stop_loss, (int, float))
+            and entry > 0
+            and ((side == "BUY" and stop_loss < entry) or (side == "SELL" and stop_loss > entry))
+        )
+        if valid_stop:
+            risk = abs(float(entry) - float(stop_loss))
+            target = float(entry) + risk * 1.5 if side == "BUY" else float(entry) - risk * 1.5
+            trade_plan = {
+                "entry": float(entry),
+                "stop_loss": float(stop_loss),
+                "take_profit": target,
+                "risk_reward": 1.5,
+                "source_timeframe": "15m",
+                "method": "M15 ATR-based stop with fixed 1:1.5 risk/reward.",
+            }
+        else:
+            side = "NO TRADE"
+            reasons = [
+                "Sinyal dibatalkan: level entry/SL M15 tidak valid sehingga " 
+                "rasio risiko tidak aman."
+            ]
+            trade_plan = None
 
     context = market_context or {}
     cvd = context.get("cvd_history", {})
