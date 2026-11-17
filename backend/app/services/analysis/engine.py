@@ -34,7 +34,9 @@ def analyze_market(
         values["volume_ratio"] is not None and values["volume_ratio"] >= 1.0,
     ]
 
-    atr_is_valid = atr14 is not None and float(atr14) > 0\n\n    if atr_is_valid and sum(bullish_checks) >= 3 and sum(bullish_checks) > sum(bearish_checks):
+    atr_is_valid = atr14 is not None and float(atr14) > 0
+
+    if atr_is_valid and sum(bullish_checks) >= 3 and sum(bullish_checks) > sum(bearish_checks):
         side = "BUY"
         stop_loss = price - float(atr14) * atr_multiplier if atr14 else None
         take_profit = price + (price - stop_loss) * risk_reward if stop_loss is not None else None
@@ -66,7 +68,11 @@ def analyze_market(
         take_profit = None
         score = max(sum(bullish_checks), sum(bearish_checks))
         reasons = [
-            "Konfirmasi indikator belum cukup selaras; sistem memilih tidak memaksakan entry."
+            (
+                "ATR tidak tersedia atau bernilai nol; SL/TP tidak dapat dihitung dengan aman."
+                if not atr_is_valid
+                else "Konfirmasi indikator belum cukup selaras; sistem memilih tidak memaksakan entry."
+            )
         ]
 
     return {
