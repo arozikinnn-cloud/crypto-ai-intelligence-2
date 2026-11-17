@@ -35,6 +35,9 @@ def test_indicators_return_expected_fields():
     assert result["ema20"] is not None
     assert result["ema50"] is not None
     assert result["ma40"] is not None
+    assert result["ma40_previous"] is not None
+    assert isinstance(result["ma40_bullish_rejection"], bool)
+    assert isinstance(result["ma40_bearish_breakout"], bool)
     assert result["rsi16"] == 100.0
     assert result["ichimoku_tenkan"] is not None
     assert result["ichimoku_kijun"] is not None
