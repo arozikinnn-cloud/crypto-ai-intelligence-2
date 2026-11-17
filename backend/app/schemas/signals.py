@@ -8,6 +8,7 @@ class SignalEventResponse(BaseModel):
     side: str
     status: str
     timeframe_set: str
+    strategy_mode: str | None = None
     reasons: list[str]
     created_at: datetime
     updated_at: datetime
