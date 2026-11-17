@@ -3,94 +3,69 @@ from app.services.market_data.base import NormalizedCandle
 from app.services.analysis.indicators import calculate_indicators, validate_analysis_input
 
 
-def analyze_market(
-    candles: list[NormalizedCandle],
-    risk_reward: float = 1.5,
-    atr_multiplier: float = 1.5,
-) -> dict:
+def analyze_market(candles: list[NormalizedCandle], risk_reward: float = 1.5, atr_multiplier: float = 1.5) -> dict:
     validate_analysis_input(candles)
     if risk_reward <= 0 or atr_multiplier <= 0:
         raise ValueError("Risk parameters must be greater than zero.")
-
     values = calculate_indicators(candles)
     price = float(values["last_price"])
-    ema20 = values["ema20"]
-    ema50 = values["ema50"]
-    rsi14 = values["rsi14"]
-    macd = values["macd"]
-    macd_signal = values["macd_signal"]
-    atr14 = values["atr14"]
-
-    bullish_checks = [
-        ema20 is not None and ema50 is not None and price > ema20 > ema50,
-        rsi14 is not None and 50 <= rsi14 < 75,
-        macd is not None and macd_signal is not None and macd > macd_signal,
-        values["volume_ratio"] is not None and values["volume_ratio"] >= 1.0,
-    ]
-    bearish_checks = [
-        ema20 is not None and ema50 is not None and price < ema20 < ema50,
-        rsi14 is not None and 25 < rsi14 <= 50,
-        macd is not None and macd_signal is not None and macd < macd_signal,
-        values["volume_ratio"] is not None and values["volume_ratio"] >= 1.0,
-    ]
-
-    atr_is_valid = atr14 is not None and float(atr14) > 0
-
-    if atr_is_valid and sum(bullish_checks) >= 3 and sum(bullish_checks) > sum(bearish_checks):
-        side = "BUY"
-        stop_loss = price - float(atr14) * atr_multiplier if atr14 else None
-        take_profit = price + (price - stop_loss) * risk_reward if stop_loss is not None else None
-        reasons = [
-            label for check, label in zip(bullish_checks, [
-                "Harga berada di atas EMA20 dan EMA50 dengan susunan bullish.",
-                "RSI berada di zona momentum bullish, belum overbought.",
-                "MACD berada di atas garis sinyal.",
-                "Volume terkini setidaknya setara rata-rata 20 candle sebelumnya.",
-            ]) if check
-        ]
-        score = sum(bullish_checks)
-    elif atr_is_valid and sum(bearish_checks) >= 3 and sum(bearish_checks) > sum(bullish_checks):
-        side = "SELL"
-        stop_loss = price + float(atr14) * atr_multiplier if atr14 else None
-        take_profit = price - (stop_loss - price) * risk_reward if stop_loss is not None else None
-        reasons = [
-            label for check, label in zip(bearish_checks, [
-                "Harga berada di bawah EMA20 dan EMA50 dengan susunan bearish.",
-                "RSI berada di zona momentum bearish.",
-                "MACD berada di bawah garis sinyal.",
-                "Volume terkini setidaknya setara rata-rata 20 candle sebelumnya.",
-            ]) if check
-        ]
-        score = sum(bearish_checks)
+    ma40, rsi16, atr14 = values["ma40"], values["rsi16"], values["atr14"]
+    tenkan, kijun = values["ichimoku_tenkan"], values["ichimoku_kijun"]
+    ready = all(v is not None for v in (ma40, rsi16, atr14, tenkan, kijun,
+                                        values["ichimoku_cloud_top"], values["ichimoku_cloud_bottom"]))
+    buy_checks = {
+        "price_above_ma40": ma40 is not None and price > ma40,
+        "ichimoku_bullish": tenkan is not None and kijun is not None and tenkan > kijun,
+        "rsi16_bullish": rsi16 is not None and 50 < rsi16 < 70,
+        "above_or_breaking_kumo": bool(values["ichimoku_above_cloud"] or values["ichimoku_bullish_breakout"]),
+    }
+    sell_checks = {
+        "price_below_ma40": ma40 is not None and price < ma40,
+        "ichimoku_bearish": tenkan is not None and kijun is not None and tenkan < kijun,
+        "rsi16_bearish": rsi16 is not None and 30 < rsi16 < 50,
+        "below_or_breaking_kumo": bool(values["ichimoku_below_cloud"] or values["ichimoku_bearish_breakout"]),
+    }
+    buy_score, sell_score = sum(buy_checks.values()), sum(sell_checks.values())
+    if ready and buy_score >= 3 and buy_checks["price_above_ma40"] and buy_checks["above_or_breaking_kumo"]:
+        side, score = "BUY", buy_score
+        stop_loss = price - float(atr14) * atr_multiplier
+        reasons = ["Harga di atas MA40 (bias bullish)."]
+        if buy_checks["ichimoku_bullish"]: reasons.append("Tenkan-sen berada di atas Kijun-sen.")
+        reasons.append(f"RSI 16 = {float(rsi16):.2f}, mendukung momentum bullish.")
+        if values["ichimoku_bullish_breakout"]:
+            reasons.append("Candle close menembus Kumo ke atas (bullish breakout).")
+        elif values["ichimoku_bullish_retest"]:
+            reasons.append("Harga melakukan retest/rejection bullish pada batas Kumo.")
+        else:
+            reasons.append("Harga bertahan di atas Kumo.")
+    elif ready and sell_score >= 3 and sell_checks["price_below_ma40"] and sell_checks["below_or_breaking_kumo"]:
+        side, score = "SELL", sell_score
+        stop_loss = price + float(atr14) * atr_multiplier
+        reasons = ["Harga di bawah MA40 (bias bearish)."]
+        if sell_checks["ichimoku_bearish"]: reasons.append("Tenkan-sen berada di bawah Kijun-sen.")
+        reasons.append(f"RSI 16 = {float(rsi16):.2f}, mendukung momentum bearish.")
+        if values["ichimoku_bearish_breakout"]:
+            reasons.append("Candle close menembus Kumo ke bawah (bearish breakout).")
+        elif values["ichimoku_bearish_retest"]:
+            reasons.append("Harga melakukan retest/rejection bearish pada batas Kumo.")
+        else:
+            reasons.append("Harga bertahan di bawah Kumo.")
     else:
-        side = "NO TRADE"
-        stop_loss = None
-        take_profit = None
-        score = max(sum(bullish_checks), sum(bearish_checks))
-        reasons = [
-            (
-                "ATR tidak tersedia atau bernilai nol; SL/TP tidak dapat dihitung dengan aman."
-                if not atr_is_valid
-                else (
-                    "Konfirmasi indikator belum cukup selaras; sistem memilih " 
-                    "tidak memaksakan entry."
-                )
-            )
-        ]
-
+        side, score, stop_loss = "NO TRADE", max(buy_score, sell_score), None
+        reasons = ["Konfirmasi MA40, Ichimoku/Kumo, dan RSI16 belum selaras; tunggu setup yang lebih jelas."]
+        if values["ichimoku_bullish_breakout"] or values["ichimoku_bearish_breakout"]:
+            reasons.append("Breakout Kumo terdeteksi, tetapi konfirmasi tren/momentum lain belum cukup.")
+    take_profit = None
+    if stop_loss is not None:
+        risk = abs(price - stop_loss)
+        take_profit = price + risk * risk_reward if side == "BUY" else price - risk * risk_reward
     return {
-        "symbol": candles[-1].symbol,
-        "timeframe": candles[-1].timeframe,
-        "timestamp": datetime.now(timezone.utc),
-        "side": side,
+        "symbol": candles[-1].symbol, "timeframe": candles[-1].timeframe,
+        "timestamp": datetime.now(timezone.utc), "side": side,
         "entry": price if side != "NO TRADE" else None,
-        "stop_loss": stop_loss,
-        "take_profit": take_profit,
+        "stop_loss": stop_loss, "take_profit": take_profit,
         "risk_reward": risk_reward if side != "NO TRADE" else None,
-        "confluence_score": score,
-        "max_confluence": 4,
-        "score_note": "Skor konfluensi aturan, bukan probabilitas atau win-rate.",
-        "indicators": values,
-        "reasons": reasons,
-        "candle_count": len(candles),
+        "confluence_score": score, "max_confluence": 4,
+        "score_note": "Skor konfluensi MA40, Ichimoku, RSI16 dan posisi terhadap Kumo; bukan probabilitas win-rate.",
+        "indicators": values, "reasons": reasons, "candle_count": len(candles),
     }
