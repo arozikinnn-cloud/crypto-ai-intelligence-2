@@ -23,11 +23,8 @@ async def multi_timeframe_analysis(
     limit: int = Query(default=200, ge=60, le=500),
 ) -> MultiTimeframeResponse:
     selected = [item.strip() for item in intervals.split(",") if item.strip()]
-    if not selected or len(selected) > 4 or len(set(selected)) != len(selected):
-        raise HTTPException(
-            status_code=422,
-            detail="Provide 1–4 unique comma-separated intervals.",
-        )
+    if len(selected) != 2 or set(selected) != {"15m", "30m"}:
+        raise HTTPException(status_code=422, detail="The strategy uses exactly 15m and 30m analysis timeframes.")
     if any(item not in VALID_INTERVALS for item in selected):
         raise HTTPException(
             status_code=422, detail="One or more intervals are unsupported."
