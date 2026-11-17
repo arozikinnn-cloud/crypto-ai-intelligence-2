@@ -48,7 +48,7 @@ def _event_payload(row: SignalEvent) -> dict:
         plan = stored.get("trade_plan") or {}
         outcome = stored.get("outcome")
         strategy_mode = stored.get("strategy_mode")
-        if not strategy_mode:
+        if not strategy_mode or strategy_mode == "LEGACY_UNVERSIONED":
             # The first live signals from this strategy were created before
             # strategy_mode was persisted. Their new decision-reason prefix
             # lets us classify them without mixing older EMA/legacy signals.
