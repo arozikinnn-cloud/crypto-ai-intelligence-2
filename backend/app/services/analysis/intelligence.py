@@ -42,14 +42,14 @@ def build_intelligence_decision(
         "h1_bullish_bias": h1_side == "BUY",
         "m15_buy_setup": setup_side == "BUY",
         "m5_buy_confirmation": m5_side == "BUY",
-        "m5_or_tape_buy_confirmation": buy_trigger,
+        "m5_or_tape_buy_confirmation": buy_trigger,\n        "no_bearish_structure_break": structure.get("event") not in {"bearish_bos", "bearish_choch"},
         "bullish_market_structure": bullish_structure,
     }
     bearish_checks = {
         "h1_bearish_bias": h1_side == "SELL",
         "m15_sell_setup": setup_side == "SELL",
         "m5_sell_confirmation": m5_side == "SELL",
-        "m5_or_tape_sell_confirmation": sell_trigger,
+        "m5_or_tape_sell_confirmation": sell_trigger,\n        "no_bullish_structure_break": structure.get("event") not in {"bullish_bos", "bullish_choch"},
         "bearish_market_structure": bearish_structure,
     }
 
@@ -119,7 +119,7 @@ def build_intelligence_decision(
         reasons = [
             "Syarat minimum belum terpenuhi: H1 dan M15 harus searah, "
             "serta minimal satu konfirmasi entry dari M5 atau order flow/aggTrades.",
-            "Konfirmasi eksekusi yang berlawanan tetap memblokir entry.",
+            "Konfirmasi eksekusi atau break struktur yang berlawanan memblokir entry.",
             f"Skor tertinggi saat ini {score}/5; minimum untuk sinyal adalah 3/5.",
         ]
 
@@ -133,7 +133,7 @@ def build_intelligence_decision(
             "take_profit": setup.get("take_profit"),
             "risk_reward": setup.get("risk_reward"),
             "source_timeframe": "15m",
-            "method": "M15 ATR-based stop with 2R target; review before execution.",
+            "method": "M15 ATR-based stop with 1.5R target; review before execution.",
         }
 
     context = market_context or {}
