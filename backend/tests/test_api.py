@@ -81,8 +81,11 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     from app.services.market_data.binance_futures import BinanceFuturesMarketData
     from app.services.market_data.binance_aggtrades import BinanceAggTradesMarketData
 
+    requested_intervals = []
+
     async def fake_klines(self, symbol, interval, limit, closed_only=False):
         assert closed_only is True
+        requested_intervals.append(interval)
         return [interval]
 
     async def fake_derivatives(self, symbol, period):
@@ -235,9 +238,19 @@ def test_combined_intelligence_endpoint_serializes_all_modules(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["side"] == "NO TRADE"
+    assert {"1h", "15m", "5m"}.issubset(set(requested_intervals))
     assert payload["order_flow"]["source_market"] == "binance_spot_klines"
     assert payload["derivatives"]["source_market"] == "binance_usdm_futures"
     assert payload["aggtrades_order_flow"]["bias"] == "BUY_PRESSURE"
     assert payload["market_context"]["order_book"]["available"] is False
     assert "cvd_history" in payload["market_context"]
     assert "liquidations" in payload["market_context"]
+
+
+
+def test_combined_intelligence_rejects_legacy_timeframes():
+    response = client.get(
+        "/api/v1/analysis/intelligence?intervals=15m,30m"
+    )
+    assert response.status_code == 422
+    assert "1h, 15m and 5m" in response.json()["detail"]
