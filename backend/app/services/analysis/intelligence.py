@@ -151,7 +151,8 @@ def build_intelligence_decision(
         else:
             side = "NO TRADE"
             reasons = [
-                "Sinyal dibatalkan: level entry/SL M15 tidak valid sehingga rasio risiko tidak aman."
+                "Sinyal dibatalkan: level entry/SL M15 tidak valid sehingga " 
+                "rasio risiko tidak aman."
             ]
             trade_plan = None
 
