@@ -71,7 +71,10 @@ def analyze_market(
             (
                 "ATR tidak tersedia atau bernilai nol; SL/TP tidak dapat dihitung dengan aman."
                 if not atr_is_valid
-                else "Konfirmasi indikator belum cukup selaras; sistem memilih tidak memaksakan entry."
+                else (
+                    "Konfirmasi indikator belum cukup selaras; sistem memilih " 
+                    "tidak memaksakan entry."
+                )
             )
         ]
 
