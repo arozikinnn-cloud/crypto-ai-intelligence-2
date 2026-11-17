@@ -47,7 +47,8 @@ def analyze_market(
         side, score = "BUY", buy_score
         stop_loss = price - float(atr14) * atr_multiplier
         reasons = ["Harga di atas MA40 (bias bullish)."]
-        if buy_checks["ichimoku_bullish"]: reasons.append("Tenkan-sen berada di atas Kijun-sen.")
+        if buy_checks["ichimoku_bullish"]:
+            reasons.append("Tenkan-sen berada di atas Kijun-sen.")
         reasons.append(f"RSI 16 = {float(rsi16):.2f}, mendukung momentum bullish.")
         if values["ichimoku_bullish_breakout"]:
             reasons.append("Candle close menembus Kumo ke atas (bullish breakout).")
@@ -63,7 +64,8 @@ def analyze_market(
         side, score = "SELL", sell_score
         stop_loss = price + float(atr14) * atr_multiplier
         reasons = ["Harga di bawah MA40 (bias bearish)."]
-        if sell_checks["ichimoku_bearish"]: reasons.append("Tenkan-sen berada di bawah Kijun-sen.")
+        if sell_checks["ichimoku_bearish"]:
+            reasons.append("Tenkan-sen berada di bawah Kijun-sen.")
         reasons.append(f"RSI 16 = {float(rsi16):.2f}, mendukung momentum bearish.")
         if values["ichimoku_bearish_breakout"]:
             reasons.append("Candle close menembus Kumo ke bawah (bearish breakout).")
