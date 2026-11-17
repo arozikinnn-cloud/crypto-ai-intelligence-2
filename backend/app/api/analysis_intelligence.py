@@ -173,8 +173,23 @@ async def combined_intelligence(
         raise
 
     timestamp = datetime.now(timezone.utc)
-    if "15m" in selected and candle_sets[selected.index("15m")]:
+    # Track TP/SL on closed 1m candles, independently of the analysis
+    # timeframes. Fall back to the selected 15m candle if Binance 1m data
+    # is temporarily unavailable.
+    tracking_candles = []
+    try:
+        tracking_candles = await market.fetch_klines(
+            symbol, "1m", limit=2, closed_only=True
+        )
+    except MarketDataError:
+        pass
+    if tracking_candles:
+        tracking_candle = tracking_candles[-1]
+    elif "15m" in selected and candle_sets[selected.index("15m")]:
         tracking_candle = candle_sets[selected.index("15m")][-1]
+    else:
+        tracking_candle = None
+    if tracking_candle is not None:
         candle_high = getattr(tracking_candle, "high", None)
         candle_low = getattr(tracking_candle, "low", None)
         if isinstance(candle_high, (int, float)) and isinstance(candle_low, (int, float)):
