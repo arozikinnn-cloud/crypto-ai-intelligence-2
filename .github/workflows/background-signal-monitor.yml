@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/background-signal-monitor.yml"
   schedule:
-    # GitHub Actions cron uses UTC. Aim for a 5-minute market scan cadence.
+    # GitHub Actions cron uses UTC. Scan every five minutes.
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
@@ -18,11 +18,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  discover-symbols:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      symbols: ${{ steps.set-matrix.outputs.symbols }}
+    steps:
+      - name: Discover active signal symbols
+        id: set-matrix
+        env:
+          SIGNALS_URL: https://crypto-ai-intelligence-2-backend.vercel.app/api/v1/signals
+        run: |
+          set -euo pipefail
+          response="$(mktemp)"
+          status="$(curl --silent --show-error --location \
+            --connect-timeout 10 --max-time 45 --retry 2 --retry-all-errors --retry-delay 2 \
+            --output "$response" --write-out "%{http_code}" \
+            "$SIGNALS_URL?status=ACTIVE&limit=200")"
+          if [ "$status" != "200" ]; then
+            echo "Unable to discover active signal symbols: HTTP $status"
+            cat "$response"
+            exit 1
+          fi
+          symbols="$(python - "$response" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              active = json.load(stream)
+          symbols = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"}
+          for signal in active:
+              symbol = signal.get("symbol")
+              if isinstance(symbol, str) and symbol.isalnum() and 5 <= len(symbol) <= 20:
+                  symbols.add(symbol.upper())
+          print(json.dumps(sorted(symbols)))
+          PY
+          )"
+          echo "Discovered scan symbols: $symbols"
+          echo "symbols=$symbols" >> "$GITHUB_OUTPUT"
+          rm -f "$response"
+
   scan-market:
+    needs: discover-symbols
     strategy:
       fail-fast: false
       matrix:
-        symbol: [BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT]
+        symbol: ${{ fromJSON(needs.discover-symbols.outputs.symbols) }}
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
@@ -55,6 +94,6 @@ jobs:
               print("Entry:", plan.get("entry"))
               print("Stop loss:", plan.get("stop_loss"))
               print("Take profit:", plan.get("take_profit"))
-          print("The API records qualified BUY/SELL signals and notifications in the database.")
+          print("Qualified signals and notifications are persisted by the API.")
           PY
           rm -f "$response"
