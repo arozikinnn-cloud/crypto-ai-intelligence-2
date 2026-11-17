@@ -12,7 +12,7 @@ async def technical_analysis(
     symbol: str = Query(
         default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
     ),
-    interval: str = Query(default="1h"),
+    interval: str = Query(default="15m"),
     limit: int = Query(default=200, ge=60, le=1000),
 ) -> AnalysisResponse:
     try:

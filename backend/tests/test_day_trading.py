@@ -2,21 +2,33 @@ from app.services.analysis.intelligence import build_intelligence_decision
 
 
 def _analysis(timeframe, side):
+    buy = side == "BUY"
+    sell = side == "SELL"
     return {
         "timeframe": timeframe,
         "side": side,
         "entry": 100.0 if side != "NO TRADE" else None,
-        "stop_loss": 98.0 if side == "BUY" else 102.0 if side == "SELL" else None,
-        "take_profit": 104.0 if side == "BUY" else 96.0 if side == "SELL" else None,
+        "stop_loss": 98.0 if buy else 102.0 if sell else None,
+        "take_profit": 103.0 if buy else 97.0 if sell else None,
         "risk_reward": 1.5 if side != "NO TRADE" else None,
+        "indicators": {
+            "last_price": 105.0 if buy else 95.0 if sell else 100.0,
+            "ma40": 100.0,
+            "ichimoku_above_cloud": buy,
+            "ichimoku_below_cloud": sell,
+        },
     }
 
 
-def _decision(analyses):
+def _decision(m15_side="BUY", m30_side="BUY", flow="BUY_PRESSURE"):
+    analyses = [
+        _analysis("15m", m15_side),
+        _analysis("30m", m30_side),
+    ]
     return build_intelligence_decision(
         [item["side"] for item in analyses],
         {"trend": "bullish", "event": "bullish_bos"},
-        {"bias": "BUY_PRESSURE"},
+        {"bias": flow},
         {"source_market": "unavailable"},
         {"bias": "BALANCED"},
         {},
@@ -24,41 +36,25 @@ def _decision(analyses):
     )
 
 
-def test_day_trading_buy_requires_h1_m15_m5_and_flow_confirmation():
-    result = _decision([
-        _analysis("5m", "BUY"),
-        _analysis("15m", "BUY"),
-        _analysis("1h", "BUY"),
-    ])
+def test_strategy_buy_requires_m30_bias_and_m15_setup():
+    result = _decision()
     assert result["side"] == "BUY"
-    assert result["strategy_mode"] == "DAY_TRADING"
+    assert result["strategy_mode"] == "ICHIMOKU_RSI16_MA40_M15_M30"
     assert result["trade_plan"]["source_timeframe"] == "15m"
     assert result["trade_plan"]["risk_reward"] == 1.5
 
 
-def test_day_trading_does_not_force_signal_when_h1_bias_conflicts():
-    result = _decision([
-        _analysis("5m", "BUY"),
-        _analysis("15m", "BUY"),
-        _analysis("1h", "SELL"),
-    ])
+def test_strategy_blocks_when_m30_bias_conflicts():
+    result = _decision(m15_side="BUY", m30_side="SELL")
     assert result["side"] == "NO TRADE"
     assert result["trade_plan"] is None
 
 
-def test_day_trading_does_not_force_signal_without_m15_setup():
-    result = _decision([
-        _analysis("5m", "BUY"),
-        _analysis("15m", "NO TRADE"),
-        _analysis("1h", "BUY"),
-    ])
+def test_strategy_blocks_without_m15_setup():
+    result = _decision(m15_side="NO TRADE", m30_side="BUY")
     assert result["side"] == "NO TRADE"
 
 
-def test_day_trading_requires_m5_confirmation():
-    result = _decision([
-        _analysis("5m", "SELL"),
-        _analysis("15m", "BUY"),
-        _analysis("1h", "BUY"),
-    ])
+def test_strategy_blocks_opposing_orderflow():
+    result = _decision(flow="SELL_PRESSURE")
     assert result["side"] == "NO TRADE"

@@ -7,219 +7,155 @@ def build_intelligence_decision(
     market_context: dict | None = None,
     timeframe_analyses: list[dict] | None = None,
 ) -> dict:
-    if not technical_sides:
-        raise ValueError("At least one technical timeframe is required.")
-    if any(side not in {"BUY", "SELL", "NO TRADE"} for side in technical_sides):
-        raise ValueError("Technical timeframe contains an unsupported decision.")
+    if not technical_sides or any(
+        side not in {"BUY", "SELL", "NO TRADE"} for side in technical_sides
+    ):
+        raise ValueError("Provide supported technical decisions for 15m and 30m.")
 
     analyses = timeframe_analyses or []
-    by_tf = {str(item.get("timeframe", "")).lower(): item for item in analyses}
-    h1 = by_tf.get("1h", {})
+    by_tf = {
+        str(item.get("timeframe", "")).lower(): item
+        for item in analyses
+    }
     m15 = by_tf.get("15m", {})
-    m5 = by_tf.get("5m", {})
-    h1_side, setup_side, m5_side = h1.get("side"), m15.get("side"), m5.get("side")
+    m30 = by_tf.get("30m", {})
+    m15_side = m15.get("side")
+    m30_side = m30.get("side")
 
-    # Day-trading hierarchy: H1 establishes bias, M15 supplies the setup,
-    # and M5 plus order-flow/aggTrades confirm execution.
-    htf_buy = h1_side == "BUY"
-    htf_sell = h1_side == "SELL"
-    flow_buy = order_flow.get("bias") == "BUY_PRESSURE"
-    flow_sell = order_flow.get("bias") == "SELL_PRESSURE"
-    tape_buy = (trade_order_flow or {}).get("bias") == "BUY_PRESSURE"
-    tape_sell = (trade_order_flow or {}).get("bias") == "SELL_PRESSURE"
-    buy_trigger = (flow_buy or tape_buy) and not (flow_sell or tape_sell)
-    sell_trigger = (flow_sell or tape_sell) and not (flow_buy or tape_buy)
-
-    bullish_structure = (
-        structure.get("event") in {"bullish_bos", "bullish_choch"}
-        or structure.get("trend") == "bullish"
+    flow_buy = (
+        order_flow.get("bias") == "BUY_PRESSURE"
+        or (trade_order_flow or {}).get("bias") == "BUY_PRESSURE"
     )
-    bearish_structure = (
-        structure.get("event") in {"bearish_bos", "bearish_choch"}
-        or structure.get("trend") == "bearish"
+    flow_sell = (
+        order_flow.get("bias") == "SELL_PRESSURE"
+        or (trade_order_flow or {}).get("bias") == "SELL_PRESSURE"
     )
-    bullish_checks = {
-        "h1_bullish_bias": h1_side == "BUY",
-        "m15_buy_setup": setup_side == "BUY",
-        "m5_buy_confirmation": m5_side == "BUY",
-        "m5_or_tape_buy_confirmation": buy_trigger,
-        "bullish_market_structure": bullish_structure,
+    m30_ind = m30.get("indicators", {})
+    m15_buy = m15_side == "BUY"
+    m15_sell = m15_side == "SELL"
+    m30_buy = m30_side == "BUY" or (
+        m30_ind.get("last_price") is not None
+        and m30_ind.get("ma40") is not None
+        and m30_ind["last_price"] > m30_ind["ma40"]
+        and m30_ind.get("ichimoku_above_cloud") is True
+    )
+    m30_sell = m30_side == "SELL" or (
+        m30_ind.get("last_price") is not None
+        and m30_ind.get("ma40") is not None
+        and m30_ind["last_price"] < m30_ind["ma40"]
+        and m30_ind.get("ichimoku_below_cloud") is True
+    )
+    bullish_event = structure.get("event") in {
+        "bullish_bos",
+        "bullish_choch",
     }
-    bearish_checks = {
-        "h1_bearish_bias": h1_side == "SELL",
-        "m15_sell_setup": setup_side == "SELL",
-        "m5_sell_confirmation": m5_side == "SELL",
-        "m5_or_tape_sell_confirmation": sell_trigger,
-        "bearish_market_structure": bearish_structure,
+    bearish_event = structure.get("event") in {
+        "bearish_bos",
+        "bearish_choch",
+    }
+    buy_conflict = m15_sell or m30_sell or flow_sell or bearish_event
+    sell_conflict = m15_buy or m30_buy or flow_buy or bullish_event
+    buy_score = sum((m30_buy, m15_buy, flow_buy, bullish_event))
+    sell_score = sum((m30_sell, m15_sell, flow_sell, bearish_event))
+    checks = {
+        "m30_bullish_bias": bool(m30_buy),
+        "m15_bullish_setup": bool(m15_buy),
+        "buy_orderflow_confirmation": bool(flow_buy),
+        "bullish_structure": bool(bullish_event),
+        "m30_bearish_bias": bool(m30_sell),
+        "m15_bearish_setup": bool(m15_sell),
+        "sell_orderflow_confirmation": bool(flow_sell),
+        "bearish_structure": bool(bearish_event),
     }
 
-    # Five-point confluence: H1 bias, M15 setup, M5 confirmation,
-    # order-flow/tape confirmation, and market structure.
-    # H1 + M15 alignment are mandatory. Execution can be confirmed by M5
-    # OR by a directional order-flow/tape reading; structure is supporting
-    # evidence rather than a hard gate. Any clear opposite execution signal
-    # blocks the trade.
-    buy_execution_conflict = (
-        m5_side == "SELL" or flow_sell or tape_sell
-        or structure.get("event") in {"bearish_bos", "bearish_choch"}
-    )
-    sell_execution_conflict = (
-        m5_side == "BUY" or flow_buy or tape_buy
-        or structure.get("event") in {"bullish_bos", "bullish_choch"}
-    )
-    buy_execution_confirmed = m5_side == "BUY" or buy_trigger
-    sell_execution_confirmed = m5_side == "SELL" or sell_trigger
-
-    bullish_score = sum(bullish_checks.values())
-    bearish_score = sum(bearish_checks.values())
-
-    if (
-        htf_buy
-        and setup_side == "BUY"
-        and buy_execution_confirmed
-        and not buy_execution_conflict
-        and bullish_score >= 3
-    ):
-        side = "BUY"
-        score = bullish_score
+    if m30_buy and m15_buy and not buy_conflict:
+        side, score = "BUY", buy_score
         reasons = [
-            "Bias H1 bullish.",
-            "M15 membentuk setup BUY berdasarkan indikator teknikal.",
-            (
-                "Konfirmasi entry BUY tersedia dari M5."
-                if m5_side == "BUY"
-                else "Konfirmasi entry BUY tersedia dari order flow/aggTrades."
-            ),
-            f"Skor konfluensi BUY {score}/5 (minimum 3/5).",
+            "Bias M30 bullish berdasarkan MA40 dan Ichimoku.",
+            "Setup M15 BUY terkonfirmasi oleh MA40, RSI16, dan Ichimoku/Kumo.",
         ]
-        if bullish_structure:
-            reasons.append("Struktur market mendukung skenario bullish.")
-    elif (
-        htf_sell
-        and setup_side == "SELL"
-        and sell_execution_confirmed
-        and not sell_execution_conflict
-        and bearish_score >= 3
-    ):
-        side = "SELL"
-        score = bearish_score
+        if flow_buy:
+            reasons.append("Order flow/aggTrades mendukung tekanan beli.")
+        if bullish_event:
+            reasons.append("Struktur market mendukung bullish.")
+    elif m30_sell and m15_sell and not sell_conflict:
+        side, score = "SELL", sell_score
         reasons = [
-            "Bias H1 bearish.",
-            "M15 membentuk setup SELL berdasarkan indikator teknikal.",
-            (
-                "Konfirmasi entry SELL tersedia dari M5."
-                if m5_side == "SELL"
-                else "Konfirmasi entry SELL tersedia dari order flow/aggTrades."
-            ),
-            f"Skor konfluensi SELL {score}/5 (minimum 3/5).",
+            "Bias M30 bearish berdasarkan MA40 dan Ichimoku.",
+            "Setup M15 SELL terkonfirmasi oleh MA40, RSI16, dan Ichimoku/Kumo.",
         ]
-        if bearish_structure:
-            reasons.append("Struktur market mendukung skenario bearish.")
+        if flow_sell:
+            reasons.append("Order flow/aggTrades mendukung tekanan jual.")
+        if bearish_event:
+            reasons.append("Struktur market mendukung bearish.")
     else:
-        side = "NO TRADE"
-        score = max(bullish_score, bearish_score)
+        side, score = "NO TRADE", max(buy_score, sell_score)
         reasons = [
-            "Syarat minimum belum terpenuhi: H1 dan M15 harus searah, "
-            "serta minimal satu konfirmasi entry dari M5 atau order flow/aggTrades.",
-            "Konfirmasi eksekusi atau break struktur yang berlawanan memblokir entry.",
-            f"Skor tertinggi saat ini {score}/5; minimum untuk sinyal adalah 3/5.",
+            "NO TRADE: M30 sebagai arah utama dan M15 sebagai pemicu belum "
+            "searah, atau ada konfirmasi berlawanan."
         ]
 
-    checks = {**bullish_checks, **bearish_checks}
-    setup = m15
     trade_plan = None
-    if side in {"BUY", "SELL"} and setup:
-        entry = setup.get("entry")
-        stop_loss = setup.get("stop_loss")
-        valid_stop = (
+    if side in {"BUY", "SELL"}:
+        entry = m15.get("entry")
+        stop = m15.get("stop_loss")
+        valid = (
             isinstance(entry, (int, float))
-            and isinstance(stop_loss, (int, float))
+            and isinstance(stop, (int, float))
             and entry > 0
-            and ((side == "BUY" and stop_loss < entry) or (side == "SELL" and stop_loss > entry))
+            and (
+                (side == "BUY" and stop < entry)
+                or (side == "SELL" and stop > entry)
+            )
         )
-        if valid_stop:
-            risk = abs(float(entry) - float(stop_loss))
-            target = float(entry) + risk * 1.5 if side == "BUY" else float(entry) - risk * 1.5
+        if valid:
+            risk = abs(float(entry) - float(stop))
+            target = (
+                float(entry) + risk * 1.5
+                if side == "BUY"
+                else float(entry) - risk * 1.5
+            )
             trade_plan = {
                 "entry": float(entry),
-                "stop_loss": float(stop_loss),
+                "stop_loss": float(stop),
                 "take_profit": target,
                 "risk_reward": 1.5,
                 "source_timeframe": "15m",
-                "method": "M15 ATR-based stop with fixed 1:1.5 risk/reward.",
+                "method": "ATR-based M15 stop, fixed 1:1.5 risk/reward.",
             }
         else:
             side = "NO TRADE"
             reasons = [
-                "Sinyal dibatalkan: level entry/SL M15 tidak valid sehingga " 
-                "rasio risiko tidak aman."
+                "Sinyal dibatalkan karena level entry/SL M15 tidak valid."
             ]
-            trade_plan = None
 
     context = market_context or {}
-    cvd = context.get("cvd_history", {})
-    order_book = context.get("order_book", {})
-    max_confluence = 5
-    oi_change = derivatives.get("open_interest_change_percent")
-    funding = derivatives.get("funding_rate")
-    context_notes = [
-        "Open interest dan funding adalah konteks derivatif, bukan konfirmasi arah.",
+    notes = [
+        "Strategi utama: M30 menentukan bias; M15 menentukan setup; "
+        "RSI 16, MA40 dan Ichimoku/Kumo wajib diperiksa.",
+        "Order flow, OI/funding, CVD dan likuidasi adalah konteks tambahan, "
+        "bukan pengganti konfirmasi teknikal.",
     ]
+    for section in ("cvd_history", "order_book", "liquidations"):
+        note = context.get(section, {}).get("note")
+        if note:
+            notes.append(note)
     if derivatives.get("source_market") == "unavailable":
-        context_notes.append(
-            "Data derivatif tidak tersedia; nilai placeholder tidak digunakan sebagai "
-            "konfirmasi BUY/SELL."
+        notes.append(
+            "Data derivatif tidak tersedia dan tidak digunakan sebagai konfirmasi."
         )
-    if trade_order_flow is not None:
-        context_notes.append(
-            "AggTrades mencakup batch terbaru; gunakan riwayat CVD persisten untuk konteks "
-            "lebih panjang, dengan kemungkinan gap collector."
-        )
-    if cvd.get("note"):
-        context_notes.append(cvd["note"])
-    if order_book.get("note"):
-        context_notes.append(order_book["note"])
-    liquidations = context.get("liquidations", {})
-    if liquidations.get("note"):
-        context_notes.append(liquidations["note"])
-    if liquidations.get("available"):
-        context_notes.append(
-            "Likuidasi teramati: short "
-            f"{liquidations['short_liquidation_notional']:.2f} dan long "
-            f"{liquidations['long_liquidation_notional']:.2f} notional; ini konteks, "
-            "bukan sinyal arah tunggal."
-        )
-    if oi_change is None:
-        context_notes.append("Perubahan open interest belum tersedia untuk dibandingkan.")
-    elif oi_change > 0:
-        context_notes.append(
-            "Open interest meningkat; posisi terbuka bertambah, arah long/short tidak diketahui."
-        )
-    elif oi_change < 0:
-        context_notes.append("Open interest menurun; posisi terbuka berkurang.")
-    else:
-        context_notes.append("Open interest relatif tidak berubah pada dua sampel terakhir.")
 
-    if funding is not None:
-        if funding > 0:
-            context_notes.append("Funding positif: posisi long membayar posisi short.")
-        elif funding < 0:
-            context_notes.append("Funding negatif: posisi short membayar posisi long.")
-        else:
-            context_notes.append("Funding rate berada di sekitar nol.")
-
-    score_note = (
-        f"Skor adalah jumlah dari {max_confluence} kondisi konfirmasi; bukan probabilitas "
-        "atau win-rate. OI/funding hanya konteks dan tidak menentukan arah."
-    )
     return {
         "side": side,
         "confluence_score": score,
-        "max_confluence": max_confluence,
-        "score_note": score_note,
+        "max_confluence": 4,
+        "score_note": (
+            "Empat komponen konfluensi M30, M15, order flow, dan struktur; "
+            "bukan probabilitas atau jaminan win-rate."
+        ),
         "reasons": reasons,
-        "context_notes": context_notes,
+        "context_notes": notes,
         "checks": checks,
-        "strategy_mode": "DAY_TRADING",
+        "strategy_mode": "ICHIMOKU_RSI16_MA40_M15_M30",
         "trade_plan": trade_plan,
     }

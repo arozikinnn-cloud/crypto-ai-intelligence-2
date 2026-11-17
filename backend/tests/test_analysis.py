@@ -34,11 +34,13 @@ def test_indicators_return_expected_fields():
     result = calculate_indicators(make_candles())
     assert result["ema20"] is not None
     assert result["ema50"] is not None
+    assert result["ma40"] is not None
+    assert result["rsi16"] == 100.0
+    assert result["ichimoku_tenkan"] is not None
+    assert result["ichimoku_kijun"] is not None
     assert result["rsi14"] == 100.0
     assert result["atr14"] is not None
-    assert result["market_structure"] in {
-        "higher_high_higher_low", "lower_high_lower_low", "mixed_or_range"
-    }
+    assert result["market_structure"] in {"bullish", "bearish", "unavailable"}
 
 
 def test_analysis_rejects_insufficient_history():
