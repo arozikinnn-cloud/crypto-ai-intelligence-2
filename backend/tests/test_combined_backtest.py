@@ -110,20 +110,32 @@ def test_signal_performance_separates_current_strategy_from_legacy_history():
             "2026-11-17T10:05:00+00:00",
             {"entry": 100, "stop_loss": 102, "take_profit": 97},
         )
+        # Early live signals with the new decision wording are recognized as
+        # current strategy even though they predate the stored version field.
+        record_signal(
+            db, "XRPUSDT", "BUY", ["1h", "15m", "5m"],
+            ["H1 memberi bias bullish berdasarkan MA40, RSI16 dan Ichimoku/Kumo."],
+            "2026-11-17T10:10:00+00:00",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+        )
         rows = db.scalars(select(SignalEvent)).all()
         for row in rows:
             stored = json.loads(row.reasons_json)
             if row.symbol == "BTCUSDT":
                 stored.update({"outcome": "TP", "realized_r": 1.5})
-            else:
+                row.status = "CLOSED"
+            elif row.symbol == "ETHUSDT":
                 stored.update({"outcome": "SL", "realized_r": -1.0})
+                row.status = "CLOSED"
+            else:
+                row.status = "ACTIVE"
             row.reasons_json = json.dumps(stored)
-            row.status = "CLOSED"
         db.commit()
 
         stats = signal_performance(db)
         assert stats["current_strategy_mode"] == current_mode
-        assert stats["total_signals"] == 1
+        assert stats["total_signals"] == 2
+        assert stats["active"] == 1
         assert stats["completed"] == 1
         assert stats["wins"] == 1
         assert stats["losses"] == 0
