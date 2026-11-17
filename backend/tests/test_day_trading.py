@@ -14,20 +14,22 @@ def _analysis(timeframe, side):
         "indicators": {
             "last_price": 105.0 if buy else 95.0 if sell else 100.0,
             "ma40": 100.0,
+            "rsi16": 60.0 if buy else 40.0 if sell else 50.0,
             "ichimoku_above_cloud": buy,
             "ichimoku_below_cloud": sell,
         },
     }
 
 
-def _decision(m15_side="BUY", m30_side="BUY", flow="BUY_PRESSURE"):
+def _decision(h1="BUY", m15="BUY", m5="BUY", flow="BALANCED"):
     analyses = [
-        _analysis("15m", m15_side),
-        _analysis("30m", m30_side),
+        _analysis("1h", h1),
+        _analysis("15m", m15),
+        _analysis("5m", m5),
     ]
     return build_intelligence_decision(
         [item["side"] for item in analyses],
-        {"trend": "bullish", "event": "bullish_bos"},
+        {"trend": "bullish", "event": "none"},
         {"bias": flow},
         {"source_market": "unavailable"},
         {"bias": "BALANCED"},
@@ -36,25 +38,30 @@ def _decision(m15_side="BUY", m30_side="BUY", flow="BUY_PRESSURE"):
     )
 
 
-def test_strategy_buy_requires_m30_bias_and_m15_setup():
+def test_strategy_buy_requires_h1_bias_m15_setup_and_m5_trigger():
     result = _decision()
     assert result["side"] == "BUY"
-    assert result["strategy_mode"] == "ICHIMOKU_RSI16_MA40_M15_M30"
+    assert result["strategy_mode"] == "ICHIMOKU_RSI16_MA40_H1_M15_M5"
     assert result["trade_plan"]["source_timeframe"] == "15m"
     assert result["trade_plan"]["risk_reward"] == 1.5
 
 
-def test_strategy_blocks_when_m30_bias_conflicts():
-    result = _decision(m15_side="BUY", m30_side="SELL")
+def test_strategy_blocks_when_h1_bias_conflicts():
+    result = _decision(h1="SELL", m15="BUY")
     assert result["side"] == "NO TRADE"
     assert result["trade_plan"] is None
 
 
 def test_strategy_blocks_without_m15_setup():
-    result = _decision(m15_side="NO TRADE", m30_side="BUY")
+    result = _decision(h1="BUY", m15="NO TRADE", m5="BUY")
     assert result["side"] == "NO TRADE"
 
 
 def test_strategy_blocks_opposing_orderflow():
     result = _decision(flow="SELL_PRESSURE")
     assert result["side"] == "NO TRADE"
+
+
+def test_strategy_allows_orderflow_as_alternative_trigger():
+    result = _decision(m5="NO TRADE", flow="BUY_PRESSURE")
+    assert result["side"] == "BUY"
