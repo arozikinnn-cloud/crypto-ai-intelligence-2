@@ -211,6 +211,7 @@ async def combined_intelligence(
         m15_candle_timestamp,
         decision.get("trade_plan"),
         m15_candle_timestamp,
+        decision.get("strategy_mode"),
     )
     structure_response = StructureResponse(
         symbol=symbol.upper(),
