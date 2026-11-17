@@ -14,6 +14,7 @@ from app.schemas.signals import SignalEventResponse, SignalNotificationResponse
 
 router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"])
 logger = logging.getLogger(__name__)
+CURRENT_STRATEGY_MODE = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
 
 
 def _valid_trade_plan(side: str, plan: dict | None) -> bool:
@@ -46,6 +47,19 @@ def _event_payload(row: SignalEvent) -> dict:
             reasons.append("Alasan penutupan: " + stored["close_reason"])
         plan = stored.get("trade_plan") or {}
         outcome = stored.get("outcome")
+        strategy_mode = stored.get("strategy_mode")
+        if not strategy_mode:
+            # The first live signals from this strategy were created before
+            # strategy_mode was persisted. Their new decision-reason prefix
+            # lets us classify them without mixing older EMA/legacy signals.
+            strategy_mode = (
+                CURRENT_STRATEGY_MODE
+                if any(
+                    isinstance(reason, str) and reason.startswith("H1 memberi bias ")
+                    for reason in reasons
+                )
+                else "LEGACY_UNVERSIONED"
+            )
         return {
             "id": row.id, "symbol": row.symbol, "side": row.side,
             "status": row.status, "timeframe_set": row.timeframe_set,
@@ -53,7 +67,7 @@ def _event_payload(row: SignalEvent) -> dict:
             "updated_at": row.updated_at, "entry": plan.get("entry"),
             "stop_loss": plan.get("stop_loss"),
             "take_profit": plan.get("take_profit"),
-            "strategy_mode": stored.get("strategy_mode", "LEGACY_UNVERSIONED"),
+            "strategy_mode": strategy_mode,
             "ambiguous_candle": bool(stored.get("ambiguous_candle")),
             "outcome": outcome, "realized_r": stored.get("realized_r"),
             "closed_at": stored.get("closed_at"),
@@ -287,7 +301,7 @@ def list_signals(
 
 @router.get("/performance")
 def signal_performance(db: Session = Depends(get_db)):
-    current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+    current_mode = CURRENT_STRATEGY_MODE
     payloads = [_event_payload(row) for row in db.scalars(select(SignalEvent))]
     current = [
         item for item in payloads
