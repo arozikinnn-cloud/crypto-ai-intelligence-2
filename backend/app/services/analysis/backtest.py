@@ -8,7 +8,7 @@ from app.services.market_data.quality import validate_candles, validate_candle_c
 def _metrics(returns: list[float]) -> dict:
     equity = peak = 1.0
     max_drawdown = positive = negative = 0.0
-    wins = 0
+    wins = losses = flats = 0
     for value in returns:
         equity *= 1 + value
         peak = max(peak, equity)
@@ -18,11 +18,19 @@ def _metrics(returns: list[float]) -> dict:
             wins += 1
             positive += value
         elif value < 0:
+            losses += 1
             negative += abs(value)
+        else:
+            flats += 1
+    count = len(returns)
     return {
-        "trades": len(returns),
-        "win_rate_pct": wins / len(returns) * 100 if returns else 0.0,
+        "trades": count,
+        "wins": wins,
+        "losses": losses,
+        "flats": flats,
+        "win_rate_pct": wins / count * 100 if count else 0.0,
         "total_return_pct": (equity - 1) * 100,
+        "expectancy_pct": sum(returns) / count * 100 if count else 0.0,
         "profit_factor": positive / negative if negative else None,
         "max_drawdown_pct": max_drawdown * 100,
     }
@@ -146,6 +154,14 @@ def run_strategy_backtest(
         "strategy": "RSI16 + MA40 + Ichimoku Kumo; ATR stop; fixed 1:1.5 risk/reward",
         "train": _metrics(train),
         "out_of_sample": _metrics(test),
+        "overall": _metrics([item["return"] for item in trades]),
+        "signal_count": len(trades),
+        "no_trade_count": max(0, len(candles) - 80 - 1 - len(trades)),
+        "quality_checks": {
+            "minimum_oos_trades_met": len(test) >= 30,
+            "positive_oos_expectancy": bool(test) and sum(test) / len(test) > 0,
+            "oos_drawdown_below_20pct": _metrics(test)["max_drawdown_pct"] < 20,
+        },
         "warning": (
             "Historical single-timeframe replay of the current technical engine. "
             "This is not a full H1/M15/M5 multi-timeframe replay and does not replay "
