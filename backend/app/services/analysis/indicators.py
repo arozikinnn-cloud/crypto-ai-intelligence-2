@@ -51,6 +51,7 @@ def calculate_indicators(candles: list[NormalizedCandle]) -> dict:
     volumes = [c.volume for c in candles]
     last = len(candles) - 1
     ma40 = sum(closes[-40:]) / 40 if len(closes) >= 40 else None
+    ma40_previous = sum(closes[-41:-1]) / 40 if len(closes) >= 41 else None
     tenkan = _midpoint(candles, last, 9)
     kijun = _midpoint(candles, last, 26)
     # Current plotted Kumo is formed by values calculated 26 candles earlier.
@@ -121,6 +122,23 @@ def calculate_indicators(candles: list[NormalizedCandle]) -> dict:
         ),
         "last_price": price,
         "ma40": ma40,
+        "ma40_previous": ma40_previous,
+        "ma40_bullish_rejection": bool(
+            ma40 is not None and candles[-1].low <= ma40
+            and price > ma40 and candles[-1].close >= candles[-1].open
+        ),
+        "ma40_bearish_rejection": bool(
+            ma40 is not None and candles[-1].high >= ma40
+            and price < ma40 and candles[-1].close <= candles[-1].open
+        ),
+        "ma40_bullish_breakout": bool(
+            ma40 is not None and ma40_previous is not None
+            and previous_close <= ma40_previous and price > ma40
+        ),
+        "ma40_bearish_breakout": bool(
+            ma40 is not None and ma40_previous is not None
+            and previous_close >= ma40_previous and price < ma40
+        ),
         "ema20": ema20_values[-1] if ema20_values else None,
         "ema50": ema50_values[-1] if ema50_values else None,
         "rsi16": rsi(closes, 16),
