@@ -4,7 +4,7 @@ The API is research-only. It does not place exchange orders and does not promise
 
 ## Technical analysis
 
-The technical engine computes EMA20/EMA50, RSI14, MACD, ATR14, volume ratio, rolling support/resistance, and deterministic BUY/SELL/NO TRADE evidence. The confluence score is not a calibrated probability or win rate.
+The active technical engine computes MA40, RSI16, Ichimoku Tenkan/Kijun and the correctly time-aligned Kumo, ATR14, volume ratio, rolling support/resistance, and deterministic BUY/SELL/NO TRADE evidence. EMA20/EMA50 and RSI14 remain supplemental display fields, not the primary signal rules. MA40 rejection and closed-candle breakouts are reported as additional context. The confluence score is not a calibrated probability or win rate.
 
 ## Structure and SMC
 
@@ -28,12 +28,12 @@ Open interest and funding are contextual metrics, not standalone directional sig
 
 ## Combined intelligence backtest and quality validation
 
-- `GET /api/v1/analysis/intelligence/backtest` replays closed-candle decisions using technical indicators, structure heuristics, and kline order flow. It enters at the next candle open and exits at a configurable fixed candle horizon.
+- `GET /api/v1/analysis/backtest` and `GET /api/v1/analysis/intelligence/backtest` replay the active RSI16 + MA40 + Ichimoku technical engine. Signals are evaluated on closed candles, entries occur at the next candle open, stops are ATR-based, and targets use 1:1.5 risk/reward. TP/SL are checked against later candle highs/lows; if both are touched in one candle, the test conservatively records SL.
 - The response separates train and out-of-sample metrics: trade count, win rate, total return, expectancy, profit factor, and maximum drawdown. It also reports explicit quality gates and known limitations.
 - Estimated fee and slippage are configurable in basis points per side. The simulation allows only one open position at a time, excludes trades crossing the train/test boundary, and rejects candle series with gaps or irregular intervals.
 - Historical aggTrades/CVD, liquidation events, order-book depth, OI/funding, news, and sentiment are not replayed in this version. Therefore this is not a full historical replay of every live intelligence input.
 - `GET /api/v1/analysis/intelligence/timeframe-performance` compares the same rule set across selected timeframes. It uses equal candle counts and equal candle-horizon settings, not equal calendar durations; compare trade count and out-of-sample metrics before drawing conclusions.
-- The older `/api/v1/analysis/backtest` remains an EMA20/EMA50 baseline and should not be confused with the combined-intelligence backtest.
+- The current backtest is a single-timeframe technical replay. It is not a synchronized historical replay of the complete H1/M15/M5 decision, nor does it replay historical aggTrades/CVD, order book, OI, funding or liquidation data.
 
 ## Signal lifecycle and notifications
 
@@ -50,4 +50,4 @@ The combined engine remains deterministic and rule-based, not a trained probabil
 
 ## Day-trading timeframes
 
-Combined intelligence uses only M5, M15, and H1 by default. H1 defines directional bias and market structure, M15 defines the setup and ATR-based trade plan, and M5 is the execution confirmation. H4 is not part of the signal decision. BUY/SELL requires aligned H1, M15, and M5 decisions plus order-flow confirmation; otherwise the result is NO TRADE.
+Combined intelligence requires H1, M15, and M5. H1 defines directional bias and market structure, M15 defines the setup and ATR-based trade plan, and M5 is the execution trigger. H1 and M15 must agree. A same-direction M5 trigger or same-direction order-flow/aggTrades pressure is required; an opposing M5, order-flow, aggTrades, or structure event blocks entry. H4 is not part of the signal decision.
