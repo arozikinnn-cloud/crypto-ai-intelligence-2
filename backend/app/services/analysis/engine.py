@@ -5,7 +5,7 @@ from app.services.analysis.indicators import calculate_indicators, validate_anal
 
 def analyze_market(
     candles: list[NormalizedCandle],
-    risk_reward: float = 2.0,
+    risk_reward: float = 1.5,
     atr_multiplier: float = 1.5,
 ) -> dict:
     validate_analysis_input(candles)
@@ -23,18 +23,18 @@ def analyze_market(
 
     bullish_checks = [
         ema20 is not None and ema50 is not None and price > ema20 > ema50,
-        rsi14 is not None and 50 <= rsi14 < 70,
+        rsi14 is not None and 50 <= rsi14 < 75,
         macd is not None and macd_signal is not None and macd > macd_signal,
         values["volume_ratio"] is not None and values["volume_ratio"] >= 1.0,
     ]
     bearish_checks = [
         ema20 is not None and ema50 is not None and price < ema20 < ema50,
-        rsi14 is not None and 30 < rsi14 <= 50,
+        rsi14 is not None and 25 < rsi14 <= 50,
         macd is not None and macd_signal is not None and macd < macd_signal,
         values["volume_ratio"] is not None and values["volume_ratio"] >= 1.0,
     ]
 
-    if sum(bullish_checks) >= 3 and sum(bullish_checks) > sum(bearish_checks):
+    atr_is_valid = atr14 is not None and float(atr14) > 0\n\n    if atr_is_valid and sum(bullish_checks) >= 3 and sum(bullish_checks) > sum(bearish_checks):
         side = "BUY"
         stop_loss = price - float(atr14) * atr_multiplier if atr14 else None
         take_profit = price + (price - stop_loss) * risk_reward if stop_loss is not None else None
@@ -47,7 +47,7 @@ def analyze_market(
             ]) if check
         ]
         score = sum(bullish_checks)
-    elif sum(bearish_checks) >= 3 and sum(bearish_checks) > sum(bullish_checks):
+    elif atr_is_valid and sum(bearish_checks) >= 3 and sum(bearish_checks) > sum(bullish_checks):
         side = "SELL"
         stop_loss = price + float(atr14) * atr_multiplier if atr14 else None
         take_profit = price - (stop_loss - price) * risk_reward if stop_loss is not None else None
