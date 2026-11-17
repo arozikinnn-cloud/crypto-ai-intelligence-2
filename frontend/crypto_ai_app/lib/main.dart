@@ -170,7 +170,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void startPolling() {
     poller?.cancel();
     poller = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() { notifications = loadNotes(); signals = loadSignals(); signalPerformance = loadSignalPerformance(); });
+      if (mounted) setState(() { notifications = loadNotes(); signals = loadSignals(); signalPerformance = loadSignalPerformance(); backtest = loadBacktest(); });
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -194,7 +194,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); });
+    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -894,9 +894,13 @@ class _BacktestCard extends StatelessWidget {
               style: const TextStyle(color: muted, fontSize: 9));
           }
           final data = snap.data ?? {};
-          final overall = mapVal(data['overall']);
+          if (data['unavailable_reason'] != null) {
+            return Text('Backtest gagal dimuat: ${data['unavailable_reason']}',
+              style: const TextStyle(color: red, fontSize: 9));
+          }
+          final train = mapVal(data['train']);
           final out = mapVal(data['out_of_sample']);
-          if (overall.isEmpty) return const Text('Belum ada hasil backtest.',
+          if (train.isEmpty || out.isEmpty) return const Text('Data backtest belum lengkap.',
             style: TextStyle(color: muted, fontSize: 9));
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
@@ -905,28 +909,27 @@ class _BacktestCard extends StatelessWidget {
               Text('${number(data['candles'])} candles',
                 style: const TextStyle(color: muted, fontSize: 8)),
             ]),
-            const SizedBox(height: 10),
-            const Text('OUT-OF-SAMPLE', style: TextStyle(color: blue, fontSize: 8, fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
+            const Text('OUT-OF-SAMPLE • DATA UJI', style: TextStyle(color: blue, fontSize: 8, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 7),
             Row(children: [
               _Metric(label: 'WIN RATE', value: '${decimal(out['win_rate_pct'])}%'),
               _Metric(label: 'TRADES', value: txt(out['trades'], '0')),
               _Metric(label: 'PROFIT FACTOR', value: out['profit_factor'] == null ? 'N/A' : decimal(out['profit_factor'])),
               _Metric(label: 'MAX DD', value: '${decimal(out['max_drawdown_pct'])}%'),
             ]),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Row(children: [
-              _Metric(label: 'OVERALL RETURN', value: '${decimal(overall['total_return_pct'])}%'),
-              _Metric(label: 'EXPECTANCY', value: '${decimal(overall['expectancy_pct'])}%'),
-              _Metric(label: 'SIGNALS', value: txt(data['signal_count'], '0')),
-              _Metric(label: 'NO TRADE', value: txt(data['no_trade_count'], '0')),
+              _Metric(label: 'TRAIN RETURN', value: '${decimal(train['total_return_pct'])}%'),
+              _Metric(label: 'TEST RETURN', value: '${decimal(out['total_return_pct'])}%'),
+              _Metric(label: 'TRAIN TRADES', value: txt(train['trades'], '0')),
+              _Metric(label: 'TEST TRADES', value: txt(out['trades'], '0')),
             ]),
-            const SizedBox(height: 9),
-            Text('Strategi: ${txt(data['strategy'], 'AI intelligence')} • Hasil historis bukan jaminan performa live.',
+            const SizedBox(height: 8),
+            Text('Benchmark: ${txt(data['strategy'], 'EMA strategy')}. Backtest historis, bukan hasil sinyal live dan bukan jaminan profit.',
               style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
-            if (strings(data['limitations']).isNotEmpty)
-              Text(strings(data['limitations']).first,
-                style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
+            Text(txt(data['warning'], ''),
+              style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
           ]);
         },
       ),
@@ -951,7 +954,7 @@ class _SignalPerformance extends StatelessWidget {
           final data = snap.data ?? <String, dynamic>{};
           if (data.isEmpty || data['unavailable_reason'] != null) {
             return Text(
-              'Statistik sinyal belum tersedia.',
+              'Statistik sinyal belum tersedia: ${txt(data['unavailable_reason'], 'belum ada data')}',
               style: TextStyle(color: muted, fontSize: 9),
             );
           }
