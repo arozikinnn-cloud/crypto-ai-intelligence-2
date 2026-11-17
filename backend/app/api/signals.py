@@ -77,7 +77,7 @@ def evaluate_active_signals(
     rows = list(db.scalars(select(SignalEvent).where(
         SignalEvent.symbol == symbol.upper(),
         SignalEvent.status == "ACTIVE",
-    )))
+    ).with_for_update(skip_locked=True)))
     closed_signals: list[tuple[SignalEvent, str, float | None]] = []
     for row in rows:
         try:
