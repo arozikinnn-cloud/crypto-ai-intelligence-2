@@ -10,7 +10,7 @@ def _tf(timeframe, side):
         "entry": 100.0 if side != "NO TRADE" else None,
         "stop_loss": 98.0 if side == "BUY" else 102.0 if side == "SELL" else None,
         "take_profit": 104.0 if side == "BUY" else 96.0 if side == "SELL" else None,
-        "risk_reward": 2.0 if side != "NO TRADE" else None,
+        "risk_reward": 1.5 if side != "NO TRADE" else None,
     }
 
 
@@ -32,8 +32,9 @@ def test_day_trading_buy_requires_aligned_higher_timeframes_setup_and_flow():
     assert result["side"] == "BUY"
     assert result["strategy_mode"] == "DAY_TRADING"
     assert result["trade_plan"]["source_timeframe"] == "15m"
-    assert result["trade_plan"]["risk_reward"] == 2.0
+    assert result["trade_plan"]["risk_reward"] == 1.5
     assert result["max_confluence"] == 5
+    assert result["trade_plan"]["take_profit"] == 103.0
 
 
 def test_day_trading_sell_requires_aligned_higher_timeframes_setup_and_flow():
