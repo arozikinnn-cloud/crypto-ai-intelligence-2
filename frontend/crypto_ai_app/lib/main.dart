@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/push_notification_service.dart';
 import 'services/analysis_api.dart';
+import 'risk_calculator_page.dart';
 
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
@@ -219,6 +220,15 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: () {
+        Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const RiskCalculatorPage(),
+        ));
+      },
+      icon: const Icon(Icons.calculate_rounded),
+      label: const Text('Risk Calculator'),
+    ),
     body: SafeArea(child: FutureBuilder<Map<String, dynamic>>(
       future: analysis,
       builder: (context, snap) {
