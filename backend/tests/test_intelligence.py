@@ -114,3 +114,35 @@ def test_derivatives_are_context_not_directional_confirmation():
 def test_unknown_technical_side_is_rejected():
     with pytest.raises(ValueError, match="unsupported"):
         build_intelligence_decision(["LONG"], {}, {}, {})
+
+
+
+def test_opposing_h1_structure_break_blocks_buy():
+    analyses = [_tf("5m", "BUY"), _tf("15m", "BUY"), _tf("1h", "BUY")]
+    result = build_intelligence_decision(
+        ["BUY", "BUY", "BUY"],
+        {"trend": "bullish", "event": "bearish_bos"},
+        {"bias": "BUY_PRESSURE"},
+        {"source_market": "unavailable"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        analyses,
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+
+
+def test_trade_plan_rejects_stop_loss_on_wrong_side():
+    analyses = [_tf("5m", "BUY"), _tf("15m", "BUY"), _tf("1h", "BUY")]
+    analyses[1]["stop_loss"] = 101.0
+    result = build_intelligence_decision(
+        ["BUY", "BUY", "BUY"],
+        {"trend": "bullish", "event": "none"},
+        {"bias": "BUY_PRESSURE"},
+        {"source_market": "unavailable"},
+        {"bias": "BUY_PRESSURE"},
+        {},
+        analyses,
+    )
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
