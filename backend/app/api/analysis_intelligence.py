@@ -103,12 +103,13 @@ async def combined_intelligence(
     derivatives_period: str = Query(default="5m"),
     db: Session = Depends(get_db),
 ) -> IntelligenceResponse:
-    selected = [item.strip() for item in intervals.split(",") if item.strip()]
-    if len(selected) != 3 or set(selected) != {"1h", "15m", "5m"}:
+    requested = [item.strip() for item in intervals.split(",") if item.strip()]
+    if len(requested) != 3 or set(requested) != {"1h", "15m", "5m"}:
         raise HTTPException(
             status_code=422,
             detail="The strategy requires exactly 1h, 15m and 5m analysis timeframes.",
         )
+    selected = ["1h", "15m", "5m"]
     if any(item not in BinanceMarketData.ALLOWED_INTERVALS for item in selected):
         raise HTTPException(status_code=422, detail="One or more intervals are unsupported.")
     if order_flow_interval not in BinanceMarketData.ALLOWED_INTERVALS:
@@ -203,7 +204,7 @@ async def combined_intelligence(
         decision["side"],
         selected,
         decision["reasons"],
-        str(getattr(candle_sets[0][-1], "close_time", candle_sets[0][-1])),
+        str(getattr(candle_sets[selected.index("15m")][-1], "close_time", candle_sets[selected.index("15m")][-1])),
         decision.get("trade_plan"),
         str(
             getattr(
