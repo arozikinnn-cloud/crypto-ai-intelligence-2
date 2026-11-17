@@ -94,13 +94,14 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         db.execute(delete(SignalEvent))
         db.commit()
         plan = {"entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
+        current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
         record_signal(
             db, "TPTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
-            "signal-tp", plan, "candle-tp-1",
+            "signal-tp", plan, "candle-tp-1", strategy_mode=current_mode,
         )
         record_signal(
             db, "AMBTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
-            "signal-amb", plan, "candle-amb-1",
+            "signal-amb", plan, "candle-amb-1", strategy_mode=current_mode,
         )
 
         # The signal candle itself must never close its own trade.
@@ -126,7 +127,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
 
         record_signal(
             db, "SLTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
-            "signal-sl", plan, "candle-sl-1",
+            "signal-sl", plan, "candle-sl-1", strategy_mode=current_mode,
         )
         evaluate_active_signals(db, "SLTEST", 101.0, 97.0, "candle-sl-2")
         sl_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "SLTEST"))
