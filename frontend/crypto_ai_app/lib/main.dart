@@ -912,6 +912,10 @@ class _BacktestCard extends StatelessWidget {
           }
           final train = mapVal(data['train']);
           final out = mapVal(data['out_of_sample']);
+          final quality = mapVal(data['quality_checks']);
+          final qualityPassed = quality['minimum_oos_trades_met'] == true &&
+              quality['positive_oos_expectancy'] == true &&
+              quality['oos_drawdown_below_20pct'] == true;
           if (train.isEmpty || out.isEmpty) return const Text('Data backtest belum lengkap.',
             style: TextStyle(color: muted, fontSize: 9));
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -937,6 +941,29 @@ class _BacktestCard extends StatelessWidget {
               _Metric(label: 'TRAIN TRADES', value: txt(train['trades'], '0')),
               _Metric(label: 'TEST TRADES', value: txt(out['trades'], '0')),
             ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              _Metric(label: 'TEST EXPECTANCY', value: '${decimal(out['expectancy_pct'])}%'),
+              _Metric(label: 'TOTAL SIGNALS', value: txt(data['signal_count'], '0')),
+              _Metric(label: 'NO TRADE BARS', value: txt(data['no_trade_count'], '0')),
+              const Expanded(child: SizedBox()),
+            ]),
+            const SizedBox(height: 9),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (qualityPassed ? green : red).withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: (qualityPassed ? green : red).withValues(alpha: .3)),
+              ),
+              child: Text(
+                qualityPassed
+                    ? 'BACKTEST QUALITY: PASS'
+                    : 'BACKTEST QUALITY: BELUM LULUS — jangan gunakan strategi untuk trading live sebelum hasil out-of-sample membaik.',
+                style: TextStyle(color: qualityPassed ? green : red, fontSize: 8, fontWeight: FontWeight.bold),
+              ),
+            ),
             const SizedBox(height: 8),
             Text('Strategi: ${txt(data['strategy'], 'RSI16 + MA40 + Ichimoku')}. Backtest historis, bukan hasil sinyal live dan bukan jaminan profit.',
               style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
