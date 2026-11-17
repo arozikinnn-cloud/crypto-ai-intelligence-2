@@ -127,7 +127,7 @@ def migrate_schema(engine: Engine) -> None:
             connection.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_signal_event_symbol_created "
                 "ON signal_events (symbol, created_at)"
-            ));
+            ))
             # Normalize any legacy duplicates before enforcing the active lock.
             connection.execute(text("""
                 UPDATE signal_events
