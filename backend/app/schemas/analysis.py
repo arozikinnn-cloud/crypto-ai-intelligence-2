@@ -9,6 +9,11 @@ class TechnicalIndicators(BaseModel):
     ema50: float | None = None
     rsi14: float | None = None
     ma40: float | None = None
+    ma40_previous: float | None = None
+    ma40_bullish_rejection: bool = False
+    ma40_bearish_rejection: bool = False
+    ma40_bullish_breakout: bool = False
+    ma40_bearish_breakout: bool = False
     rsi16: float | None = None
     ichimoku_tenkan: float | None = None
     ichimoku_kijun: float | None = None

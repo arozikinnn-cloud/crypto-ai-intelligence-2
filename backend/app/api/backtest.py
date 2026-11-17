@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.schemas.backtest import BacktestResponse
-from app.services.analysis.backtest import run_ema_backtest
+from app.services.analysis.backtest import run_strategy_backtest
 from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 
@@ -19,7 +19,7 @@ async def backtest(
 ) -> BacktestResponse:
     try:
         candles = await BinanceMarketData().fetch_klines(symbol, interval, limit, closed_only=True)
-        result = run_ema_backtest(candles, fee_bps=fee_bps, slippage_bps=slippage_bps)
+        result = run_strategy_backtest(candles, fee_bps=fee_bps, slippage_bps=slippage_bps)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:

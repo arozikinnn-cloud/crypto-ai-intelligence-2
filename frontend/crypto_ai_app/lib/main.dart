@@ -267,6 +267,7 @@ class _Dashboard extends StatelessWidget {
     final agg = mapVal(data['aggtrades_order_flow']);
     final flow = agg.isNotEmpty ? agg : mapVal(data['order_flow']);
     final market = mapVal(data['market_context']);
+    final cvdHistory = mapVal(market['cvd_history']);
     final deriv = mapVal(data['derivatives']);
     final tradePlan = mapVal(data['trade_plan']);
 
@@ -384,7 +385,7 @@ class _Dashboard extends StatelessWidget {
                 ]),
                 const SizedBox(height: 12),
                 if (tradePlan.isEmpty)
-                  const Text('Belum ada rencana entry valid. Tunggu konfirmasi H1 + M15 + M5 + order flow.',
+                  const Text('Belum ada entry valid. H1 dan M15 wajib searah, dengan minimal satu pemicu searah dari M5 atau order flow/aggTrades.',
                     style: TextStyle(color: muted, fontSize: 11, height: 1.4))
                 else ...[
                   Row(children: [
@@ -393,7 +394,7 @@ class _Dashboard extends StatelessWidget {
                     Expanded(child: _PlanValue('TAKE PROFIT', tradePlan['take_profit'])),
                   ]),
                   const SizedBox(height: 8),
-                  Text('Risk/Reward: 1:${txt(tradePlan['risk_reward'], '2.0')} • Acuan M15',
+                  Text('Risk/Reward: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
                     style: const TextStyle(color: muted, fontSize: 10)),
                 ],
               ]),
@@ -416,7 +417,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _OrderFlow(data: flow),
             const SizedBox(height: 9),
-            _Cvd(points: maps(agg['cvd_points']), scope: txt(agg['cvd_scope'], 'unavailable')),
+            _Cvd(points: maps(cvdHistory['points']), scope: txt(cvdHistory['cvd_scope'], 'unavailable')),
             const SizedBox(height: 15),
             const _Heading('DERIVATIVES & LIQUIDITY', 'Konteks futures dan kondisi likuiditas'),
             const SizedBox(height: 9),
@@ -664,6 +665,9 @@ class _Timeframe extends StatelessWidget {
     final side = txt(data['side'], 'UNKNOWN').toUpperCase();
     final color = side == 'BUY' ? green : side == 'SELL' ? red : blue;
     final ind = mapVal(data['indicators']);
+    final kumo = ind['ichimoku_above_cloud'] == true ? 'ABOVE'
+      : ind['ichimoku_below_cloud'] == true ? 'BELOW'
+      : ind['ichimoku_cloud_top'] == null ? 'N/A' : 'INSIDE';
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       Row(children: [
         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -677,9 +681,17 @@ class _Timeframe extends StatelessWidget {
       const SizedBox(height: 11),
       Row(children: [
         _Metric(label: 'LAST PRICE', value: price(ind['last_price'])),
-        _Metric(label: 'RSI 14', value: decimal(ind['rsi14'])),
-        _Metric(label: 'EMA 20', value: price(ind['ema20'])),
-        _Metric(label: 'EMA 50', value: price(ind['ema50'])),
+        _Metric(label: 'RSI 16', value: decimal(ind['rsi16'])),
+        _Metric(label: 'MA 40', value: price(ind['ma40'])),
+        _Metric(label: 'KUMO', value: kumo),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        _Metric(label: 'TENKAN', value: price(ind['ichimoku_tenkan'])),
+        _Metric(label: 'KIJUN', value: price(ind['ichimoku_kijun'])),
+        _Metric(label: 'ATR 14', value: price(ind['atr14'])),
+        _Metric(label: 'MA40 SETUP', value: ind['ma40_bullish_rejection'] == true || ind['ma40_bullish_breakout'] == true ? 'BULLISH'
+          : ind['ma40_bearish_rejection'] == true || ind['ma40_bearish_breakout'] == true ? 'BEARISH' : '—'),
       ]),
       if (strings(data['reasons']).isNotEmpty) ...[
         const SizedBox(height: 8),
@@ -779,7 +791,7 @@ class _Cvd extends StatelessWidget {
   Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(13), child: Column(
     crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        const Expanded(child: Text('CVD • RECENT AGGTRADES', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold))),
+        const Expanded(child: Text('CVD • PERSISTED AGGTRADES', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold))),
         Text(scope.toUpperCase(), style: const TextStyle(color: muted, fontSize: 8)),
       ]),
       const SizedBox(height: 10),
@@ -787,8 +799,8 @@ class _Cvd extends StatelessWidget {
         ? CustomPaint(painter: _CvdPainter(points))
         : const Center(child: Text('Belum cukup titik CVD untuk grafik.', style: TextStyle(color: muted, fontSize: 9)))),
       const SizedBox(height: 6),
-      Text(points.length > 1 ? 'Batch aggTrades terbaru, bukan histori sesi penuh.'
-        : 'CVD historis belum tersedia secara konsisten di serverless.',
+      Text(points.length > 1 ? 'Riwayat bucket 1 menit yang berhasil disimpan; tidak selalu mencakup sesi penuh.'
+        : 'Riwayat CVD tersimpan belum cukup untuk ditampilkan.',
         style: const TextStyle(color: muted, fontSize: 8)),
     ],
   )));
@@ -926,7 +938,7 @@ class _BacktestCard extends StatelessWidget {
               _Metric(label: 'TEST TRADES', value: txt(out['trades'], '0')),
             ]),
             const SizedBox(height: 8),
-            Text('Benchmark: ${txt(data['strategy'], 'EMA strategy')}. Backtest historis, bukan hasil sinyal live dan bukan jaminan profit.',
+            Text('Strategi: ${txt(data['strategy'], 'RSI16 + MA40 + Ichimoku')}. Backtest historis, bukan hasil sinyal live dan bukan jaminan profit.',
               style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
             Text(txt(data['warning'], ''),
               style: const TextStyle(color: muted, fontSize: 8, height: 1.4)),
