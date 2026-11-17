@@ -50,5 +50,7 @@ def test_analysis_returns_explainable_output():
     result = analyze_market(make_candles())
     assert result["side"] in {"BUY", "SELL", "NO TRADE"}
     assert result["max_confluence"] == 4
+    if result["side"] != "NO TRADE":
+        assert result["risk_reward"] == 1.5
     assert result["reasons"]
     assert result["score_note"].startswith("Skor konfluensi")
