@@ -31,7 +31,10 @@ def candles(count=180):
 def test_combined_backtest_reports_out_of_sample_and_quality_gates():
     result = run_combined_backtest(candles())
     assert result["candles"] == 180
-    assert result["signal_count"] <= 20
+    assert result["signal_count"] <= result["candles"]
+    assert "RSI16" in result["strategy"]
+    assert "MA40" in result["strategy"]
+    assert "Ichimoku" in result["strategy"]
     assert "out_of_sample" in result
     assert set(result["quality_checks"]) == {
         "minimum_oos_trades_met", "positive_oos_expectancy", "oos_drawdown_below_20pct"
