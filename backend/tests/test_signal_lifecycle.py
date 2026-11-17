@@ -65,7 +65,9 @@ def test_only_one_active_signal_per_symbol_until_tp_or_sl():
 
         record_signal(
             db, "BTCUSDT", "SELL", ["15m", "30m"], ["New setup after TP"],
-            "candle-5", plan, "signal-candle-5",
+            "candle-5",
+            {"entry": 100.0, "stop_loss": 102.0, "take_profit": 97.0},
+            "signal-candle-5",
         )
         btc_events = list(db.scalars(
             select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT")
@@ -137,7 +139,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         assert stats["wins"] == 1
         assert stats["losses"] == 2
         assert stats["ambiguous"] == 1
-        assert stats["win_rate_pct"] == 100 / 3
+        assert abs(stats["win_rate_pct"] - (100 / 3)) < 1e-9
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
