@@ -8,7 +8,7 @@ def _analysis(timeframe, side):
         "entry": 100.0 if side != "NO TRADE" else None,
         "stop_loss": 98.0 if side == "BUY" else 102.0 if side == "SELL" else None,
         "take_profit": 104.0 if side == "BUY" else 96.0 if side == "SELL" else None,
-        "risk_reward": 2.0 if side != "NO TRADE" else None,
+        "risk_reward": 1.5 if side != "NO TRADE" else None,
     }
 
 
@@ -33,7 +33,7 @@ def test_day_trading_buy_requires_h1_m15_m5_and_flow_confirmation():
     assert result["side"] == "BUY"
     assert result["strategy_mode"] == "DAY_TRADING"
     assert result["trade_plan"]["source_timeframe"] == "15m"
-    assert result["trade_plan"]["risk_reward"] == 2.0
+    assert result["trade_plan"]["risk_reward"] == 1.5
 
 
 def test_day_trading_does_not_force_signal_when_h1_bias_conflicts():
