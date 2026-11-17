@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -8,7 +9,7 @@ from app.database.base import Base
 from app.models.signal_event import SignalEvent, SignalNotification
 from app.services.analysis.combined_backtest import run_combined_backtest
 from app.services.market_data.base import MarketDataError, NormalizedCandle
-from app.api.signals import record_signal
+from app.api.signals import record_signal, signal_performance
 
 
 def candles(count=180):
@@ -88,6 +89,49 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
         assert active is not None
         assert active.side == "SELL"
         assert len(db.scalars(select(SignalNotification)).all()) == 2
+    engine.dispose()
+
+
+
+
+def test_signal_performance_separates_current_strategy_from_legacy_history():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+    with Session(engine) as db:
+        record_signal(
+            db, "BTCUSDT", "BUY", ["1h", "15m", "5m"], ["current strategy"],
+            "2026-11-17T10:00:00+00:00",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+            strategy_mode=current_mode,
+        )
+        record_signal(
+            db, "ETHUSDT", "SELL", ["1h", "15m", "5m"], ["legacy strategy"],
+            "2026-11-17T10:05:00+00:00",
+            {"entry": 100, "stop_loss": 102, "take_profit": 97},
+        )
+        rows = db.scalars(select(SignalEvent)).all()
+        for row in rows:
+            stored = json.loads(row.reasons_json)
+            if row.symbol == "BTCUSDT":
+                stored.update({"outcome": "TP", "realized_r": 1.5})
+            else:
+                stored.update({"outcome": "SL", "realized_r": -1.0})
+            row.reasons_json = json.dumps(stored)
+            row.status = "CLOSED"
+        db.commit()
+
+        stats = signal_performance(db)
+        assert stats["current_strategy_mode"] == current_mode
+        assert stats["total_signals"] == 1
+        assert stats["completed"] == 1
+        assert stats["wins"] == 1
+        assert stats["losses"] == 0
+        assert stats["win_rate_pct"] == 100.0
+        assert stats["legacy_total_signals"] == 1
+        assert stats["legacy_completed"] == 1
+        assert stats["legacy_losses"] == 1
+        assert stats["legacy_win_rate_pct"] == 0.0
     engine.dispose()
 
 
