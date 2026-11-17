@@ -8,7 +8,9 @@ from app.database.session import SessionLocal, engine
 from app.models.signal_event import SignalEvent, SignalNotification
 
 
-def test_signal_lifecycle_deduplicates_and_invalidates_cleanly():
+def test_only_one_active_signal_per_symbol_until_tp_or_sl():
+    from app.api.signals import evaluate_active_signals
+
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
@@ -16,54 +18,66 @@ def test_signal_lifecycle_deduplicates_and_invalidates_cleanly():
         db.execute(delete(SignalEvent))
         db.commit()
 
+        plan = {"entry": 100.0, "stop_loss": 98.0, "take_profit": 103.0}
         record_signal(
-            db, "BTCUSDT", "BUY", ["15m", "1h"], ["Bullish alignment"], "candle-1"
+            db, "BTCUSDT", "BUY", ["15m", "30m"], ["Bullish alignment"],
+            "candle-1", plan, "signal-candle-1",
         )
-        first_events = list(db.scalars(select(SignalEvent)))
-        first_notifications = list(db.scalars(select(SignalNotification)))
-        assert len(first_events) == 1
-        assert first_events[0].status == "ACTIVE"
-        assert len(first_notifications) == 1
-
-        # A continuing same-side setup refreshes the active event without alert spam.
-        record_signal(
-            db, "BTCUSDT", "BUY", ["15m", "1h"], ["Still bullish"], "candle-2"
-        )
-        assert len(list(db.scalars(select(SignalEvent)))) == 1
+        first = list(db.scalars(select(SignalEvent)))
+        assert len(first) == 1
+        assert first[0].status == "ACTIVE"
         assert len(list(db.scalars(select(SignalNotification)))) == 1
 
-        # An opposite signal invalidates the old setup and creates a fresh alert.
+        # Same-side repeats and opposite-side signals are both blocked,
+        # including requests made with a different timeframe set.
         record_signal(
-            db, "BTCUSDT", "SELL", ["15m", "1h"], ["Bearish reversal"], "candle-3"
+            db, "BTCUSDT", "BUY", ["15m", "30m"], ["Still bullish"],
+            "candle-2", plan, "signal-candle-2",
+        )
+        record_signal(
+            db, "BTCUSDT", "SELL", ["15m", "30m"], ["Bearish reversal"],
+            "candle-3", plan, "signal-candle-3",
+        )
+        record_signal(
+            db, "BTCUSDT", "SELL", ["5m", "15m"], ["Different timeframe"],
+            "candle-4", plan, "signal-candle-4",
         )
         events = list(db.scalars(select(SignalEvent).order_by(SignalEvent.id)))
-        notifications = list(db.scalars(select(SignalNotification)))
-        assert [event.status for event in events] == ["INVALIDATED", "ACTIVE"]
-        assert [event.side for event in events] == ["BUY", "SELL"]
-        assert len(notifications) == 3
+        assert len(events) == 1
+        assert events[0].side == "BUY"
+        assert events[0].status == "ACTIVE"
+        assert len(list(db.scalars(select(SignalNotification)))) == 1
 
-        # NO TRADE means no new setup; it must not erase a still-valid active signal.
+        # A different symbol can still receive its own signal.
         record_signal(
-            db, "BTCUSDT", "NO TRADE", ["15m", "1h"], ["Temporary confluence loss"], "candle-4"
+            db, "ETHUSDT", "SELL", ["15m", "30m"], ["Independent symbol"],
+            "eth-candle-1", plan, "eth-signal-candle-1",
         )
-        events = list(db.scalars(select(SignalEvent).order_by(SignalEvent.id)))
-        assert [event.status for event in events] == ["INVALIDATED", "ACTIVE"]
-        assert len(list(db.scalars(select(SignalNotification)))) == 3
-        old_payload = json.loads(events[0].reasons_json)
-        assert "invalidation_reason" in old_payload
-        assert "newly confirmed SELL" in old_payload["invalidation_reason"]
-        from app.api.signals import _event_payload
-        assert any(
-            reason.startswith("Alasan invalidasi:")
-            for reason in _event_payload(events[0])["reasons"]
+        assert len(list(db.scalars(select(SignalEvent)))) == 2
+
+        # Once the BTC signal hits TP, a new BTC signal may be created.
+        evaluate_active_signals(db, "BTCUSDT", 104.0, 99.0, "candle-after-tp")
+        btc = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT"))
+        assert btc.status == "CLOSED"
+        assert json.loads(btc.reasons_json)["outcome"] == "TP"
+
+        record_signal(
+            db, "BTCUSDT", "SELL", ["15m", "30m"], ["New setup after TP"],
+            "candle-5", plan, "signal-candle-5",
         )
+        btc_events = list(db.scalars(
+            select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT")
+            .order_by(SignalEvent.id)
+        ))
+        assert len(btc_events) == 2
+        assert [event.status for event in btc_events] == ["CLOSED", "ACTIVE"]
+        assert [event.side for event in btc_events] == ["BUY", "SELL"]
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
-
 
 
 def test_signal_outcomes_track_tp_and_exclude_ambiguous_candles():
