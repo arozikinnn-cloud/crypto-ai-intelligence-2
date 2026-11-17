@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import pytest
 from app.services.market_data.base import NormalizedCandle
-from app.services.analysis.backtest import run_ema_backtest
+from app.services.analysis.backtest import run_strategy_backtest
 
 
 def make_series(count: int = 180) -> list[NormalizedCandle]:
@@ -24,13 +24,18 @@ def make_series(count: int = 180) -> list[NormalizedCandle]:
 
 
 def test_backtest_returns_train_and_out_of_sample_metrics():
-    result = run_ema_backtest(make_series())
+    result = run_strategy_backtest(make_series())
     assert result["train"]["trades"] >= 0
     assert result["out_of_sample"]["trades"] >= 0
     assert result["fee_bps_per_side"] == 10.0
     assert result["slippage_bps_per_side"] == 5.0
+    assert "RSI16" in result["strategy"]
+    assert "MA40" in result["strategy"]
+    assert "Ichimoku" in result["strategy"]
+    assert "not a full H1/M15/M5" in result["warning"]
+    assert "overall" in result
 
 
 def test_backtest_rejects_too_little_history():
     with pytest.raises(ValueError):
-        run_ema_backtest(make_series(80))
+        run_strategy_backtest(make_series(80))
