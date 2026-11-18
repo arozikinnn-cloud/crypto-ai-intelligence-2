@@ -45,4 +45,25 @@ void main() {
       api.close();
     }
   });
+
+  test('shows read-only NO TRADE when preview backend is unavailable', () async {
+    final client = MockClient((request) async {
+      return http.Response('Internal Server Error', 500);
+    });
+    final api = AnalysisApi(
+      client: client,
+      baseUrl: 'https://example.test/api/v1',
+    );
+
+    try {
+      final result = await api.fetchTradingAgentsAnalysis();
+
+      expect(result['side'], 'NO TRADE');
+      expect(result['agent_status'], 'DISABLED');
+      expect(result['execution_ready'], isFalse);
+      expect((result['context_notes'] as List).join(' '), contains('HTTP 500'));
+    } finally {
+      api.close();
+    }
+  });
 }
