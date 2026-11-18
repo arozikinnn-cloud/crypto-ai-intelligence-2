@@ -2,7 +2,7 @@ name: Backend CI
 
 on:
   push:
-    branches: [main, "phase1/**"]
+    branches: [main, "phase1/**", "feature/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -21,8 +21,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
-      - run: ruff check app tests worker.py
+      - run: ruff check app tests worker.py agent_worker.py
       - run: pytest -q
-      - name: Build persistent worker container
+      - name: Build market-data worker container
         run: docker build -f Dockerfile.worker -t crypto-ai-worker:ci .
-        working-directory: backend
+      - name: Build TradingAgents V8 worker container
+        run: docker build -f Dockerfile.agent-worker -t crypto-ai-agent-worker:ci .
