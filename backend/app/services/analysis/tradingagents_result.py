@@ -31,6 +31,10 @@ def normalize_tradingagents_result(
         "decision_text": final_decision.strip() if isinstance(final_decision, str) else "",
         "reports": reports or {},
         "execution_ready": False,
+        "market_data_note": (
+            "This adapter uses TradingAgents' upstream crypto data path (Yahoo Finance "
+            "reference data); it is not Bitget USD-M futures, order-book, or open-interest data."
+        ),
         "risk_note": (
             "TradingAgents provides a research rating, not exchange order levels. "
             "A separate validated risk plan and paper-execution check are required."
