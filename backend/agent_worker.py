@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -198,7 +199,11 @@ async def main() -> None:
     stop_event = asyncio.Event()
     logger.info("TradingAgents worker started.")
     try:
-        await run_agent_analysis_worker(stop_event, settings.tradingagents_poll_interval_seconds)
+        if "--once" in sys.argv:
+            processed = await asyncio.to_thread(process_agent_analysis_once)
+            logger.info("One-shot cycle finished; processed_job=%s", processed)
+        else:
+            await run_agent_analysis_worker(stop_event, settings.tradingagents_poll_interval_seconds)
     finally:
         stop_event.set()
         logger.info("TradingAgents worker stopped.")
