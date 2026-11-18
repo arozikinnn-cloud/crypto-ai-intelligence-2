@@ -111,7 +111,7 @@ class AnalysisApi {
       job = decoded;
     }
 
-    final jobId = job!['id'];
+    final jobId = job['id'];
     if (jobId is! int) throw const FormatException('TradingAgents job ID is missing.');
     for (var attempt = 0; attempt < 18; attempt++) {
       await Future<void>.delayed(const Duration(seconds: 5));
