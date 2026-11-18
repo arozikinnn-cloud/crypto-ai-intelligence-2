@@ -6,6 +6,7 @@ serverless functions. It stores public aggTrade CVD and futures liquidation
 events in the configured SQL database.
 """
 import asyncio
+import json
 import logging
 import signal
 
@@ -24,6 +25,7 @@ import app.models.liquidation_record  # noqa: F401
 import app.models.signal_event  # noqa: F401
 import app.models.device_token  # noqa: F401
 from app.services.market_data.binance import BinanceMarketData
+from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.services.market_data.base import MarketDataError
 from app.models.signal_event import SignalEvent
 from app.services.market_data.cvd_collector import stream_binance_aggtrades
@@ -71,43 +73,67 @@ def configured_collectors(settings):
 
 
 async def monitor_active_signals_once(market=None, session_factory=SessionLocal) -> int:
-    """Evaluate active trade plans using the latest closed 1m Binance candle."""
-    market = market or BinanceMarketData()
+    """Evaluate active signals using the source exchange recorded with each V8 plan."""
     db = session_factory()
     try:
-        symbols = list(db.scalars(
-            select(SignalEvent.symbol)
-            .where(SignalEvent.status == "ACTIVE")
-            .distinct()
+        active_rows = list(db.scalars(
+            select(SignalEvent).where(SignalEvent.status == "ACTIVE")
         ))
     finally:
         db.close()
 
-    evaluated = 0
-    for symbol in symbols:
+    symbols_by_provider: dict[str, set[str]] = {"bitget": set(), "binance": set()}
+    for row in active_rows:
+        provider_name = "binance"
         try:
-            candles = await market.fetch_klines(
-                symbol, "1m", limit=2, closed_only=True
-            )
-            if not candles:
-                continue
-            candle = candles[-1]
-            db = session_factory()
+            payload = json.loads(row.reasons_json)
+            if (
+                isinstance(payload, dict)
+                and payload.get("strategy_mode") == "TRADINGAGENTS_MULTI_AGENT_V8"
+            ):
+                provider_name = "bitget"
+        except (TypeError, json.JSONDecodeError):
+            pass
+        symbols_by_provider[provider_name].add(row.symbol.upper())
+
+    evaluated = 0
+    for provider_name, symbols in symbols_by_provider.items():
+        if market is not None:
+            provider = market
+        elif provider_name == "bitget":
+            provider = BitgetUsdtFuturesMarketData()
+        else:
+            provider = BinanceMarketData()
+        for symbol in symbols:
             try:
-                evaluate_active_signals(
-                    db,
-                    symbol,
-                    float(candle.high),
-                    float(candle.low),
-                    str(candle.close_time),
+                candles = await provider.fetch_klines(
+                    symbol, "1m", limit=2, closed_only=True
                 )
-                evaluated += 1
-            finally:
-                db.close()
-        except (MarketDataError, ValueError, TypeError):
-            logger.exception("Signal monitor failed for %s; retrying next cycle", symbol)
-        except Exception:
-            logger.exception("Unexpected signal monitor error for %s", symbol)
+                if not candles:
+                    continue
+                candle = candles[-1]
+                db = session_factory()
+                try:
+                    evaluate_active_signals(
+                        db,
+                        symbol,
+                        float(candle.high),
+                        float(candle.low),
+                        str(candle.close_time),
+                    )
+                    evaluated += 1
+                finally:
+                    db.close()
+            except (MarketDataError, ValueError, TypeError):
+                logger.exception(
+                    "%s signal monitor failed for %s; retrying next cycle",
+                    provider_name, symbol,
+                )
+            except Exception:
+                logger.exception(
+                    "Unexpected %s signal monitor error for %s",
+                    provider_name, symbol,
+                )
     return evaluated
 
 
