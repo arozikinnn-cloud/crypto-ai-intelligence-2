@@ -382,7 +382,7 @@ class _Dashboard extends StatelessWidget {
                 const Text('ALUR ANALISIS', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.2)),
                 const SizedBox(height: 9),
                 const Wrap(spacing: 7, runSpacing: 7, children: [
-                  _Tag('H1 • BIAS'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
+                  _Tag('H1 • BIAS'), _Tag('M30 • CONFIRM'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
                 ]),
                 const SizedBox(height: 12),
                 if (tradePlan.isEmpty)
