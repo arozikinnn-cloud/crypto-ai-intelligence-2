@@ -248,8 +248,16 @@ class AnalysisApi {
     return decoded;
   }
 
-  Future<List<Map<String, dynamic>>> fetchSignals({String status = 'all', int limit = 50}) async {
-    final uri = _endpoint('signals', {'status': status, 'limit': limit.toString()});
+  Future<List<Map<String, dynamic>>> fetchSignals({
+    String status = 'all',
+    int limit = 50,
+    String? strategyMode,
+  }) async {
+    final uri = _endpoint('signals', {
+      'status': status,
+      'limit': limit.toString(),
+      if (strategyMode != null) 'strategy_mode': strategyMode,
+    });
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
         .timeout(const Duration(seconds: 20));
