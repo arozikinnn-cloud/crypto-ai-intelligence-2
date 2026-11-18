@@ -92,6 +92,27 @@ keep this worker alive. The GitHub repository is public, but scheduled GitHub Ac
 true continuously running process and require securely configured worker/database/provider
 secrets; they are not enabled as a substitute for a production worker.
 
+## Free-tier scheduled execution (best effort, not 24/7)
+
+A GitHub Actions workflow is included at `.github/workflows/tradingagents-v8-scheduled.yml`.
+It runs one bounded TradingAgents job per invocation (scheduled every six hours, or manually
+dispatched). It is an episodic runner, not a persistent worker, and it cannot guarantee exact
+start times, continuous monitoring, or immediate push notifications. GitHub scheduled workflows
+run from the default branch; while this PR is unmerged, use workflow_dispatch against the feature
+branch for a controlled test.
+
+To enable it, a repository administrator must add these Actions secrets under
+Settings → Secrets and variables → Actions:
+
+- `DATABASE_URL`: the same durable PostgreSQL connection string used by the Vercel API.
+- `GOOGLE_API_KEY`: Gemini API key, stored only as an Actions secret.
+
+The workflow validates that the database URL is PostgreSQL, queues BTCUSDT only when no job is
+already pending/running, and processes at most one job per run. If either secret is absent, the
+job skips safely. The workflow does not provision PostgreSQL, configure Vercel, or create secrets.
+Do not enable it until a durable shared PostgreSQL database is available and the operator has
+reviewed Gemini free-tier quotas and limits. A free Gemini quota is not a promise of unlimited use.
+
 ## Paper trading and execution safety
 
 The project remains research/decision-support only. No live exchange order endpoint or Bitget
