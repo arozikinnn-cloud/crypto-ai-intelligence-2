@@ -97,7 +97,7 @@ def test_signal_lifecycle_deduplicates_invalidates_and_notifies():
 def test_signal_performance_separates_current_strategy_from_legacy_history():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+    current_mode = "TRADINGAGENTS_MULTI_AGENT_V8"
     with Session(engine) as db:
         record_signal(
             db, "BTCUSDT", "BUY", ["1h", "15m", "5m"], ["current strategy"],
