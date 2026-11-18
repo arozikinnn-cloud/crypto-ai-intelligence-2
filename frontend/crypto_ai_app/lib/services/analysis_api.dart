@@ -98,6 +98,15 @@ class AnalysisApi {
       final createResponse = await _client
           .post(createUri, headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 20));
+      if (createResponse.statusCode == 503) {
+        // Keep the trial APK usable in read-only mode while the private
+        // TradingAgents worker/provider is not configured. Never substitute
+        // legacy indicators or emit a BUY/SELL decision in this state.
+        return _agentUnavailableDashboard(
+          symbol,
+          _errorMessage(createResponse.body),
+        );
+      }
       if (createResponse.statusCode != 202) {
         throw Exception(
           'Unable to start TradingAgents analysis (${createResponse.statusCode}): '
@@ -134,6 +143,34 @@ class AnalysisApi {
     }
     return _agentJobToDashboard(job!, timedOut: true);
   }
+
+  Map<String, dynamic> _agentUnavailableDashboard(
+    String symbol,
+    String detail,
+  ) => {
+    'symbol': symbol,
+    'side': 'NO TRADE',
+    'confluence_score': 0,
+    'max_confluence': 3,
+    'score_note': 'TradingAgents belum aktif; tidak ada sinyal trading yang diterbitkan.',
+    'reasons': <String>[
+      'Mode uji coba read-only: worker TradingAgents atau kredensial model belum dikonfigurasi.',
+    ],
+    'context_notes': <String>[
+      'Status AI: DISABLED',
+      'Tidak menggunakan sinyal RSI/MA/Ichimoku lama sebagai pengganti AI V8.',
+      'Tidak ada order exchange yang dibuat.',
+      if (detail.isNotEmpty) detail,
+    ],
+    'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+    'agent_status': 'DISABLED',
+    'agent_reports': <String, dynamic>{},
+    'execution_ready': false,
+    'trade_plan': null,
+    'timeframe_analyses': <dynamic>[],
+    'market_context': <String, dynamic>{},
+    'derivatives': <String, dynamic>{},
+  };
 
   Map<String, dynamic> _agentJobToDashboard(
     Map<String, dynamic> job, {
