@@ -113,6 +113,7 @@ def recover_stale_agent_jobs(db, stale_after_minutes: int = 120) -> int:
             started_at=None,
             error_message="Automatically requeued after stale worker lease expired.",
         )
+        .execution_options(synchronize_session=False)
     )
     return result.rowcount or 0
 
