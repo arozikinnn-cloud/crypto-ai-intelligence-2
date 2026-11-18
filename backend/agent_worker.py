@@ -151,6 +151,12 @@ def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
                     signal_candle_timestamp=signal_candle_timestamp,
                     strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
                 )
+            except Exception:
+                signal_db.rollback()
+                logger.exception(
+                    "V8 analysis job %s completed but signal persistence failed",
+                    job_id,
+                )
             finally:
                 signal_db.close()
     except Exception:
