@@ -102,9 +102,9 @@ host/connector and integration tests are still required before considering the e
 
 ## Current rollout status
 
-1. TradingAgents worker, job API, Bitget Futures adapter, and multi-timeframe fail-closed validator: implemented in this branch; CI validation is pending.
-2. Android dashboard consumes V8 job reports, trade-plan fields, V8-only signal history, and forward performance.
-3. Vercel preview deployment builds the API, but does not host the long-running agent worker.
-4. Shared durable PostgreSQL, a persistent worker host/storage, and a model-provider credential are still missing.
+1. Backend Ruff/pytest, market-data worker image, and TradingAgents worker image: CI passing.
+2. Flutter analyze, Flutter tests, and Android debug APK build: CI passing; the APK is available as a short-lived GitHub Actions artifact.
+3. Vercel Preview API deployment: READY. It is a Preview deployment only; the long-running worker is not hosted there.
+4. Shared durable PostgreSQL access for the worker, a persistent worker host/storage, and a model-provider credential are still missing.
 5. Hummingbot Paper Trading is not integrated; the current signal journal is only a forward market-outcome tracker.
-6. Historical TradingAgents backtest is not implemented. Do not enable V8 in production or merge until remaining hosting/provider/security requirements are satisfied.
+6. Historical TradingAgents backtest is not implemented. Keep the feature disabled and the PR unmerged until the remaining hosting/provider/security requirements and end-to-end tests are satisfied.
