@@ -35,7 +35,7 @@ The former RSI/MA/Ichimoku decision engine is superseded by the upstream Trading
 
 The feature is disabled by default. Set `TRADINGAGENTS_ENABLED=true` only after the agent worker, shared durable PostgreSQL database, persistent worker storage, and a model provider have been configured. Build the worker with `backend/Dockerfile.agent-worker`; see [docs/V8_TRADINGAGENTS_ROLLOUT.md](docs/V8_TRADINGAGENTS_ROLLOUT.md).
 
-TradingAgents ratings map to BUY/SELL/NO TRADE conservatively. The research rating is not an executable order: this change does not invent entry/SL/TP, does not connect Hummingbot, and does not place live orders. A separate validated risk plan and Paper Trading adapter are required before execution is enabled.
+TradingAgents ratings are cross-checked against read-only Bitget USDT-M Futures data (5m/15m/30m/1h candles, order book, OI and funding). BUY/SELL requires agreement across the agent rating and 1h/30m/15m confirmation, with no opposing 5m direction. The candidate plan uses 15m ATR(14) x 1.5 for SL and 1:1.5 RR. Validated plans are stored in a V8-only forward signal journal and monitored against later closed Bitget 1m candles. This is not a historical TradingAgents backtest or a Hummingbot Paper Trade simulation. The V8 job API remains disabled until a shared durable database, persistent worker host/storage, and private model-provider credentials are configured. No live orders are placed.
 
 Run tests: `cd backend && pytest -q`.
 
