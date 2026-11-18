@@ -386,7 +386,7 @@ class _Dashboard extends StatelessWidget {
                 ]),
                 const SizedBox(height: 12),
                 if (tradePlan.isEmpty)
-                  const Text('Belum ada entry valid. H1 dan M15 wajib searah, dengan minimal satu pemicu searah dari M5 atau order flow/aggTrades.',
+                  const Text('Belum ada entry valid. Rating TradingAgents wajib searah dengan H1, M30, M15; M5 tidak boleh berlawanan.',
                     style: TextStyle(color: muted, fontSize: 11, height: 1.4))
                 else ...[
                   Row(children: [
@@ -448,11 +448,11 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const _Heading('BACKTEST & PERFORMANCE', 'Backtest TradingAgents V8 belum diaktifkan; hasil strategi lama tidak digunakan'),
+            const _Heading('BACKTEST & PERFORMANCE', 'Backtest historis TradingAgents belum tersedia; metrik hanya dari forward signal V8'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL CENTER', 'Pencatatan sinyal V8 menunggu validasi risiko dan Paper Trading'),
+            const _Heading('SIGNAL CENTER', 'Forward tracking sinyal V8 dari candle Bitget; bukan eksekusi Hummingbot/live'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
