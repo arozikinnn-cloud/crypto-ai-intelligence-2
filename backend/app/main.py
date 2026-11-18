@@ -37,6 +37,11 @@ async def lifespan(_app: FastAPI):
     stop_event = asyncio.Event()
 
     if IS_VERCEL:
+        # Production uses shared PostgreSQL and additive migrations. A preview
+        # without DATABASE_URL uses disposable /tmp SQLite; create its full ORM
+        # schema so API smoke tests and demo endpoints remain usable.
+        if engine.dialect.name == "sqlite":
+            Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
     else:
         Base.metadata.create_all(bind=engine)
