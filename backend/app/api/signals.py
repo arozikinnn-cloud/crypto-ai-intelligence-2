@@ -294,16 +294,15 @@ def list_signals(
     strategy_mode: str | None = Query(default=None, max_length=80),
     db: Session = Depends(get_db),
 ):
-    statement = select(SignalEvent).order_by(SignalEvent.created_at.desc()).limit(limit)
+    statement = select(SignalEvent).order_by(SignalEvent.created_at.desc())
     if status != "all":
         statement = statement.where(SignalEvent.status == status)
-    rows = list(db.scalars(statement))
-    payloads = [_event_payload(row) for row in rows]
+    payloads = [_event_payload(row) for row in db.scalars(statement)]
     if strategy_mode:
         payloads = [
             item for item in payloads if item.get("strategy_mode") == strategy_mode
         ]
-    return payloads
+    return payloads[:limit]
 
 
 @router.get("/performance")
