@@ -14,8 +14,6 @@ def migrate_schema(engine: Engine) -> None:
                 "SELECT pg_advisory_xact_lock(hashtext('crypto-ai-schema-migrations'))"
             ))
 
-            # Market data tables. Existing installations are left untouched;
-            # the additive taker_buy_volume column supports older candle schemas.
             connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS candles (
                     id SERIAL PRIMARY KEY,
@@ -65,7 +63,6 @@ def migrate_schema(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_market_snapshots_symbol ON market_snapshots (symbol)"
             ))
 
-            # Persisted order-flow and liquidation observations.
             connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS cvd_buckets (
                     id SERIAL PRIMARY KEY,
@@ -109,7 +106,6 @@ def migrate_schema(engine: Engine) -> None:
                 "ON liquidation_records (symbol, timestamp)"
             ))
 
-            # Signal history and in-app notification inbox.
             connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS signal_events (
                     id SERIAL PRIMARY KEY,
@@ -128,7 +124,6 @@ def migrate_schema(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_signal_event_symbol_created "
                 "ON signal_events (symbol, created_at)"
             ))
-            # Normalize any legacy duplicates before enforcing the active lock.
             connection.execute(text("""
                 UPDATE signal_events
                 SET status = 'INVALIDATED', updated_at = NOW()
@@ -161,7 +156,6 @@ def migrate_schema(engine: Engine) -> None:
                 "ON signal_notifications (created_at)"
             ))
 
-            # Device registrations used by Firebase Cloud Messaging.
             connection.execute(text("""
                 CREATE TABLE IF NOT EXISTS device_tokens (
                     id SERIAL PRIMARY KEY,
@@ -176,10 +170,28 @@ def migrate_schema(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_device_tokens_active "
                 "ON device_tokens (is_active)"
             ))
+
+            # V8 asynchronous TradingAgents job queue. The separate worker claims
+            # rows with FOR UPDATE SKIP LOCKED; API functions only enqueue/read.
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS agent_analysis_jobs (
+                    id SERIAL PRIMARY KEY,
+                    symbol VARCHAR(30) NOT NULL,
+                    ticker VARCHAR(30) NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    started_at TIMESTAMPTZ,
+                    completed_at TIMESTAMPTZ,
+                    result_json TEXT,
+                    error_message TEXT
+                )
+            """))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_agent_analysis_jobs_status_created "
+                "ON agent_analysis_jobs (status, created_at)"
+            ))
             return
 
-        # Local SQLite development uses Base.metadata.create_all() before this
-        # migration. Keep this additive path for older local databases.
         inspector = inspect(connection)
         if inspector.has_table("candles"):
             columns = {column["name"] for column in inspector.get_columns("candles")}
@@ -214,3 +226,20 @@ def migrate_schema(engine: Engine) -> None:
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_signal_event_one_active_per_symbol "
                 "ON signal_events (symbol) WHERE status = 'ACTIVE'"
             ))
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS agent_analysis_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol VARCHAR(30) NOT NULL,
+                ticker VARCHAR(30) NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                created_at DATETIME NOT NULL,
+                started_at DATETIME,
+                completed_at DATETIME,
+                result_json TEXT,
+                error_message TEXT
+            )
+        """))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_agent_analysis_jobs_status_created "
+            "ON agent_analysis_jobs (status, created_at)"
+        ))
