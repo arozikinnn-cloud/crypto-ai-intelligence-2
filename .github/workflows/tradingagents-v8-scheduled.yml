@@ -3,8 +3,7 @@ name: Scheduled TradingAgents V8 (best-effort free tier)
 on:
   workflow_dispatch:
   schedule:
-    # GitHub-hosted runners are episodic, not a persistent 24/7 worker.
-    # Every 6 hours keeps free-tier usage low and avoids high-frequency API spend.
+    # Episodic scheduled execution, not a persistent 24/7 process.
     - cron: "17 */6 * * *"
 
 permissions:
@@ -16,8 +15,6 @@ concurrency:
 
 jobs:
   tradingagents-cycle:
-    # Secrets are intentionally required; no key or database URL is committed.
-    if: ${{ secrets.DATABASE_URL != '' && secrets.GOOGLE_API_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 55
     defaults:
@@ -32,21 +29,35 @@ jobs:
       TRADINGAGENTS_MAX_DEBATE_ROUNDS: "1"
       TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
       TRADINGAGENTS_MAX_TOOL_ROUNDS: "3"
-      TRADINGAGENTS_POLL_INTERVAL_SECONDS: "2"
     steps:
+      - name: Check required secrets are configured
+        id: config
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$GOOGLE_API_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: add DATABASE_URL and GOOGLE_API_KEY in repository Actions secrets."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Required secrets are present; values remain hidden."
+          fi
       - name: Checkout V8 branch
+        if: steps.config.outputs.configured == 'true'
         uses: actions/checkout@v4
         with:
           ref: feature/v8-tradingagents-multi-agent
       - name: Set up Python
+        if: steps.config.outputs.configured == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements-agent-worker.txt
       - name: Install TradingAgents worker dependencies
+        if: steps.config.outputs.configured == 'true'
         run: pip install -r requirements-agent-worker.txt
-      - name: Validate required configuration without printing secrets
+      - name: Validate provider and shared PostgreSQL configuration
+        if: steps.config.outputs.configured == 'true'
         run: |
           python - <<'PY'
           import os
@@ -58,6 +69,33 @@ jobs:
               raise SystemExit("GOOGLE_API_KEY is missing.")
           print("Provider key present; PostgreSQL URL validated (credentials hidden).")
           PY
-      - name: Initialize database and run one bounded queue cycle
+      - name: Queue one scheduled BTC analysis if none is pending
+        if: steps.config.outputs.configured == 'true'
         run: |
-          python -m agent_worker --once
+          python - <<'PY'
+          from sqlalchemy import select
+          from app.database.base import Base
+          from app.database.migrations import migrate_schema
+          from app.database.session import SessionLocal, engine
+          from app.models.agent_analysis_job import AgentAnalysisJob
+          Base.metadata.create_all(bind=engine)
+          migrate_schema(engine)
+          db = SessionLocal()
+          try:
+              pending = db.scalar(
+                  select(AgentAnalysisJob.id)
+                  .where(AgentAnalysisJob.status.in_(["PENDING", "RUNNING"]))
+                  .limit(1)
+              )
+              if pending is None:
+                  db.add(AgentAnalysisJob(symbol="BTCUSDT", ticker="BTC-USD", status="PENDING"))
+                  db.commit()
+                  print("Queued BTCUSDT.")
+              else:
+                  print("Existing pending/running job found; avoiding duplicate queue.")
+          finally:
+              db.close()
+          PY
+      - name: Run one bounded TradingAgents job
+        if: steps.config.outputs.configured == 'true'
+        run: python -m agent_worker --once
