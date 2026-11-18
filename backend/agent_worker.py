@@ -17,7 +17,10 @@ from app.database.base import Base
 from app.database.migrations import migrate_schema
 from app.database.session import SessionLocal, engine
 from app.models.agent_analysis_job import AgentAnalysisJob
-from app.services.analysis.tradingagents_market_context import (\n    collect_bitget_v8_context,\n    finalize_v8_decision,\n)
+from app.services.analysis.tradingagents_market_context import (
+    collect_bitget_v8_context,
+    finalize_v8_decision,
+)
 
 logger = logging.getLogger("crypto_ai.tradingagents_worker")
 
