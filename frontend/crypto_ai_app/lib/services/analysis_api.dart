@@ -109,7 +109,7 @@ class AnalysisApi {
       job = decoded;
     }
 
-    final jobId = job['id'];
+    final jobId = job!['id'];
     if (jobId is! int) throw const FormatException('TradingAgents job ID is missing.');
     for (var attempt = 0; attempt < 18; attempt++) {
       await Future<void>.delayed(const Duration(seconds: 5));
@@ -130,7 +130,7 @@ class AnalysisApi {
         throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
       }
     }
-    return _agentJobToDashboard(job, timedOut: true);
+    return _agentJobToDashboard(job!, timedOut: true);
   }
 
   Map<String, dynamic> _agentJobToDashboard(
