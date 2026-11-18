@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.api.signals import record_signal
 from app.database.base import Base
 from app.database.migrations import migrate_schema
 from app.database.session import SessionLocal, engine
@@ -129,6 +130,29 @@ def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
             job.result_json = json.dumps(result, ensure_ascii=False) if result else None
             job.error_message = error
             db.commit()
+        if status == "COMPLETED" and result and result.get("trade_plan"):
+            plan = result["trade_plan"]
+            market_context = result.get("market_context") or {}
+            timeframes = market_context.get("timeframes") or {}
+            signal_candle_timestamp = (
+                (timeframes.get("15m") or {}).get("candle_close_time")
+                or datetime.now(timezone.utc).isoformat()
+            )
+            signal_db = session_factory()
+            try:
+                record_signal(
+                    signal_db,
+                    symbol,
+                    result.get("side", ""),
+                    ["1h", "30m", "15m", "5m"],
+                    result.get("reasons") or [],
+                    signal_candle_timestamp,
+                    plan,
+                    signal_candle_timestamp=signal_candle_timestamp,
+                    strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+                )
+            finally:
+                signal_db.close()
     except Exception:
         db.rollback()
         raise
