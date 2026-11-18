@@ -205,7 +205,7 @@ class AnalysisApi {
     String interval = '15m',
     int limit = 80,
   }) async {
-    final uri = _endpoint('market/candles', {
+    final uri = _endpoint('market/bitget/candles', {
       'symbol': symbol,
       'interval': interval,
       'limit': limit.toString(),
