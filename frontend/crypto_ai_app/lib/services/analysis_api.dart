@@ -148,36 +148,55 @@ class AnalysisApi {
         ? result['reports'] as Map<String, dynamic>
         : <String, dynamic>{};
     final decision = result['decision_text']?.toString() ?? '';
-    final reasons = decision.isNotEmpty
-        ? <String>[decision]
-        : <String>[
-            timedOut
-                ? 'Analisis multi-agent masih berjalan di background. Muat ulang beberapa saat lagi.'
-                : 'Menunggu TradingAgents worker memproses analisis.',
-          ];
+    final rawReasons = result['reasons'];
+    final reasons = rawReasons is List
+        ? rawReasons.map((item) => item.toString()).toList()
+        : decision.isNotEmpty
+            ? <String>[decision]
+            : <String>[
+                timedOut
+                    ? 'Analisis multi-agent masih berjalan di background. Muat ulang beberapa saat lagi.'
+                    : 'Menunggu TradingAgents worker memproses analisis.',
+              ];
+    final marketContext = result['market_context'] is Map<String, dynamic>
+        ? result['market_context'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final rawTimeframes = result['timeframe_analyses'];
+    final timeframeRows = rawTimeframes is Map
+        ? rawTimeframes.entries.map((entry) => <String, dynamic>{
+            'timeframe': entry.key.toString(),
+            if (entry.value is Map) ...(entry.value as Map).cast<String, dynamic>(),
+          }).toList()
+        : <dynamic>[];
+    final tradePlan = result['trade_plan'] is Map<String, dynamic>
+        ? result['trade_plan'] as Map<String, dynamic>
+        : null;
     return {
       'symbol': job['symbol'] ?? 'BTCUSDT',
       'timestamp': job['completed_at'] ?? job['created_at'],
       'side': status == 'COMPLETED' ? side : 'NO TRADE',
-      'confluence_score': 0,
-      'max_confluence': 1,
-      'score_note': 'Keputusan berasal dari rating riset TradingAgents, bukan skor teknikal lama.',
+      'confluence_score': tradePlan == null ? 0 : 3,
+      'max_confluence': 3,
+      'score_note': 'Konfirmasi TradingAgents + Bitget Futures 1H/30m/15m; bukan probabilitas win-rate.',
       'reasons': reasons,
       'context_notes': <String>[
         'Status job: $status',
         if (result['market_data_note'] != null)
           result['market_data_note'].toString(),
+        if (result['paper_validation_required'] == true)
+          'Rencana entry menunggu validasi Paper Trading; belum boleh dieksekusi live.',
         result['risk_note']?.toString() ??
-            'Rating riset bukan order siap-eksekusi; entry, SL, TP, dan ukuran posisi belum disediakan.',
+            'TradingAgents bukan order exchange; validasi risiko dan simulasi tetap diperlukan.',
       ],
       'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
       'agent_rating': result['rating'],
       'agent_status': status,
       'agent_reports': reports,
-      'execution_ready': result['execution_ready'] == true,
-      'trade_plan': null,
-      'timeframe_analyses': <dynamic>[],
-      'market_context': <String, dynamic>{},
+      'execution_ready': false,
+      'trade_plan': tradePlan,
+      'timeframe_analyses': timeframeRows,
+      'market_context': marketContext,
+      'derivatives': marketContext['derivatives'] ?? <String, dynamic>{},
     };
   }
 
