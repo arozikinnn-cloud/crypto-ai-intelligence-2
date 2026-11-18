@@ -41,7 +41,10 @@ def create_agent_analysis_job(
     if not settings.tradingagents_enabled:
         raise HTTPException(
             status_code=503,
-            detail="TradingAgents V8 is not enabled. Configure its worker and model provider first.",
+            detail=(
+                "TradingAgents V8 is not enabled. Configure its worker "
+                "and model provider first."
+            ),
         )
     normalized = symbol.strip().upper()
     if not _SYMBOL_RE.fullmatch(normalized) or not normalized.endswith("USDT"):
