@@ -123,14 +123,24 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
   Future<List<Map<String, dynamic>>> loadSignals() async {
-    // Do not mix legacy V7 strategy signals into the V8 multi-agent dashboard.
-    return <Map<String, dynamic>>[];
+    try {
+      return await api.fetchSignals(
+        status: 'all',
+        limit: 100,
+        strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+      );
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
   }
 
-  Future<Map<String, dynamic>> loadSignalPerformance() async => <String, dynamic>{
-    'unavailable_reason':
-        'Statistik sinyal V8 menunggu risk validator dan Paper Trading. Metrik strategi lama tidak ditampilkan.',
-  };
+  Future<Map<String, dynamic>> loadSignalPerformance() async {
+    try {
+      return await api.fetchSignalPerformance();
+    } catch (error) {
+      return <String, dynamic>{'unavailable_reason': error.toString()};
+    }
+  }
 
   Future<Map<String, dynamic>> loadBacktest() async => <String, dynamic>{
     'unavailable_reason':
