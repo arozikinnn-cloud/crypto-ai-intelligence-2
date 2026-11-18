@@ -94,7 +94,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         db.execute(delete(SignalEvent))
         db.commit()
         plan = {"entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
-        current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+        current_mode = "TRADINGAGENTS_MULTI_AGENT_V8"
         record_signal(
             db, "TPTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
             "signal-tp", plan, "candle-tp-1", strategy_mode=current_mode,
