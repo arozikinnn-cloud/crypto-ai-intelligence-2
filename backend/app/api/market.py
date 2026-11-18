@@ -43,7 +43,7 @@ async def get_candles(
     )
 
 
-from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
+
 
 
 @router.get(
