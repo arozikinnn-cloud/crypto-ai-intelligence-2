@@ -64,7 +64,7 @@ def run_tradingagents(symbol: str) -> dict:
                 f"Instrument: {ticker_name}. Identity lookup unavailable; "
                 "do not infer company identity."
             )
-        return identity_context + "\\n\\n" + market_context["context_text"]
+        return identity_context + "\n\n" + market_context["context_text"]
 
     # The upstream graph passes this instrument context to all analyst prompts.
     graph.resolve_instrument_context = resolve_with_bitget
