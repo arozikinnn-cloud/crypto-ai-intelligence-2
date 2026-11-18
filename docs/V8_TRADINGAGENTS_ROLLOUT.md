@@ -50,6 +50,15 @@ Optional worker settings:
 - `TRADINGAGENTS_CACHE_DIR=/data/tradingagents/cache`
 - `TRADINGAGENTS_MEMORY_LOG_PATH=/data/tradingagents/memory/trading_memory.md`
 
+## Market-data limitation
+
+The current worker maps a USDT pair such as BTCUSDT to the upstream crypto ticker BTC-USD and
+uses TradingAgents' upstream default data vendors. The pinned upstream defaults use Yahoo Finance
+for core/technical/news data. This is a spot/reference-price research path, not Bitget USD-M futures
+data: funding, futures open interest, exchange order book, liquidation stream, and exact Bitget
+candles are not yet injected into the agent graph. Do not treat these results as a validated
+Bitget Futures signal until the exchange-specific data adapter is implemented and tested.
+
 ## Signal and execution safety
 
 TradingAgents emits a five-tier research rating. V8 maps Buy/Overweight to BUY, Sell/Underweight
