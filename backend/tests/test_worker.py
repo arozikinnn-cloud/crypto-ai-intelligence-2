@@ -112,3 +112,66 @@ def test_worker_signal_monitor_evaluates_active_signal_from_closed_one_minute_ca
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+def test_worker_uses_bitget_for_v8_signal_outcomes(monkeypatch):
+    import asyncio
+    import json
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete, select
+
+    import worker
+    from app.api.signals import record_signal
+    from app.database.base import Base
+    from app.database.session import SessionLocal, engine
+    from app.models.signal_event import SignalEvent, SignalNotification
+
+    class FakeBitget:
+        async def fetch_klines(self, symbol, interval, limit, closed_only):
+            assert symbol == "V8MONITOR"
+            assert interval == "1m"
+            assert closed_only is True
+            return [SimpleNamespace(
+                high=104.0,
+                low=99.0,
+                close_time=datetime(2026, 11, 18, 10, 16, tzinfo=timezone.utc),
+            )]
+
+    monkeypatch.setattr(worker, "BitgetUsdtFuturesMarketData", FakeBitget)
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db,
+            "V8MONITOR",
+            "BUY",
+            ["1h", "30m", "15m", "5m"],
+            ["TradingAgents + Bitget aligned."],
+            "v8-monitor-signal",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103, "risk_reward": 1.5},
+            signal_candle_timestamp="older-v8-candle",
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+        )
+    finally:
+        db.close()
+
+    evaluated = asyncio.run(worker.monitor_active_signals_once())
+    assert evaluated == 1
+    db = SessionLocal()
+    try:
+        event = db.scalar(select(SignalEvent).where(
+            SignalEvent.symbol == "V8MONITOR"
+        ))
+        stored = json.loads(event.reasons_json)
+        assert event.status == "CLOSED"
+        assert stored["outcome"] == "TP"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
