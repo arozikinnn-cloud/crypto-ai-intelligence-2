@@ -50,31 +50,61 @@ Optional worker settings:
 - `TRADINGAGENTS_CACHE_DIR=/data/tradingagents/cache`
 - `TRADINGAGENTS_MEMORY_LOG_PATH=/data/tradingagents/memory/trading_memory.md`
 
-## Market-data limitation
+## Bitget Futures market context and decision validation
 
-The current worker maps a USDT pair such as BTCUSDT to the upstream crypto ticker BTC-USD and
-uses TradingAgents' upstream default data vendors. The pinned upstream defaults use Yahoo Finance
-for core/technical/news data. This is a spot/reference-price research path, not Bitget USD-M futures
-data: funding, futures open interest, exchange order book, liquidation stream, and exact Bitget
-candles are not yet injected into the agent graph. Do not treat these results as a validated
-Bitget Futures signal until the exchange-specific data adapter is implemented and tested.
+The backend includes a read-only Bitget USDT-M Futures adapter using public endpoints (no exchange
+API key is needed for market data). It fetches closed 5m, 15m, 30m, and 1h candles, an order-book
+snapshot, open interest, and current funding rate. API routes:
 
-## Signal and execution safety
+- `GET /api/v1/market/bitget/candles?symbol=BTCUSDT&interval=15m&limit=200`
+- `GET /api/v1/market/bitget/derivatives?symbol=BTCUSDT`
+- `GET /api/v1/market/bitget/order-book?symbol=BTCUSDT&limit=100`
 
-TradingAgents emits a five-tier research rating. V8 maps Buy/Overweight to BUY, Sell/Underweight
-to SELL, and Hold/REVIEW/unrecognized output to NO TRADE. A rating is not an executable order:
-this integration deliberately does not fabricate entry, stop-loss, take-profit, position size, or
-leverage. A separate deterministic risk-plan validator and exchange-specific Paper Trading adapter
-must pass tests before any signal is considered execution-ready.
+Before running the TradingAgents graph, the worker collects and validates Bitget data. A compact
+exchange snapshot is injected into the instrument context passed to all analysts. The context
+contains MA40, RSI16, ATR14, Ichimoku/Kumo, multi-timeframe direction, funding, open interest, and
+order-book bid/ask notional imbalance. Upstream Yahoo Finance tools remain supplemental; they are
+not treated as the source of exact futures prices.
 
-Hummingbot/live exchange execution is not enabled by this change. No exchange API key is required
-for the research job queue, and no live order can be placed by this worker.
+A BUY/SELL plan is emitted only when the TradingAgents rating agrees with the 1h, 30m, and 15m
+Bitget technical confirmation, and the 5m direction does not oppose it. Entry is the last closed
+15m price; stop distance is 1.5 x ATR(14); target is 1.5R (risk/reward 1:1.5). Invalid, stale,
+incomplete, or conflicting data produces NO TRADE. The result is never execution-ready.
+
+## Forward signal journal
+
+Validated V8 plans are persisted as V8-versioned signal events. The independent worker monitors
+those plans against later closed 1m Bitget candles, while legacy signal events continue to use their
+original Binance source. TP and SL touched in the same candle are conservatively counted as SL.
+The dashboard's V8 signal history and win-rate endpoint filter to
+`TRADINGAGENTS_MULTI_AGENT_V8` only. This is forward paper observation, not a historical
+TradingAgents backtest and not proof of future profitability.
+
+## Model provider and hosting requirements
+
+TradingAgents still requires a supported model provider credential (for example OpenAI, Google,
+Anthropic, or an OpenAI-compatible local endpoint). The credential must be configured privately
+in the worker host. No provider key is present in the current Vercel project configuration.
+
+The API and worker must share the same durable PostgreSQL `DATABASE_URL`. The worker also needs a
+persistent process host and persistent `/data` storage. Vercel Functions are stateless and do not
+keep this worker alive. The GitHub repository is public, but scheduled GitHub Actions are not a
+true continuously running process and require securely configured worker/database/provider
+secrets; they are not enabled as a substitute for a production worker.
+
+## Paper trading and execution safety
+
+The project remains research/decision-support only. No live exchange order endpoint or Bitget
+trading credential is configured. Hummingbot Paper Trade is not yet connected to this V8 pipeline;
+the current forward signal journal only observes whether a plan's SL/TP would have been reached.
+Do not call that a Hummingbot simulation or an execution test. A dedicated Hummingbot paper-trade
+host/connector and integration tests are still required before considering the execution stage.
 
 ## Current rollout status
 
-1. Source integration and API job contract: implemented in this branch.
-2. Unit/API tests and worker image build: must pass in CI.
-3. Vercel preview deployment: must be checked after CI.
-4. Persistent worker host, durable storage, shared database, and model provider credentials:
-   operator configuration still required before real agent runs.
-5. Android dashboard consumption and Hummingbot Paper Trading adapter: follow-up integration.
+1. TradingAgents worker, job API, Bitget Futures adapter, and multi-timeframe fail-closed validator: implemented in this branch; CI validation is pending.
+2. Android dashboard consumes V8 job reports, trade-plan fields, V8-only signal history, and forward performance.
+3. Vercel preview deployment builds the API, but does not host the long-running agent worker.
+4. Shared durable PostgreSQL, a persistent worker host/storage, and a model-provider credential are still missing.
+5. Hummingbot Paper Trading is not integrated; the current signal journal is only a forward market-outcome tracker.
+6. Historical TradingAgents backtest is not implemented. Do not enable V8 in production or merge until remaining hosting/provider/security requirements are satisfied.
