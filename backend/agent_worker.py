@@ -16,7 +16,7 @@ from app.database.base import Base
 from app.database.migrations import migrate_schema
 from app.database.session import SessionLocal, engine
 from app.models.agent_analysis_job import AgentAnalysisJob
-from app.services.analysis.tradingagents_result import normalize_tradingagents_result
+from app.services.analysis.tradingagents_market_context import (\n    collect_bitget_v8_context,\n    finalize_v8_decision,\n)
 
 logger = logging.getLogger("crypto_ai.tradingagents_worker")
 
@@ -42,12 +42,29 @@ def run_tradingagents(symbol: str) -> dict:
         "TRADINGAGENTS_MEMORY_LOG_PATH", "/data/tradingagents/memory/trading_memory.md"
     )
 
+    # Pull the exchange-native market context first. If Bitget data is missing or
+    # stale, fail closed instead of silently producing a Yahoo-only trade signal.
+    market_context = asyncio.run(collect_bitget_v8_context(symbol))
     graph = TradingAgentsGraph(
         selected_analysts=("market", "social", "news"),
         debug=False,
         config=config,
     )
-    state, _decision = graph.propagate(
+    upstream_resolver = graph.resolve_instrument_context
+
+    def resolve_with_bitget(ticker_name, asset_type="stock", trade_date=None):
+        try:
+            identity_context = upstream_resolver(ticker_name, asset_type, trade_date)
+        except Exception:
+            identity_context = (
+                f"Instrument: {ticker_name}. Identity lookup unavailable; "
+                "do not infer company identity."
+            )
+        return identity_context + "\\n\\n" + market_context["context_text"]
+
+    # The upstream graph passes this instrument context to all analyst prompts.
+    graph.resolve_instrument_context = resolve_with_bitget
+    state, rating = graph.propagate(
         ticker,
         datetime.now(timezone.utc).date().isoformat(),
         asset_type="crypto",
@@ -66,7 +83,7 @@ def run_tradingagents(symbol: str) -> dict:
         )
         if isinstance(state.get(key), str)
     }
-    return normalize_tradingagents_result(rating, final_decision, reports)
+    return finalize_v8_decision(rating, final_decision, reports, market_context)
 
 
 def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
