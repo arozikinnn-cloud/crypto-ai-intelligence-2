@@ -82,6 +82,11 @@ class AnalysisApi {
             throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
           }
         }
+      } else if (latestResponse.statusCode >= 500) {
+        return _agentUnavailableDashboard(
+          symbol,
+          'Backend V8 belum dapat dijangkau (HTTP ${latestResponse.statusCode}). Mode read-only aktif.',
+        );
       } else if (latestResponse.statusCode != 404) {
         throw Exception(
           'TradingAgents API error ${latestResponse.statusCode}: '
@@ -98,7 +103,9 @@ class AnalysisApi {
       final createResponse = await _client
           .post(createUri, headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 20));
-      if (createResponse.statusCode == 503) {
+      if (createResponse.statusCode == 503 ||
+          createResponse.statusCode == 404 ||
+          createResponse.statusCode >= 500) {
         // Keep the trial APK usable in read-only mode while the private
         // TradingAgents worker/provider is not configured. Never substitute
         // legacy indicators or emit a BUY/SELL decision in this state.
