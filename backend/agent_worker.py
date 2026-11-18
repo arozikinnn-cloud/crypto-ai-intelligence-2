@@ -136,7 +136,9 @@ async def main() -> None:
     if not settings.tradingagents_enabled:
         raise RuntimeError("Set TRADINGAGENTS_ENABLED=true on the agent worker.")
     if settings.app_env.lower() == "production" and settings.database_url.startswith("sqlite"):
-        raise RuntimeError("Production TradingAgents worker requires shared PostgreSQL DATABASE_URL.")
+        raise RuntimeError(
+            "Production TradingAgents worker requires shared PostgreSQL DATABASE_URL."
+        )
     logging.basicConfig(
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
