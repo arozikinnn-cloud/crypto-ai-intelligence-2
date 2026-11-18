@@ -16,6 +16,12 @@ def _order_book_summary(order_book: dict) -> dict:
         "bid_notional": bid_notional,
         "ask_notional": ask_notional,
         "imbalance": (bid_notional - ask_notional) / total if total else 0.0,
+        "bias": (
+            "BID DOMINANT" if bid_notional > ask_notional
+            else "ASK DOMINANT" if ask_notional > bid_notional
+            else "BALANCED"
+        ),
+        "note": "Snapshot Bitget Futures; not historical order-flow data.",
         "best_bid": order_book["bids"][0][0],
         "best_ask": order_book["asks"][0][0],
         "timestamp": order_book["timestamp"],
