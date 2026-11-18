@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.schemas.market import CandleResponse, MarketDataResponse
 from app.services.market_data.base import MarketDataError
-from app.services.market_data.binance import BinanceMarketData
+from app.services.market_data.binance import BinanceMarketData\nfrom app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.services.market_data.storage import store_candles
 
 router = APIRouter(prefix="/market", tags=["market-data"])
