@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # V8 API enqueue is opt-in until a persistent agent worker and LLM provider are configured.
     tradingagents_enabled: bool = False
     tradingagents_poll_interval_seconds: float = 5.0
+    tradingagents_job_stale_minutes: int = 120
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
