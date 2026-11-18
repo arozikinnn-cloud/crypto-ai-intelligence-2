@@ -14,7 +14,7 @@ from app.schemas.signals import SignalEventResponse, SignalNotificationResponse
 
 router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"])
 logger = logging.getLogger(__name__)
-CURRENT_STRATEGY_MODE = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+CURRENT_STRATEGY_MODE = "TRADINGAGENTS_MULTI_AGENT_V8"
 
 
 def _valid_trade_plan(side: str, plan: dict | None) -> bool:
@@ -291,12 +291,19 @@ def record_signal(
 def list_signals(
     status: str = Query(default="ACTIVE", pattern="^(ACTIVE|CLOSED|INVALIDATED|all)$"),
     limit: int = Query(default=50, ge=1, le=200),
+    strategy_mode: str | None = Query(default=None, max_length=80),
     db: Session = Depends(get_db),
 ):
     statement = select(SignalEvent).order_by(SignalEvent.created_at.desc()).limit(limit)
     if status != "all":
         statement = statement.where(SignalEvent.status == status)
-    return [_event_payload(row) for row in db.scalars(statement)]
+    rows = list(db.scalars(statement))
+    payloads = [_event_payload(row) for row in rows]
+    if strategy_mode:
+        payloads = [
+            item for item in payloads if item.get("strategy_mode") == strategy_mode
+        ]
+    return payloads
 
 
 @router.get("/performance")
@@ -343,9 +350,9 @@ def signal_performance(db: Session = Depends(get_db)):
         "legacy_losses": legacy_stats["losses"],
         "legacy_win_rate_pct": legacy_stats["win_rate_pct"],
         "method_note": (
-            "Statistik utama hanya menghitung strategi RSI16 + MA40 + Ichimoku "
-            "H1/M15/M5. Sinyal sebelum penandaan versi strategi dipisahkan sebagai "
-            "riwayat legacy dan tidak dicampur ke win-rate strategi terbaru. "
+            "Statistik utama hanya menghitung sinyal TradingAgents V8 yang telah "
+            "melewati validasi data Bitget Futures dan konfirmasi multi-timeframe. "
+            "Sinyal strategi lama dipisahkan sebagai riwayat legacy dan tidak dicampur. "
             "WR dihitung hanya dari sinyal TP/SL terkonfirmasi; TP dan SL pada "
             "candle yang sama dihitung sebagai SL secara konservatif."
         ),
