@@ -38,7 +38,9 @@ def normalize_tradingagents_result(
             "authoritative source for exact futures prices."
         ),
         "risk_note": (
-            "TradingAgents provides a research rating, not exchange order levels. "
-            "A separate validated risk plan and paper-execution check are required."
+            "TradingAgents rating is research, not an exchange order. If agent and "
+            "Bitget timeframes agree, V8 derives a candidate entry from the last "
+            "closed 15m candle, SL at 1.5 x ATR(14), and TP at 1.5R. The plan still "
+            "requires forward paper observation; live execution is disabled."
         ),
     }
