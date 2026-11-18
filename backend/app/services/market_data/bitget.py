@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 
@@ -145,7 +146,7 @@ class BitgetUsdtFuturesMarketData:
         normalized = self._symbol(symbol)
         params = {"symbol": normalized, "productType": self.PRODUCT_TYPE}
         async with httpx.AsyncClient(base_url=self.BASE_URL, timeout=12.0) as client:
-            oi_payload, funding_payload = await __import__("asyncio").gather(
+            oi_payload, funding_payload = await asyncio.gather(
                 get_json_with_retry(
                     client, "/api/v2/mix/market/open-interest", params,
                     "Bitget USDT-M Futures open interest",
