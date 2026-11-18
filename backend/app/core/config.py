@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     liquidation_collector_flush_interval_seconds: float = 2.0
     signal_monitor_enabled: bool = True
     signal_monitor_poll_interval_seconds: float = 30.0
+    # V8 API enqueue is opt-in until a persistent agent worker and LLM provider are configured.
+    tradingagents_enabled: bool = False
+    tradingagents_poll_interval_seconds: float = 5.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
