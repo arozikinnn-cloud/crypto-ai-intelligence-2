@@ -176,8 +176,10 @@ class BitgetUsdtFuturesMarketData:
         return {
             "symbol": normalized,
             "provider": "bitget_usdt_futures",
+            "source_market": "bitget_usdt_futures",
             "open_interest": open_interest,
             "open_interest_unit": "base_asset",
+            "open_interest_change_percent": None,
             "open_interest_timestamp": oi_timestamp,
             "funding_rate": funding_rate,
             "funding_time": funding_time,
