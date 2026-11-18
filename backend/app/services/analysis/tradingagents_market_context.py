@@ -65,6 +65,13 @@ async def collect_bitget_v8_context(
         }
 
     book = _order_book_summary(order_book)
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    oi_timestamp = int(derivatives.get("open_interest_timestamp") or 0)
+    book_timestamp = int(book.get("timestamp") or 0)
+    if oi_timestamp <= 0 or now_ms - oi_timestamp > 10 * 60 * 1000:
+        raise ValueError("Bitget open-interest snapshot is missing or stale.")
+    if book_timestamp <= 0 or now_ms - book_timestamp > 2 * 60 * 1000:
+        raise ValueError("Bitget order-book snapshot is missing or stale.")
     latest = analyses["15m"]
     context_text = [
         "VERIFIED EXCHANGE DATA — BITGET USDT-M FUTURES (public endpoints).",
