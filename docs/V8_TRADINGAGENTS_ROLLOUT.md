@@ -46,6 +46,7 @@ Optional worker settings:
 - `TRADINGAGENTS_MAX_DEBATE_ROUNDS=1`
 - `TRADINGAGENTS_MAX_RISK_ROUNDS=1`
 - `TRADINGAGENTS_MAX_TOOL_ROUNDS=4`
+- `TRADINGAGENTS_JOB_STALE_MINUTES=120` (minimum 60; expired RUNNING jobs are requeued after this lease)
 - `TRADINGAGENTS_RESULTS_DIR=/data/tradingagents/results`
 - `TRADINGAGENTS_CACHE_DIR=/data/tradingagents/cache`
 - `TRADINGAGENTS_MEMORY_LOG_PATH=/data/tradingagents/memory/trading_memory.md`
