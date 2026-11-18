@@ -90,8 +90,10 @@ class AnalysisApi {
       }
     }
 
-    if (job == null || forceNew ||
-        !{'PENDING', 'RUNNING'}.contains(job['status']?.toString())) {
+    final hasActiveJob = job != null &&
+        {'PENDING', 'RUNNING'}.contains(job['status']?.toString());
+    if (job == null ||
+        (!hasActiveJob && (forceNew || job['status'] != 'COMPLETED'))) {
       final createUri = _endpoint('agent-analysis/jobs', {'symbol': symbol});
       final createResponse = await _client
           .post(createUri, headers: const {'Accept': 'application/json'})
