@@ -203,7 +203,10 @@ async def main() -> None:
             processed = await asyncio.to_thread(process_agent_analysis_once)
             logger.info("One-shot cycle finished; processed_job=%s", processed)
         else:
-            await run_agent_analysis_worker(stop_event, settings.tradingagents_poll_interval_seconds)
+            await run_agent_analysis_worker(
+                stop_event,
+                settings.tradingagents_poll_interval_seconds,
+            )
     finally:
         stop_event.set()
         logger.info("TradingAgents worker stopped.")
