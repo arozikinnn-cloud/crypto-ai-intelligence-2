@@ -58,6 +58,125 @@ class AnalysisApi {
   }
 
 
+  Future<Map<String, dynamic>> fetchTradingAgentsAnalysis({
+    String symbol = 'BTCUSDT',
+    bool forceNew = false,
+  }) async {
+    Map<String, dynamic>? job;
+    if (!forceNew) {
+      final latestUri = _endpoint('agent-analysis/jobs', {
+        'symbol': symbol,
+        'limit': '1',
+      });
+      final latestResponse = await _client
+          .get(latestUri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 20));
+      if (latestResponse.statusCode == 200) {
+        final decoded = jsonDecode(latestResponse.body);
+        if (decoded is List && decoded.isNotEmpty &&
+            decoded.first is Map<String, dynamic>) {
+          job = decoded.first as Map<String, dynamic>;
+          final status = job['status']?.toString();
+          if (status == 'COMPLETED') return _agentJobToDashboard(job);
+          if (status == 'FAILED') {
+            throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
+          }
+        }
+      } else if (latestResponse.statusCode != 404) {
+        throw Exception(
+          'TradingAgents API error ${latestResponse.statusCode}: '
+          '${_errorMessage(latestResponse.body)}',
+        );
+      }
+    }
+
+    if (job == null || forceNew ||
+        !{'PENDING', 'RUNNING'}.contains(job['status']?.toString())) {
+      final createUri = _endpoint('agent-analysis/jobs', {'symbol': symbol});
+      final createResponse = await _client
+          .post(createUri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 20));
+      if (createResponse.statusCode != 202) {
+        throw Exception(
+          'Unable to start TradingAgents analysis (${createResponse.statusCode}): '
+          '${_errorMessage(createResponse.body)}',
+        );
+      }
+      final decoded = jsonDecode(createResponse.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Invalid TradingAgents job response.');
+      }
+      job = decoded;
+    }
+
+    final jobId = job['id'];
+    if (jobId is! int) throw const FormatException('TradingAgents job ID is missing.');
+    for (var attempt = 0; attempt < 18; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 5));
+      final statusUri = _endpoint('agent-analysis/jobs/$jobId');
+      final statusResponse = await _client
+          .get(statusUri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 20));
+      if (statusResponse.statusCode != 200) {
+        throw Exception('TradingAgents status error: ${statusResponse.statusCode}');
+      }
+      final statusPayload = jsonDecode(statusResponse.body);
+      if (statusPayload is! Map<String, dynamic>) {
+        throw const FormatException('Invalid TradingAgents status response.');
+      }
+      job = statusPayload;
+      if (job['status'] == 'COMPLETED') return _agentJobToDashboard(job);
+      if (job['status'] == 'FAILED') {
+        throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
+      }
+    }
+    return _agentJobToDashboard(job, timedOut: true);
+  }
+
+  Map<String, dynamic> _agentJobToDashboard(
+    Map<String, dynamic> job, {
+    bool timedOut = false,
+  }) {
+    final result = job['result'] is Map<String, dynamic>
+        ? job['result'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final status = job['status']?.toString() ?? 'PENDING';
+    final side = result['side']?.toString() ?? 'NO TRADE';
+    final reports = result['reports'] is Map<String, dynamic>
+        ? result['reports'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final decision = result['decision_text']?.toString() ?? '';
+    final reasons = decision.isNotEmpty
+        ? <String>[decision]
+        : <String>[
+            timedOut
+                ? 'Analisis multi-agent masih berjalan di background. Muat ulang beberapa saat lagi.'
+                : 'Menunggu TradingAgents worker memproses analisis.',
+          ];
+    return {
+      'symbol': job['symbol'] ?? 'BTCUSDT',
+      'timestamp': job['completed_at'] ?? job['created_at'],
+      'side': status == 'COMPLETED' ? side : 'NO TRADE',
+      'confluence_score': 0,
+      'max_confluence': 1,
+      'score_note': 'Keputusan berasal dari rating riset TradingAgents, bukan skor teknikal lama.',
+      'reasons': reasons,
+      'context_notes': <String>[
+        'Status job: $status',
+        result['risk_note']?.toString() ??
+            'Rating riset bukan order siap-eksekusi; entry, SL, TP, dan ukuran posisi belum disediakan.',
+      ],
+      'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+      'agent_rating': result['rating'],
+      'agent_status': status,
+      'agent_reports': reports,
+      'execution_ready': result['execution_ready'] == true,
+      'trade_plan': null,
+      'timeframe_analyses': <dynamic>[],
+      'market_context': <String, dynamic>{},
+    };
+  }
+
   Future<List<Map<String, dynamic>>> fetchCandles({
     String symbol = 'BTCUSDT',
     String interval = '15m',
