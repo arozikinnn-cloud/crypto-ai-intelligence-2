@@ -41,7 +41,9 @@ class BitgetUsdtFuturesMarketData:
     def _data(payload: object, source: str):
         if not isinstance(payload, dict) or payload.get("code") != "00000":
             message = payload.get("msg") if isinstance(payload, dict) else None
-            raise MarketDataError(f"{source} rejected the request: {message or 'invalid response'}.")
+            raise MarketDataError(
+                f"{source} rejected the request: {message or 'invalid response'}."
+            )
         if "data" not in payload:
             raise MarketDataError(f"{source} returned no data field.")
         return payload["data"]
