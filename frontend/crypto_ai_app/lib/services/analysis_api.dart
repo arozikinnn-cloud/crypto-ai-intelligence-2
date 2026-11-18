@@ -163,6 +163,8 @@ class AnalysisApi {
       'reasons': reasons,
       'context_notes': <String>[
         'Status job: $status',
+        if (result['market_data_note'] != null)
+          result['market_data_note'].toString(),
         result['risk_note']?.toString() ??
             'Rating riset bukan order siap-eksekusi; entry, SL, TP, dan ukuran posisi belum disediakan.',
       ],
