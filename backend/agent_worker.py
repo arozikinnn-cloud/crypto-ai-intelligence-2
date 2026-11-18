@@ -95,7 +95,7 @@ def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
         db.close()
 
     try:
-        result = asyncio.run(asyncio.to_thread(run_tradingagents, symbol))
+        result = run_tradingagents(symbol)
         status, error = "COMPLETED", None
     except Exception as exc:
         logger.exception("TradingAgents job %s failed", job_id)
