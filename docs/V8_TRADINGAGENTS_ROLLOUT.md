@@ -114,6 +114,14 @@ job skips safely. The workflow does not provision PostgreSQL, configure Vercel, 
 Do not enable it until a durable shared PostgreSQL database is available and the operator has
 reviewed Gemini free-tier quotas and limits. A free Gemini quota is not a promise of unlimited use.
 
+## Worker job recovery
+
+The agent worker requeues a job left in RUNNING when its start time is older than
+`TRADINGAGENTS_JOB_STALE_MINUTES` (default 120 minutes; minimum 60). This recovers
+jobs abandoned by a terminated worker while keeping the lease longer than the
+55-minute scheduled GitHub Actions timeout. Recovery is covered by a backend test
+that verifies fresh RUNNING and already-PENDING jobs are not changed.
+
 ## Paper trading and execution safety
 
 The project remains research/decision-support only. No live exchange order endpoint or Bitget
