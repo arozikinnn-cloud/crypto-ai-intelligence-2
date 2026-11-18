@@ -2,7 +2,7 @@ name: Mobile CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feature/**"]
     paths:
       - "frontend/crypto_ai_app/**"
       - "backend/app/services/analysis/intelligence.py"
