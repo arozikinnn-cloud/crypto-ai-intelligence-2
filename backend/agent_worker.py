@@ -8,9 +8,9 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import get_settings
 from app.api.signals import record_signal
@@ -91,12 +91,43 @@ def run_tradingagents(symbol: str) -> dict:
     return finalize_v8_decision(rating, final_decision, reports, market_context)
 
 
+def recover_stale_agent_jobs(db, stale_after_minutes: int = 120) -> int:
+    """Requeue jobs abandoned by a crashed worker after a conservative lease timeout.
+
+    The scheduled free-tier runner has a 55-minute hard timeout, so the default
+    two-hour lease avoids racing a healthy scheduled job while recovering jobs
+    left RUNNING by terminated containers or interrupted deployments.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=max(60, stale_after_minutes)
+    )
+    result = db.execute(
+        update(AgentAnalysisJob)
+        .where(
+            AgentAnalysisJob.status == "RUNNING",
+            AgentAnalysisJob.started_at.is_not(None),
+            AgentAnalysisJob.started_at < cutoff,
+        )
+        .values(
+            status="PENDING",
+            started_at=None,
+            error_message="Automatically requeued after stale worker lease expired.",
+        )
+    )
+    return result.rowcount or 0
+
+
 def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
     """Claim and process one queued job; PostgreSQL row locking prevents double claims."""
     db = session_factory()
     job_id = None
     symbol = None
     try:
+        # Recover jobs abandoned by a killed worker before claiming new work.
+        settings = get_settings()
+        recover_stale_agent_jobs(
+            db, getattr(settings, "tradingagents_job_stale_minutes", 120)
+        )
         job = db.scalar(
             select(AgentAnalysisJob)
             .where(AgentAnalysisJob.status == "PENDING")
