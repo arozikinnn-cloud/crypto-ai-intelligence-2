@@ -1,8 +1,10 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
@@ -10,6 +12,7 @@ from app.core.logging import configure_logging
 from app.database.base import Base
 from app.database.session import engine
 from app.database.migrations import migrate_schema
+import app.models.agent_analysis_job  # noqa: F401
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
@@ -29,15 +32,11 @@ IS_VERCEL = os.getenv("VERCEL") == "1"
 async def lifespan(_app: FastAPI):
     # Vercel runs short-lived, concurrent serverless instances. Do not run
     # create_all()/DDL migrations or persistent WebSocket collectors at startup:
-    # concurrent create_all() calls can race on PostgreSQL's implicit table types
-    # (for example pg_type_typname_nsp_index / candles).
+    # concurrent create_all() calls can race on PostgreSQL's implicit table types.
     collector_tasks = []
     stop_event = asyncio.Event()
 
     if IS_VERCEL:
-        # Apply only the idempotent additive PostgreSQL migration; never create
-        # tables or start persistent collectors inside serverless instances.
-        # Apply narrowly scoped additive migrations under a PostgreSQL advisory lock.
         migrate_schema(engine)
     else:
         Base.metadata.create_all(bind=engine)
@@ -75,10 +74,10 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.0",
+    version="0.4.0",
     description=(
-        "Research-first crypto market intelligence API. "
-        "Public market data only; no order execution."
+        "Crypto AI Intelligence V8 research API powered by a separately hosted "
+        "TradingAgents worker. No exchange order execution is enabled."
     ),
     debug=settings.debug,
     lifespan=lifespan,
