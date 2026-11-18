@@ -123,17 +123,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
   Future<List<Map<String, dynamic>>> loadSignals() async {
-    try {
-      return await api.fetchSignals(status: 'all', limit: 50);
-    } catch (_) {
-      return <Map<String, dynamic>>[];
-    }
+    // Do not mix legacy V7 strategy signals into the V8 multi-agent dashboard.
+    return <Map<String, dynamic>>[];
   }
 
-  Future<Map<String, dynamic>> loadSignalPerformance() async {
-    try { return await api.fetchSignalPerformance(); }
-    catch (error) { return <String, dynamic>{'unavailable_reason': error.toString()}; }
-  }
+  Future<Map<String, dynamic>> loadSignalPerformance() async => <String, dynamic>{
+    'unavailable_reason':
+        'Statistik sinyal V8 menunggu risk validator dan Paper Trading. Metrik strategi lama tidak ditampilkan.',
+  };
 
   Future<Map<String, dynamic>> loadBacktest() async => <String, dynamic>{
     'unavailable_reason':
@@ -441,11 +438,11 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const _Heading('BACKTEST & PERFORMANCE', 'Evaluasi historis dengan biaya transaksi dan data out-of-sample'),
+            const _Heading('BACKTEST & PERFORMANCE', 'Backtest TradingAgents V8 belum diaktifkan; hasil strategi lama tidak digunakan'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL CENTER', 'Riwayat sinyal dan status yang tersimpan di backend'),
+            const _Heading('SIGNAL CENTER', 'Pencatatan sinyal V8 menunggu validasi risiko dan Paper Trading'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
