@@ -32,8 +32,10 @@ def normalize_tradingagents_result(
         "reports": reports or {},
         "execution_ready": False,
         "market_data_note": (
-            "This adapter uses TradingAgents' upstream crypto data path (Yahoo Finance "
-            "reference data); it is not Bitget USD-M futures, order-book, or open-interest data."
+            "Bitget USDT-M Futures closed candles, order-book snapshot, open interest, "
+            "and funding rate are injected into every TradingAgents analyst context. "
+            "Upstream TradingAgents Yahoo tools remain supplemental and are not the "
+            "authoritative source for exact futures prices."
         ),
         "risk_note": (
             "TradingAgents provides a research rating, not exchange order levels. "
