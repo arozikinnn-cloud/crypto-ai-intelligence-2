@@ -5,7 +5,7 @@ from app.services.analysis.engine import analyze_market
 from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 
 
-TIMEFRAMES = ("5m", "15m", "30m", "1h")
+TIMEFRAMES = ("1h", "30m", "15m", "5m")
 
 
 def _order_book_summary(order_book: dict) -> dict:
@@ -64,6 +64,7 @@ async def collect_bitget_v8_context(
             "take_profit": analysis["take_profit"],
             "risk_reward": analysis["risk_reward"],
             "confluence_score": analysis["confluence_score"],
+            "max_confluence": analysis["max_confluence"],
             "reasons": analysis["reasons"],
             "indicators": analysis["indicators"],
             "candle_close_time": candles[-1].close_time.isoformat(),
