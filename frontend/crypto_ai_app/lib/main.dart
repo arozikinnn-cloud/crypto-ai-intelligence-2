@@ -93,7 +93,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
-  Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence(symbol: selectedSymbol);
+  Future<Map<String, dynamic>> load({bool forceNew = false}) =>
+      widget.loadAnalysis?.call() ??
+      api.fetchTradingAgentsAnalysis(symbol: selectedSymbol, forceNew: forceNew);
   Future<List<Map<String, dynamic>>> loadCandles() async {
     try {
       return await api.fetchCandles(
@@ -116,7 +118,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
-    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(forceNew: true); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
@@ -133,24 +135,15 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     catch (error) { return <String, dynamic>{'unavailable_reason': error.toString()}; }
   }
 
-  Future<Map<String, dynamic>> loadBacktest() async {
-    try {
-      return await api.fetchBacktest(symbol: selectedSymbol);
-    } catch (error) {
-      return <String, dynamic>{'unavailable_reason': error.toString()};
-    }
-  }
+  Future<Map<String, dynamic>> loadBacktest() async => <String, dynamic>{
+    'unavailable_reason':
+        'Backtest multi-agent V8 belum diimplementasikan. Statistik strategi RSI/MA/Ichimoku lama tidak digunakan sebagai hasil V8.',
+  };
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
-    final results = await Future.wait(supportedSymbols.map((symbol) async {
-      try {
-        final result = await api.fetchIntelligence(symbol: symbol);
-        return <String, dynamic>{...result, 'scanner_status': 'OK'};
-      } catch (error) {
-        return <String, dynamic>{'symbol': symbol, 'side': 'UNAVAILABLE', 'scanner_status': error.toString()};
-      }
-    }));
-    return results;
+    // Avoid firing five expensive LLM research jobs from the dashboard scanner.
+    // Multi-symbol scanning will be enabled after queue concurrency and cost controls exist.
+    return <Map<String, dynamic>>[];
   }
 
   @override
@@ -174,7 +167,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (mounted && !refreshing) setState(() { analysis = load(); candles = loadCandles(); signalPerformance = loadSignalPerformance(); });
+      if (mounted && !refreshing) setState(() { analysis = load(forceNew: true); candles = loadCandles(); signalPerformance = loadSignalPerformance(); });
     });
   }
 
@@ -194,7 +187,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { refreshing = true; analysis = load(forceNew: true); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -270,6 +263,7 @@ class _Dashboard extends StatelessWidget {
     final cvdHistory = mapVal(market['cvd_history']);
     final deriv = mapVal(data['derivatives']);
     final tradePlan = mapVal(data['trade_plan']);
+    final agentReports = mapVal(data['agent_reports']);
 
     return RefreshIndicator(
       onRefresh: refresh, color: green, backgroundColor: panel,
@@ -430,6 +424,16 @@ class _Dashboard extends StatelessWidget {
               Expanded(child: _InfoCard(title: 'LIQUIDATIONS', value: txt(mapVal(market['liquidations'])['bias'], 'CONTEXT'),
                 note: txt(mapVal(market['liquidations'])['note'], 'Riwayat teramati'))),
             ]),
+            const SizedBox(height: 15),
+            const _Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Laporan analis dan keputusan riset V8'),
+            const SizedBox(height: 9),
+            _TextCard(title: 'Market Analyst', items: [txt(agentReports['market_report'])], empty: 'Laporan market belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Sentiment Analyst', items: [txt(agentReports['sentiment_report'])], empty: 'Laporan sentimen belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'News Analyst', items: [txt(agentReports['news_report'])], empty: 'Laporan berita belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Research / Trader Plan', items: [txt(agentReports['investment_plan']), txt(agentReports['trader_investment_plan'])].where((v) => v.isNotEmpty).toList(), empty: 'Rencana riset belum tersedia.'),
             const SizedBox(height: 15),
             const _Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
             const SizedBox(height: 9),
