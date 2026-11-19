@@ -17,8 +17,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 _REQUEST_LOCK = threading.Lock()
 _LAST_REQUEST_AT = 0.0
-_RETRY_IN_SECONDS = re.compile(r"retry in\\s+([0-9]+(?:\\.[0-9]+)?)s", re.IGNORECASE)
-_RETRY_DELAY = re.compile(r'"retryDelay"\\s*:\\s*"([0-9]+(?:\\.[0-9]+)?)s"', re.IGNORECASE)
+_RETRY_IN_SECONDS = re.compile(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", re.IGNORECASE)
+_RETRY_DELAY = re.compile(r'"retryDelay"\s*:\s*"([0-9]+(?:\.[0-9]+)?)s"', re.IGNORECASE)
 
 
 def is_rate_limit_error(error: BaseException) -> bool:
