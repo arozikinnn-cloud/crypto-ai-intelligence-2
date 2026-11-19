@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -25,24 +26,32 @@ from app.services.market_data.liquidation_collector import stream_binance_liquid
 
 settings = get_settings()
 configure_logging()
+logger = logging.getLogger("crypto_ai.startup")
 IS_VERCEL = os.getenv("VERCEL") == "1"
+IS_PREVIEW = os.getenv("VERCEL_ENV", "").lower() == "preview"
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Vercel runs short-lived, concurrent serverless instances. Do not run
-    # create_all()/DDL migrations or persistent WebSocket collectors at startup:
-    # concurrent create_all() calls can race on PostgreSQL's implicit table types.
+    # Vercel instances are short-lived. Do not run persistent collectors there.
     collector_tasks = []
     stop_event = asyncio.Event()
 
     if IS_VERCEL:
-        # Production uses shared PostgreSQL and additive migrations. A preview
-        # without DATABASE_URL uses disposable /tmp SQLite; create its full ORM
-        # schema so API smoke tests and demo endpoints remain usable.
-        if engine.dialect.name == "sqlite":
-            Base.metadata.create_all(bind=engine)
-        migrate_schema(engine)
+        try:
+            # Preview may be used for API smoke tests while its external database
+            # is being configured. Keep liveness and public market endpoints up,
+            # but never pretend the database is ready when connection/migration fails.
+            if engine.dialect.name == "sqlite":
+                Base.metadata.create_all(bind=engine)
+            migrate_schema(engine)
+        except Exception:
+            if not IS_PREVIEW:
+                raise
+            logger.exception(
+                "Preview database initialization failed; starting in degraded "
+                "read-only mode. Database-backed endpoints remain unavailable."
+            )
     else:
         Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
