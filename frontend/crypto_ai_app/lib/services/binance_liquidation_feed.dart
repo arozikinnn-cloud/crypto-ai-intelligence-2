@@ -55,6 +55,7 @@ class BinanceLiquidationEvent {
 
     if (symbol == null ||
         !RegExp(r'^[A-Z0-9]{4,30}$').hasMatch(symbol) ||
+        side == null ||
         (side != 'BUY' && side != 'SELL') ||
         price == null ||
         price <= 0 ||
