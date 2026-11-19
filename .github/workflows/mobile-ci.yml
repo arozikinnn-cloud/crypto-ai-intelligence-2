@@ -58,7 +58,24 @@ jobs:
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
-              echo "Android build failed (attempt $attempt); waiting before retry."
+              echo "Android debug build failed (attempt $attempt); waiting before retry."
+              sleep $((attempt * 30))
+            fi
+          done
+          exit "$result"
+      - name: Build Android release APKs (split by ABI)
+        env:
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || (github.event_name == 'pull_request' && github.head_ref == 'feature/v8-tradingagents-multi-agent' && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            flutter build apk --release --split-per-abi --dart-define="API_BASE_URL=${API_BASE_URL}"
+            result=$?
+            if [ "$result" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Android release build failed (attempt $attempt); waiting before retry."
               sleep $((attempt * 30))
             fi
           done
@@ -68,5 +85,15 @@ jobs:
         with:
           name: crypto-ai-intelligence-debug-apk
           path: frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload ABI-split release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: crypto-ai-intelligence-release-apks
+          path: |
+            frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-x86_64-release.apk
           if-no-files-found: error
           retention-days: 7
