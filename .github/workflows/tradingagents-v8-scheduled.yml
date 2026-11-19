@@ -32,6 +32,9 @@ jobs:
       TRADINGAGENTS_QUICK_THINK_LLM: gemini-2.5-flash
       TRADINGAGENTS_DEEP_THINK_LLM: gemini-2.5-flash
       TRADINGAGENTS_OUTPUT_LANGUAGE: Indonesian
+      TRADINGAGENTS_RESULTS_DIR: /tmp/tradingagents/results
+      TRADINGAGENTS_CACHE_DIR: /tmp/tradingagents/cache
+      TRADINGAGENTS_MEMORY_LOG_PATH: /tmp/tradingagents/memory/trading_memory.md
       TRADINGAGENTS_MAX_DEBATE_ROUNDS: "1"
       TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
       TRADINGAGENTS_MAX_TOOL_ROUNDS: "3"
@@ -128,3 +131,37 @@ jobs:
         if: steps.config.outputs.configured == 'true'
         working-directory: backend
         run: python -m agent_worker --once
+      - name: Verify AI result was completed and persisted
+        if: steps.config.outputs.configured == 'true'
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import json
+          from sqlalchemy import select
+          from app.database.session import SessionLocal
+          from app.models.agent_analysis_job import AgentAnalysisJob
+          db = SessionLocal()
+          try:
+              job = db.scalar(
+                  select(AgentAnalysisJob)
+                  .where(AgentAnalysisJob.symbol == "BTCUSDT")
+                  .order_by(AgentAnalysisJob.created_at.desc())
+                  .limit(1)
+              )
+              if job is None:
+                  raise SystemExit("No BTCUSDT analysis job was found.")
+              if job.status != "COMPLETED" or not job.result_json:
+                  raise SystemExit(
+                      f"TradingAgents did not complete: status={job.status}; "
+                      f"error={job.error_message or 'no error detail'}"
+                  )
+              result = json.loads(job.result_json)
+              if not isinstance(result, dict) or not result.get("side"):
+                  raise SystemExit("Completed job has no persisted decision payload.")
+              print(
+                  "Verified BTCUSDT AI result persisted in PostgreSQL: "
+                  f"status={job.status}, decision={result.get('side')}."
+              )
+          finally:
+              db.close()
+          PY
