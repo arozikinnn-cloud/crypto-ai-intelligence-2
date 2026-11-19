@@ -1,7 +1,8 @@
 import json
 import re
+from hmac import compare_digest
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -11,6 +12,24 @@ from app.schemas.agent_analysis import AgentAnalysisJobResponse
 
 router = APIRouter(prefix="/agent-analysis", tags=["TradingAgents V8"])
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{5,20}$")
+
+
+def _authorize_enqueue(settings, supplied_token: str | None) -> None:
+    """Require a server-only token before creating compute-heavy AI jobs."""
+    expected_token = getattr(settings, "tradingagents_enqueue_token", "").strip()
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Manual TradingAgents enqueue is locked. Configure a server-only "
+                "TRADINGAGENTS_ENQUEUE_TOKEN; scheduled worker runs are unaffected."
+            ),
+        )
+    if supplied_token is None or not compare_digest(supplied_token, expected_token):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized TradingAgents enqueue request.",
+        )
 
 
 def _serialize(job: AgentAnalysisJob) -> AgentAnalysisJobResponse:
@@ -35,6 +54,9 @@ def _serialize(job: AgentAnalysisJob) -> AgentAnalysisJobResponse:
 @router.post("/jobs", response_model=AgentAnalysisJobResponse, status_code=202)
 def create_agent_analysis_job(
     symbol: str = Query(default="BTCUSDT", min_length=5, max_length=20),
+    x_tradingagents_enqueue_token: str | None = Header(
+        default=None, alias="X-TradingAgents-Enqueue-Token"
+    ),
     db: Session = Depends(get_db),
 ) -> AgentAnalysisJobResponse:
     settings = get_settings()
@@ -46,6 +68,7 @@ def create_agent_analysis_job(
                 "and model provider first."
             ),
         )
+    _authorize_enqueue(settings, x_tradingagents_enqueue_token)
     normalized = symbol.strip().upper()
     if not _SYMBOL_RE.fullmatch(normalized) or not normalized.endswith("USDT"):
         raise HTTPException(
