@@ -2,6 +2,12 @@ name: Scheduled TradingAgents V8 (best-effort free tier)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/v8-tradingagents-multi-agent
+    paths:
+      - .github/workflows/tradingagents-v8-scheduled.yml
+      - backend/agent_worker.py
   schedule:
     # Episodic scheduled execution, not a persistent 24/7 process.
     - cron: "17 */6 * * *"
@@ -27,7 +33,7 @@ jobs:
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       TRADINGAGENTS_LLM_PROVIDER: google
       TRADINGAGENTS_QUICK_THINK_LLM: gemini-2.5-flash
-      TRADINGAGENTS_DEEP_THINK_LLM: gemini-2.5-pro
+      TRADINGAGENTS_DEEP_THINK_LLM: gemini-2.5-flash
       TRADINGAGENTS_OUTPUT_LANGUAGE: Indonesian
       TRADINGAGENTS_MAX_DEBATE_ROUNDS: "1"
       TRADINGAGENTS_MAX_RISK_ROUNDS: "1"
@@ -59,6 +65,24 @@ jobs:
       - name: Install TradingAgents worker dependencies
         if: steps.config.outputs.configured == 'true'
         run: pip install -r requirements-agent-worker.txt
+      - name: Verify effective Gemini model configuration
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          python - <<'PY'
+          import os
+          from tradingagents.default_config import DEFAULT_CONFIG
+          expected = {
+              "llm_provider": "google",
+              "quick_think_llm": "gemini-2.5-flash",
+              "deep_think_llm": "gemini-2.5-flash",
+          }
+          actual = {key: DEFAULT_CONFIG.get(key) for key in expected}
+          if actual != expected:
+              raise SystemExit(f"TradingAgents model config mismatch: {actual}")
+          if not os.environ.get("GOOGLE_API_KEY"):
+              raise SystemExit("GOOGLE_API_KEY is missing.")
+          print("TradingAgents effective provider and both model tiers verified; API key value hidden.")
+          PY
       - name: Validate provider and shared PostgreSQL configuration
         if: steps.config.outputs.configured == 'true'
         run: |
