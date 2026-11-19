@@ -23,9 +23,6 @@ jobs:
   tradingagents-cycle:
     runs-on: ubuntu-latest
     timeout-minutes: 55
-    defaults:
-      run:
-        working-directory: backend
     env:
       APP_ENV: production
       TRADINGAGENTS_ENABLED: "true"
@@ -64,9 +61,11 @@ jobs:
           cache-dependency-path: backend/requirements-agent-worker.txt
       - name: Install TradingAgents worker dependencies
         if: steps.config.outputs.configured == 'true'
+        working-directory: backend
         run: pip install -r requirements-agent-worker.txt
       - name: Verify effective Gemini model configuration
         if: steps.config.outputs.configured == 'true'
+        working-directory: backend
         run: |
           python - <<'PY'
           import os
@@ -85,6 +84,7 @@ jobs:
           PY
       - name: Validate provider and shared PostgreSQL configuration
         if: steps.config.outputs.configured == 'true'
+        working-directory: backend
         run: |
           python - <<'PY'
           import os
@@ -98,6 +98,7 @@ jobs:
           PY
       - name: Queue one scheduled BTC analysis if none is pending
         if: steps.config.outputs.configured == 'true'
+        working-directory: backend
         run: |
           python - <<'PY'
           from sqlalchemy import select
@@ -125,4 +126,5 @@ jobs:
           PY
       - name: Run one bounded TradingAgents job
         if: steps.config.outputs.configured == 'true'
+        working-directory: backend
         run: python -m agent_worker --once
