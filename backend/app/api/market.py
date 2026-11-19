@@ -1,6 +1,11 @@
+import logging
+import os
 from dataclasses import asdict
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+
 from app.database.session import get_db
 from app.schemas.market import CandleResponse, MarketDataResponse
 from app.services.market_data.base import MarketDataError
@@ -8,6 +13,7 @@ from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.services.market_data.storage import store_candles
 
+logger = logging.getLogger("crypto_ai.market_api")
 router = APIRouter(prefix="/market", tags=["market-data"])
 
 
@@ -43,9 +49,6 @@ async def get_candles(
     )
 
 
-
-
-
 @router.get(
     "/bitget/candles",
     response_model=MarketDataResponse,
@@ -63,12 +66,22 @@ async def get_bitget_futures_candles(
         candles = await BitgetUsdtFuturesMarketData().fetch_klines(
             symbol, interval, limit
         )
-        stored = store_candles(db, "bitget_usdt_futures", candles)
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except Exception:
+
+    try:
+        stored = store_candles(db, "bitget_usdt_futures", candles)
+    except SQLAlchemyError:
         db.rollback()
-        raise
+        if os.getenv("VERCEL_ENV", "").lower() != "preview":
+            raise
+        # Preview can still display verified live candles while the operator
+        # repairs its database secret. stored=0 explicitly means no persistence.
+        logger.exception(
+            "Bitget candles fetched successfully but preview database persistence failed."
+        )
+        stored = 0
+
     return MarketDataResponse(
         provider="bitget_usdt_futures",
         symbol=symbol.upper(),
