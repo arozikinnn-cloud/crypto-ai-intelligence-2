@@ -312,7 +312,14 @@ class AnalysisApi {
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) throw const FormatException('Invalid signal response format.');
-    return decoded.whereType<Map<String, dynamic>>().toList(growable: false);
+    final rows = decoded.whereType<Map<String, dynamic>>();
+    // Enforce version isolation on the client as well as the API. This prevents
+    // a stale/older backend that ignores strategy_mode from leaking V7 signals
+    // into the V8 Signal Center.
+    final filtered = strategyMode == null
+        ? rows
+        : rows.where((item) => item['strategy_mode']?.toString() == strategyMode);
+    return filtered.toList(growable: false);
   }
 
   Future<Map<String, dynamic>> fetchSignalPerformance() async {
