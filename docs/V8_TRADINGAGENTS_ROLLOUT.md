@@ -138,3 +138,25 @@ host/connector and integration tests are still required before considering the e
 4. Shared durable PostgreSQL access for the worker, a persistent worker host/storage, and a model-provider credential are still missing.
 5. Hummingbot Paper Trading is not integrated; the current signal journal is only a forward market-outcome tracker.
 6. Historical TradingAgents backtest is not implemented. Keep the feature disabled and the PR unmerged until the remaining hosting/provider/security requirements and end-to-end tests are satisfied.
+
+
+## Enqueue endpoint security
+
+The public API must not allow anonymous callers to trigger potentially billable
+multi-agent model runs. When `TRADINGAGENTS_ENABLED=true`, the
+`POST /api/v1/agent-analysis/jobs` endpoint also requires the
+`X-TradingAgents-Enqueue-Token` header to match the server-only
+`TRADINGAGENTS_ENQUEUE_TOKEN` setting.
+
+- Leave the token unset by default; manual API enqueue then returns HTTP 503.
+- A missing or incorrect header returns HTTP 401.
+- Keep the token only in a private server environment. Never put it in the
+  Flutter source, `--dart-define`, APK assets, or this public repository.
+- The Android app remains read-only when it receives 401/403/503. It can still
+  read previously completed analysis jobs.
+- The scheduled GitHub Actions workflow queues jobs directly in the shared
+  database and does not need to expose this token to the app.
+
+For future user-triggered analysis, prefer Firebase ID-token verification plus
+per-user quotas and server-side rate limiting rather than embedding one shared
+secret in every APK.
