@@ -66,4 +66,35 @@ void main() {
       api.close();
     }
   });
+
+  test('keeps the Android client read-only when manual enqueue requires a server token', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/agent-analysis/jobs')) {
+        expect(request.headers.containsKey('X-TradingAgents-Enqueue-Token'), isFalse);
+        return http.Response(
+          jsonEncode({'detail': 'Unauthorized TradingAgents enqueue request.'}),
+          401,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(
+      client: client,
+      baseUrl: 'https://example.test/api/v1',
+    );
+
+    try {
+      final result = await api.fetchTradingAgentsAnalysis(forceNew: true);
+
+      expect(result['side'], 'NO TRADE');
+      expect(result['agent_status'], 'DISABLED');
+      expect(result['execution_ready'], isFalse);
+      expect(result['trade_plan'], isNull);
+      expect((result['context_notes'] as List).join(' '), contains('Unauthorized'));
+    } finally {
+      api.close();
+    }
+  });
 }
