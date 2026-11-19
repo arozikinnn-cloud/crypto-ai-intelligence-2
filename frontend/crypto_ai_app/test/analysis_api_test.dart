@@ -97,4 +97,28 @@ void main() {
       api.close();
     }
   });
+  test('filters legacy V7 signals even when an older API ignores strategy_mode', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/signals')) {
+        return http.Response(jsonEncode([
+          {'id': 1, 'strategy_mode': 'LEGACY_UNVERSIONED', 'side': 'BUY'},
+          {'id': 2, 'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8', 'side': 'SELL'},
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final rows = await api.fetchSignals(
+        status: 'all',
+        strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single['id'], 2);
+      expect(rows.single['side'], 'SELL');
+    } finally {
+      api.close();
+    }
+  });
+
 }
