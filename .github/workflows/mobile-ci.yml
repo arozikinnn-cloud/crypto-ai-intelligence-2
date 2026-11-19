@@ -2,13 +2,13 @@ name: Mobile CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "build/**"]
     paths:
       - "frontend/crypto_ai_app/**"
       - "backend/app/services/analysis/intelligence.py"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, "feature/**"]
     paths:
       - "frontend/crypto_ai_app/**"
       - ".github/workflows/mobile-ci.yml"
@@ -48,7 +48,7 @@ jobs:
             ${{ runner.os }}-gradle-
       - name: Build Android debug APK
         env:
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || (github.event_name == 'pull_request' && github.head_ref == 'feature/v8-tradingagents-multi-agent' && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || (github.event_name == 'pull_request' && github.base_ref == 'feature/v8-tradingagents-multi-agent' && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
         run: |
           set +e
           for attempt in 1 2 3; do
@@ -65,7 +65,7 @@ jobs:
           exit "$result"
       - name: Build Android release APKs (split by ABI)
         env:
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || (github.event_name == 'pull_request' && github.head_ref == 'feature/v8-tradingagents-multi-agent' && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || (github.event_name == 'pull_request' && github.base_ref == 'feature/v8-tradingagents-multi-agent' && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
         run: |
           set +e
           for attempt in 1 2 3; do
