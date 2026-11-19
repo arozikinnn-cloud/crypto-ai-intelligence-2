@@ -288,11 +288,11 @@ class _Dashboard extends StatelessWidget {
                 Text('INTELLIGENCE TERMINAL', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.4)),
               ])),
               Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                decoration: BoxDecoration(color: green.withValues(alpha: .09),
-                  borderRadius: BorderRadius.circular(20), border: Border.all(color: green.withValues(alpha: .25))),
+                decoration: BoxDecoration(color: blue.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(20), border: Border.all(color: blue.withValues(alpha: .25))),
                 child: const Row(children: [
-                  Icon(Icons.circle, size: 7, color: green), SizedBox(width: 5),
-                  Text('API ONLINE', style: TextStyle(color: green, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Icon(Icons.circle, size: 7, color: blue), SizedBox(width: 5),
+                  Text('V8 READ-ONLY', style: TextStyle(color: blue, fontSize: 9, fontWeight: FontWeight.bold)),
                 ])),
               IconButton(onPressed: refreshing ? null : refresh,
                 icon: refreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -311,7 +311,7 @@ class _Dashboard extends StatelessWidget {
                   items: supportedSymbols.map((symbol) => DropdownMenuItem(value: symbol, child: Text(symbol))).toList(),
                   onChanged: refreshing ? null : onSymbolChanged,
                 ),
-                const Text('Spot market • Binance public data', style: TextStyle(color: muted, fontSize: 10)),
+                const Text('USDT-M Futures • Bitget public data', style: TextStyle(color: muted, fontSize: 10)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 const Text('ANALYSIS TIME', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1)),
@@ -320,7 +320,7 @@ class _Dashboard extends StatelessWidget {
               ]),
             ]),
             const SizedBox(height: 16),
-            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Binance Spot'),
+            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bitget USDT-M Futures'),
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 8),
@@ -336,7 +336,7 @@ class _Dashboard extends StatelessWidget {
                 Row(children: [
                   const Expanded(child: Text('AI MARKET BIAS', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.3))),
                   Icon(Icons.auto_awesome, color: accent, size: 14), const SizedBox(width: 5),
-                  Text('RULE-BASED ENGINE', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.bold)),
+                  Text('TRADINGAGENTS V8', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.bold)),
                 ]),
                 const SizedBox(height: 12),
                 Row(children: [
@@ -452,7 +452,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL CENTER', 'Forward tracking sinyal V8 dari candle Bitget; bukan eksekusi Hummingbot/live'),
+            const _Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
@@ -601,7 +601,7 @@ class _CandlestickChart extends StatelessWidget {
             Row(children: [
               Text('80 candle terakhir • ${interval.toUpperCase()}', style: TextStyle(color: muted, fontSize: 8)),
               const Spacer(),
-              Text('Sumber: Binance Spot', style: const TextStyle(color: muted, fontSize: 8)),
+              Text('Sumber: Bitget USDT-M Futures', style: const TextStyle(color: muted, fontSize: 8)),
             ]),
           ]);
         },
