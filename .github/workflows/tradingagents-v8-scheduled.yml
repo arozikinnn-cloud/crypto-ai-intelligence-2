@@ -32,6 +32,8 @@ jobs:
       TRADINGAGENTS_QUICK_THINK_LLM: gemini-3.8-flash
       TRADINGAGENTS_DEEP_THINK_LLM: gemini-3.8-flash
       TRADINGAGENTS_OUTPUT_LANGUAGE: Indonesian
+      TRADINGAGENTS_GEMINI_MIN_INTERVAL_SECONDS: "13"
+      TRADINGAGENTS_GEMINI_RATE_LIMIT_RETRIES: "5"
       TRADINGAGENTS_RESULTS_DIR: /tmp/tradingagents/results
       TRADINGAGENTS_CACHE_DIR: /tmp/tradingagents/cache
       TRADINGAGENTS_MEMORY_LOG_PATH: /tmp/tradingagents/memory/trading_memory.md
