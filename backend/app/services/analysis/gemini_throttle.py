@@ -21,11 +21,25 @@ _RETRY_IN_SECONDS = re.compile(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", re.IGNORECA
 _RETRY_DELAY = re.compile(r'"retryDelay"\s*:\s*"([0-9]+(?:\.[0-9]+)?)s"', re.IGNORECASE)
 
 
-def is_rate_limit_error(error: BaseException) -> bool:
-    """Recognize Gemini/LangChain HTTP 429 and RESOURCE_EXHAUSTED errors."""
+def is_retryable_provider_error(error: BaseException) -> bool:
+    """Recognize rate limits and transient Google API availability failures."""
     status = getattr(error, "status_code", None) or getattr(error, "code", None)
     message = str(error).lower()
-    return status == 429 or "resource_exhausted" in message or "429" in message
+    return (
+        status in {429, 500, 502, 503, 504}
+        or any(
+            marker in message
+            for marker in (
+                "resource_exhausted",
+                "unavailable",
+                "429",
+                "500",
+                "502",
+                "503",
+                "504",
+            )
+        )
+    )
 
 
 def retry_after_seconds(error: BaseException) -> float:
@@ -57,7 +71,7 @@ def _call_with_throttle(
             try:
                 return call()
             except Exception as error:
-                if not is_rate_limit_error(error) or attempt >= max_retries:
+                if not is_retryable_provider_error(error) or attempt >= max_retries:
                     raise
                 backoff = max(
                     min_interval,
@@ -65,7 +79,7 @@ def _call_with_throttle(
                     min(60.0, min_interval * (2 ** (attempt + 1))),
                 )
                 logger.warning(
-                    "Gemini free-tier rate limit reached; retrying after %.1fs (%d/%d).",
+                    "Gemini transient provider error; retrying after %.1fs (%d/%d).",
                     backoff,
                     attempt + 1,
                     max_retries,
@@ -87,7 +101,7 @@ def install_gemini_free_tier_throttle() -> None:
         1.0,
         float(os.getenv("TRADINGAGENTS_GEMINI_MIN_INTERVAL_SECONDS", "13")),
     )
-    max_retries = max(0, int(os.getenv("TRADINGAGENTS_GEMINI_RATE_LIMIT_RETRIES", "4")))
+    max_retries = max(0, int(os.getenv("TRADINGAGENTS_GEMINI_RATE_LIMIT_RETRIES", "5")))
 
     def throttled_generate(self, *args, **kwargs):
         return _call_with_throttle(
