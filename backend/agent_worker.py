@@ -32,6 +32,11 @@ def run_tradingagents(symbol: str) -> dict:
     from tradingagents.agents.rating import run_rating
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from app.services.analysis.gemini_throttle import install_gemini_free_tier_throttle
+
+    # Analysts run concurrently in the upstream graph. Pace actual Gemini
+    # requests process-wide to stay within the configured free-tier RPM.
+    install_gemini_free_tier_throttle()
 
     ticker = f"{symbol[:-4]}-USD" if symbol.endswith("USDT") else symbol
     config = DEFAULT_CONFIG.copy()
@@ -40,6 +45,8 @@ def run_tradingagents(symbol: str) -> dict:
     config["max_risk_discuss_rounds"] = int(os.getenv("TRADINGAGENTS_MAX_RISK_ROUNDS", "1"))
     config["max_tool_rounds"] = int(os.getenv("TRADINGAGENTS_MAX_TOOL_ROUNDS", "4"))
     config["max_recur_limit"] = max(30, 2 * config["max_tool_rounds"] + 10)
+    # Use the worker-level paced retry wrapper instead of overlapping SDK retries.
+    config["llm_max_retries"] = 0
     config["checkpoint_enabled"] = True
     config["results_dir"] = os.getenv("TRADINGAGENTS_RESULTS_DIR", "/data/tradingagents/results")
     config["data_cache_dir"] = os.getenv("TRADINGAGENTS_CACHE_DIR", "/data/tradingagents/cache")
