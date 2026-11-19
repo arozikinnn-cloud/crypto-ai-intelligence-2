@@ -103,7 +103,9 @@ class AnalysisApi {
       final createResponse = await _client
           .post(createUri, headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 20));
-      if (createResponse.statusCode == 503 ||
+      if (createResponse.statusCode == 401 ||
+          createResponse.statusCode == 403 ||
+          createResponse.statusCode == 503 ||
           createResponse.statusCode == 404 ||
           createResponse.statusCode >= 500) {
         // Keep the trial APK usable in read-only mode while the private
