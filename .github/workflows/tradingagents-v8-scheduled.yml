@@ -29,8 +29,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       TRADINGAGENTS_LLM_PROVIDER: google
-      TRADINGAGENTS_QUICK_THINK_LLM: gemini-2.5-flash
-      TRADINGAGENTS_DEEP_THINK_LLM: gemini-2.5-flash
+      TRADINGAGENTS_QUICK_THINK_LLM: gemini-3.8-flash
+      TRADINGAGENTS_DEEP_THINK_LLM: gemini-3.8-flash
       TRADINGAGENTS_OUTPUT_LANGUAGE: Indonesian
       TRADINGAGENTS_RESULTS_DIR: /tmp/tradingagents/results
       TRADINGAGENTS_CACHE_DIR: /tmp/tradingagents/cache
@@ -75,8 +75,8 @@ jobs:
           from tradingagents.default_config import DEFAULT_CONFIG
           expected = {
               "llm_provider": "google",
-              "quick_think_llm": "gemini-2.5-flash",
-              "deep_think_llm": "gemini-2.5-flash",
+              "quick_think_llm": "gemini-3.8-flash",
+              "deep_think_llm": "gemini-3.8-flash",
           }
           actual = {key: DEFAULT_CONFIG.get(key) for key in expected}
           if actual != expected:
