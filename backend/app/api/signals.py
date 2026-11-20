@@ -4,7 +4,7 @@ import math
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,16 @@ from app.schemas.signals import SignalEventResponse, SignalNotificationResponse
 
 router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"])
 logger = logging.getLogger(__name__)
+
+def _strategy_mode_filter(column, strategy_mode: str):
+    # reasons_json is stored as TEXT. Match both normal json.dumps spacing and
+    # compact JSON across SQLite tests and PostgreSQL production.
+    encoded = json.dumps(strategy_mode, ensure_ascii=False)
+    escaped = encoded.replace("\\\\", "\\\\\\\\").replace("%", "\\\\%").replace("_", "\\\\_")
+    return or_(
+        column.like(f'%"strategy_mode": {escaped}%', escape="\\\\"),
+        column.like(f'%"strategy_mode":{escaped}%', escape="\\\\"),
+    )
 CURRENT_STRATEGY_MODE = "TRADINGAGENTS_MULTI_AGENT_V8"
 
 
@@ -365,9 +375,7 @@ def list_signals(
         # Filter in SQL before limiting so old/legacy rows cannot crowd V8
         # signals out of the requested page.
         statement = statement.where(
-            SignalEvent.reasons_json.contains(
-                f'"strategy_mode":"{strategy_mode}"', autoescape=True
-            )
+            _strategy_mode_filter(SignalEvent.reasons_json, strategy_mode)
         )
     payloads = [_event_payload(row) for row in db.scalars(statement.limit(limit))]
     if strategy_mode:
@@ -451,9 +459,7 @@ def list_notifications(
         # Apply strategy filtering before pagination; otherwise a busy legacy
         # inbox could hide every newer V8 notification behind the first 200.
         statement = statement.where(
-            SignalEvent.reasons_json.contains(
-                f'"strategy_mode":"{strategy_mode}"', autoescape=True
-            )
+            _strategy_mode_filter(SignalEvent.reasons_json, strategy_mode)
         )
     statement = statement.limit(limit)
 
