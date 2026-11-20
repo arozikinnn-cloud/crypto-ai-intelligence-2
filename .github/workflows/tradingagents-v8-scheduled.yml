@@ -8,6 +8,8 @@ on:
     paths:
       - .github/workflows/tradingagents-v8-scheduled.yml
       - backend/agent_worker.py
+      - backend/app/services/analysis/gemini_throttle.py
+      - backend/tests/test_gemini_throttle.py
   schedule:
     # Episodic scheduled execution, not a persistent 24/7 process.
     - cron: "17 */6 * * *"
