@@ -327,7 +327,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
       return await api.fetchBacktest(
         symbol: selectedSymbol,
         interval: '1h',
-        limit: 300,
+        // Use the maximum supported history so out-of-sample quality gates
+        // are evaluated on a meaningful sample instead of too few trades.
+        limit: 1000,
       );
     } catch (error) {
       return <String, dynamic>{'unavailable_reason': error.toString()};
@@ -1319,6 +1321,7 @@ class _SignalPerformance extends StatelessWidget {
             );
           }
           final wr = data['win_rate_pct'];
+          final closedCount = number(data['completed']);
           final winRateLabel = wr == null ? 'N/A' : '${wr}%';
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1336,6 +1339,14 @@ class _SignalPerformance extends StatelessWidget {
                 _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
                 _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
               ]),
+              if (closedCount < 30)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 7),
+                  child: Text(
+                    'SAMPEL MASIH KECIL: win rate hanya deskriptif dan belum cukup untuk menilai keunggulan strategi (minimal 30 sinyal selesai disarankan).',
+                    style: TextStyle(color: red, fontSize: 8, height: 1.4),
+                  ),
+                ),
               const SizedBox(height: 7),
               Text(
                 txt(data['method_note'], ''),
