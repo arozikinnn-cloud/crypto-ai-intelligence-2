@@ -527,7 +527,12 @@ class _Dashboard extends StatelessWidget {
     String reportStatus(String report) {
       if (agentStatus == 'STALE') return 'STALE';
       if (agentStatus == 'UNAVAILABLE') return 'UNAVAILABLE';
-      return report.isEmpty ? 'NO DATA' : 'COMPLETED';
+      if (agentStatus == 'DISABLED') return 'DISABLED';
+      if (report.isNotEmpty) return 'COMPLETED';
+      if (agentStatus == 'PENDING' || agentStatus == 'RUNNING') {
+        return agentStatus;
+      }
+      return 'NO DATA';
     }
     final marketAgentStatus = reportStatus(marketAgentReport);
     final sentimentAgentStatus = reportStatus(sentimentAgentReport);
