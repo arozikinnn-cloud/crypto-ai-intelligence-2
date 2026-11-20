@@ -127,7 +127,7 @@ def recover_stale_agent_jobs(db, stale_after_minutes: int = 120) -> int:
 
 def persist_recent_completed_v8_signals(
     session_factory=SessionLocal,
-    max_age_minutes: int = 90,
+    max_age_minutes: int = 20,
 ) -> int:
     """Recover V8 signals that were not persisted after a completed AI job.
 
@@ -172,7 +172,21 @@ def persist_recent_completed_v8_signals(
             (timeframes.get("15m") or {}).get("candle_close_time")
             or market_context.get("collected_at")
         )
-        if not signal_candle_timestamp:
+        collected_at_value = market_context.get("collected_at")
+        if not signal_candle_timestamp or not collected_at_value:
+            continue
+        try:
+            collected_at = datetime.fromisoformat(
+                str(collected_at_value).replace("Z", "+00:00")
+            )
+            if collected_at.tzinfo is None:
+                collected_at = collected_at.replace(tzinfo=timezone.utc)
+            age_minutes = (
+                datetime.now(timezone.utc) - collected_at.astimezone(timezone.utc)
+            ).total_seconds() / 60
+        except ValueError:
+            continue
+        if not -1 <= age_minutes <= 20:
             continue
         signal_db = session_factory()
         try:
