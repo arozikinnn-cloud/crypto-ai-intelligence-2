@@ -9,11 +9,15 @@ on:
       - "backend/app/api/**"
       - "backend/app/services/market_data/bitget.py"
       - "backend/app/services/analysis/tradingagents_*.py"
+      - "backend/agent_worker.py"
+      - ".github/workflows/tradingagents-v8-scheduled.yml"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
     branches: [main, feature/v8-tradingagents-multi-agent]
     paths:
       - "frontend/crypto_ai_app/**"
+      - "backend/agent_worker.py"
+      - ".github/workflows/tradingagents-v8-scheduled.yml"
       - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
     inputs:
