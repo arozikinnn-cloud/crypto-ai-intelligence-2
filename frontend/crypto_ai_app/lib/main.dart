@@ -277,11 +277,11 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     signals = Future.value(<Map<String, dynamic>>[]);
     backtest = Future.value(<String, dynamic>{'unavailable_reason': 'Memuat baseline...'});
     signalPerformance = Future.value(<String, dynamic>{});
-    unawaited(loadSecondaryFeeds());
+    unawaited(loadSecondaryFeeds(includeScanner: true));
     startPolling();
   }
 
-  Future<void> loadSecondaryFeeds() async {
+  Future<void> loadSecondaryFeeds({bool includeScanner = false}) async {
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
     setState(() => notifications = loadNotes());
@@ -299,8 +299,10 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     setState(() => signalPerformance = loadSignalPerformance());
     await signalPerformance;
     if (!mounted) return;
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (mounted) setState(() => scanner = loadScanner());
+    if (includeScanner) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => scanner = loadScanner());
+    }
   }
 
   void startPolling() {
@@ -318,7 +320,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(PushNotificationService.initialize());
-      setState(() { analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+      setState(() { analysis = load(); candles = loadCandles(); });
+      unawaited(loadSecondaryFeeds(includeScanner: true));
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -330,7 +333,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); });
+    unawaited(loadSecondaryFeeds(includeScanner: true));
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
