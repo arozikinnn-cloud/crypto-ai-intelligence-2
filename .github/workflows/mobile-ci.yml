@@ -11,7 +11,7 @@ on:
       - "backend/app/services/analysis/tradingagents_*.py"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, feature/v8-tradingagents-multi-agent]
     paths:
       - "frontend/crypto_ai_app/**"
       - ".github/workflows/mobile-ci.yml"
@@ -51,7 +51,7 @@ jobs:
             ${{ runner.os }}-gradle-
       - name: Build Android debug APK
         env:
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || (((github.event_name == 'pull_request' && github.head_ref == 'feature/v8-tradingagents-multi-agent') || (github.event_name == 'push' && github.ref_name == 'feature/v8-tradingagents-multi-agent')) && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || (((github.event_name == 'pull_request' && github.head_ref == 'feature/v8-tradingagents-multi-agent') || (github.event_name == 'push' && github.ref_name == 'feature/v8-tradingagents-multi-agent')) && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1' }}
         run: |
           set +e
           for attempt in 1 2 3; do
