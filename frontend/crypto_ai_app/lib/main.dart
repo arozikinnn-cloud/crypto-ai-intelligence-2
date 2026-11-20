@@ -10,6 +10,7 @@ import 'services/analysis_api.dart';
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
 const green = Color(0xFF25D6A2), red = Color(0xFFFF647C), blue = Color(0xFF65A9FF);
+// Keep V7 dashboard market coverage while V8 AI runs independently.
 const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
 
 Future<void> main() async {
