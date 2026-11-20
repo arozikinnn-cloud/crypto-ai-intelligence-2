@@ -1,0 +1,292 @@
+import asyncio
+import re
+from datetime import datetime, timezone
+
+from app.services.analysis.engine import analyze_market
+from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
+
+
+TIMEFRAMES = ("1h", "30m", "15m", "5m")
+
+
+def _order_book_summary(order_book: dict) -> dict:
+    bid_notional = sum(price * quantity for price, quantity in order_book["bids"])
+    ask_notional = sum(price * quantity for price, quantity in order_book["asks"])
+    total = bid_notional + ask_notional
+    return {
+        "bid_notional": bid_notional,
+        "ask_notional": ask_notional,
+        "imbalance": (bid_notional - ask_notional) / total if total else 0.0,
+        "bias": (
+            "BID DOMINANT" if bid_notional > ask_notional
+            else "ASK DOMINANT" if ask_notional > bid_notional
+            else "BALANCED"
+        ),
+        "note": "Snapshot Bitget Futures; not historical order-flow data.",
+        "best_bid": order_book["bids"][0][0],
+        "best_ask": order_book["asks"][0][0],
+        "timestamp": order_book["timestamp"],
+    }
+
+
+async def collect_bitget_v8_context(
+    symbol: str, provider: BitgetUsdtFuturesMarketData | None = None
+) -> dict:
+    """Collect closed Bitget Futures candles and public derivatives context."""
+    market = provider or BitgetUsdtFuturesMarketData()
+    normalized = symbol.upper().strip()
+    candle_sets = await asyncio.gather(*(
+        market.fetch_klines(normalized, timeframe, 120, closed_only=True)
+        for timeframe in TIMEFRAMES
+    ))
+    derivatives, order_book = await asyncio.gather(
+        market.fetch_derivatives_context(normalized),
+        market.fetch_order_book(normalized, 100),
+    )
+
+    analyses = {}
+    for timeframe, candles in zip(TIMEFRAMES, candle_sets):
+        if len(candles) < 80:
+            raise ValueError(
+                f"Bitget {timeframe} data is insufficient: {len(candles)} closed candles; "
+                "at least 80 are required."
+            )
+        age_seconds = (
+            datetime.now(timezone.utc) - candles[-1].close_time
+        ).total_seconds()
+        max_age = 2 * (candles[-1].close_time - candles[-2].close_time).total_seconds()
+        if age_seconds > max_age:
+            raise ValueError(f"Bitget {timeframe} candles are stale.")
+        analysis = analyze_market(candles, risk_reward=1.5, atr_multiplier=1.5)
+        analyses[timeframe] = {
+            "side": analysis["side"],
+            "entry": analysis["entry"],
+            "stop_loss": analysis["stop_loss"],
+            "take_profit": analysis["take_profit"],
+            "risk_reward": analysis["risk_reward"],
+            "confluence_score": analysis["confluence_score"],
+            "max_confluence": analysis["max_confluence"],
+            "reasons": analysis["reasons"],
+            "indicators": analysis["indicators"],
+            "candle_close_time": candles[-1].close_time.isoformat(),
+            "candle_count": len(candles),
+        }
+
+    book = _order_book_summary(order_book)
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    oi_timestamp = int(derivatives.get("open_interest_timestamp") or 0)
+    book_timestamp = int(book.get("timestamp") or 0)
+    if oi_timestamp <= 0 or now_ms - oi_timestamp > 10 * 60 * 1000:
+        raise ValueError("Bitget open-interest snapshot is missing or stale.")
+    if book_timestamp <= 0 or now_ms - book_timestamp > 2 * 60 * 1000:
+        raise ValueError("Bitget order-book snapshot is missing or stale.")
+    latest = analyses["15m"]
+    context_text = [
+        "VERIFIED EXCHANGE DATA — BITGET USDT-M FUTURES (public endpoints).",
+        f"Symbol: {normalized}. All candles below are closed candles; UTC timestamps.",
+        "Treat this Bitget Futures snapshot as authoritative for exact crypto prices. "
+        "If Yahoo Finance or another research tool disagrees, report the discrepancy "
+        "and do not replace Bitget prices with the other source.",
+    ]
+    for timeframe in TIMEFRAMES:
+        item = analyses[timeframe]
+        ind = item["indicators"]
+        context_text.append(
+            f"{timeframe}: side={item['side']}; close={ind['last_price']}; "
+            f"MA40={ind['ma40']}; RSI16={ind['rsi16']}; ATR14={ind['atr14']}; "
+            f"Tenkan={ind['ichimoku_tenkan']}; Kijun={ind['ichimoku_kijun']}; "
+            f"KumoTop={ind['ichimoku_cloud_top']}; KumoBottom={ind['ichimoku_cloud_bottom']}; "
+            f"reasons={' | '.join(item['reasons'])}"
+        )
+    context_text.append(
+        f"Derivatives: open interest={derivatives['open_interest']} "
+        f"{derivatives['open_interest_unit']}; funding rate={derivatives['funding_rate']}."
+    )
+    context_text.append(
+        f"Order-book snapshot: best bid={book['best_bid']}; best ask={book['best_ask']}; "
+        f"bid notional={book['bid_notional']}; ask notional={book['ask_notional']}; "
+        f"imbalance={book['imbalance']} (positive means bid-side notional is larger)."
+    )
+    context_text.append(
+        "Risk-plan reference only: 15m ATR-based stop and 1:1.5 target; "
+        f"15m candidate side={latest['side']}, entry={latest['entry']}, "
+        f"SL={latest['stop_loss']}, TP={latest['take_profit']}. "
+        "These are not exchange orders and must pass multi-agent agreement and paper validation."
+    )
+    return {
+        "provider": "bitget_usdt_futures",
+        "symbol": normalized,
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "timeframes": analyses,
+        "derivatives": derivatives,
+        "order_book": book,
+        "context_text": "\n".join(context_text),
+    }
+
+
+def _explicit_report_bias(report: object) -> str | None:
+    """Read only explicit analyst labels, not incidental words in prose."""
+    if not isinstance(report, str) or not report.strip():
+        return None
+    normalized = re.sub(r"[*_`]", "", report)
+    match = re.search(
+        r"(?:overall sentiment|rating|recommendation|action)\s*[:\-]\s*"
+        r"(bullish|bearish|buy|sell|hold|neutral)\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    value = match.group(1).lower()
+    if value in {"bullish", "buy"}:
+        return "BUY"
+    if value in {"bearish", "sell"}:
+        return "SELL"
+    return "NO TRADE"
+
+
+def finalize_v8_decision(
+    rating: str, final_decision: str, reports: dict, market_context: dict
+) -> dict:
+    """Require TradingAgents and closed-candle multi-timeframe confirmation."""
+    from app.services.analysis.tradingagents_result import normalize_tradingagents_result
+
+    result = normalize_tradingagents_result(rating, final_decision, reports)
+    agent_side = result["side"]
+    # A disagreement from the final investment/trader plan is a hard veto.
+    # Market, sentiment, and news analysts may disagree, but that disagreement
+    # is explicitly surfaced alongside the consolidated TradingAgents decision.
+    hard_conflicts = {
+        name: bias
+        for name in ("investment_plan", "trader_investment_plan", "final_trade_decision")
+        if (bias := _explicit_report_bias(reports.get(name))) is not None
+        and agent_side in {"BUY", "SELL"}
+        and bias in {"BUY", "SELL"}
+        and bias != agent_side
+    }
+    soft_conflicts = {
+        name: bias
+        for name in ("market_report", "sentiment_report", "news_report")
+        if (bias := _explicit_report_bias(reports.get(name))) is not None
+        and agent_side in {"BUY", "SELL"}
+        and bias in {"BUY", "SELL"}
+        and bias != agent_side
+    }
+    timeframes = market_context["timeframes"]
+    higher_timeframes = [timeframes[name]["side"] for name in ("1h", "30m", "15m")]
+    five_minute_side = timeframes["5m"]["side"]
+    collected_at = None
+    try:
+        if market_context.get("collected_at"):
+            collected_at = datetime.fromisoformat(
+                str(market_context["collected_at"]).replace("Z", "+00:00")
+            )
+    except ValueError:
+        collected_at = None
+    if collected_at is not None and collected_at.tzinfo is None:
+        collected_at = collected_at.replace(tzinfo=timezone.utc)
+    data_age_minutes = (
+        (datetime.now(timezone.utc) - collected_at.astimezone(timezone.utc)).total_seconds() / 60
+        if collected_at is not None else float("inf")
+    )
+    data_is_fresh = -1 <= data_age_minutes <= 20
+    confirmed = (
+        agent_side in {"BUY", "SELL"}
+        and all(side == agent_side for side in higher_timeframes)
+        and five_minute_side in {agent_side, "NO TRADE"}
+        and not hard_conflicts
+        and data_is_fresh
+    )
+
+    plan = None
+    reasons = [f"TradingAgents rating: {result['rating']} ({agent_side})."]
+    if hard_conflicts:
+        reasons.append(
+            "Konflik keputusan final: " + ", ".join(
+                f"{name}={bias}" for name, bias in hard_conflicts.items()
+            ) + f"; rating utama={agent_side}. Sinyal ditahan menjadi NO TRADE."
+        )
+    if soft_conflicts:
+        reasons.append(
+            "Perbedaan analis yang perlu diperhatikan: " + ", ".join(
+                f"{name}={bias}" for name, bias in soft_conflicts.items()
+            ) + (
+                f"; keputusan konsolidasi TradingAgents={agent_side}. "
+                "Detail ada di laporan tiap agent."
+            )
+        )
+    if not data_is_fresh:
+        reasons.append(
+            f"Data Bitget tidak cukup baru ({data_age_minutes:.1f} menit); "
+            "sinyal ditahan sampai snapshot terbaru tersedia."
+        )
+    reasons.append("Validasi data harga menggunakan Bitget USDT-M Futures.")
+    for timeframe in ("1h", "30m", "15m", "5m"):
+        item = timeframes[timeframe]
+        reasons.append(f"{timeframe}: {item['side']} — " + "; ".join(item["reasons"]))
+    if confirmed:
+        candidate = timeframes["15m"]
+        entry = float(candidate["entry"])
+        stop = float(candidate["stop_loss"])
+        target = float(candidate["take_profit"])
+        risk = abs(entry - stop)
+        reward = abs(target - entry)
+        ratio = reward / risk if risk else 0.0
+        valid = (
+            entry > 0 and risk > 0
+            and (stop < entry < target if agent_side == "BUY" else target < entry < stop)
+            and 1.49 <= ratio <= 1.51
+        )
+        if valid:
+            # Three transparent reference targets are derived from the same
+            # ATR risk unit. The existing take_profit remains TP3 so the
+            # established forward outcome tracker keeps its 1.5R semantics.
+            direction = 1.0 if agent_side == "BUY" else -1.0
+            plan = {
+                "symbol": market_context["symbol"],
+                "side": agent_side,
+                "entry": entry,
+                "stop_loss": stop,
+                "take_profit": target,
+                "take_profit_1": entry + direction * risk * 0.5,
+                "take_profit_2": entry + direction * risk * 1.0,
+                "take_profit_3": target,
+                "confirmation_score": "3/3 higher-timeframe alignment",
+                "confidence_note": (
+                    "Konfirmasi arah H1, M30, dan M15; bukan probabilitas win rate "
+                    "atau jaminan hasil."
+                ),
+                "risk_reward": 1.5,
+                "source": "Bitget closed 15m candles; ATR(14) x 1.5",
+                "target_method": (
+                    "TP1=0.5R, TP2=1.0R, TP3=1.5R; reference levels, "
+                    "no partial execution"
+                ),
+                "status": "PAPER_VALIDATION_REQUIRED",
+            }
+            reasons.append("TradingAgents dan 1H/30m/15m searah; rencana risiko 1:1.5 valid.")
+            reasons.append(
+                "Level Entry/SL/TP final mengikuti candle tertutup Bitget Futures "
+                "dan ATR(14); angka harga dalam narasi agent adalah referensi riset, "
+                "bukan level sinyal final."
+            )
+        else:
+            confirmed = False
+            reasons.append("Rencana risiko gagal validasi harga atau rasio 1:1.5.")
+    if not confirmed:
+        result["side"] = "NO TRADE"
+        reasons.append(
+            "Tidak ada sinyal eksekusi: rating TradingAgents dan konfirmasi multi-timeframe "
+            "belum sepakat atau data entry tidak valid."
+        )
+
+    result.update({
+        "side": result["side"],
+        "reasons": reasons,
+        "market_context": market_context,
+        "timeframe_analyses": timeframes,
+        "trade_plan": plan if confirmed else None,
+        "execution_ready": False,
+        "paper_validation_required": plan is not None,
+    })
+    return result

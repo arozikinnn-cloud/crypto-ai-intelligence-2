@@ -10,12 +10,22 @@ import 'services/analysis_api.dart';
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
 const green = Color(0xFF25D6A2), red = Color(0xFFFF647C), blue = Color(0xFF65A9FF);
+// Keep V7 dashboard market coverage while V8 AI runs independently.
 const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await PushNotificationService.initialize();
+  // Push notifications are optional. A Firebase/network/configuration issue
+  // must never prevent the trading dashboard from opening.
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await PushNotificationService.initialize();
+  } catch (error, stackTrace) {
+    debugPrint('Optional Firebase initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
   runApp(const CryptoAIApp());
 }
 
@@ -81,6 +91,7 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObserver {
   final api = AnalysisApi();
+  final signalCenterKey = GlobalKey();
   late Future<Map<String, dynamic>> analysis;
   late Future<List<Map<String, dynamic>>> notifications;
   late Future<List<Map<String, dynamic>>> scanner;
@@ -93,15 +104,182 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
-  Future<Map<String, dynamic>> load() => widget.loadAnalysis?.call() ?? api.fetchIntelligence(symbol: selectedSymbol);
+  Map<String, dynamic> summarizeBitgetOrderBook(
+    Map<String, dynamic> snapshot,
+  ) {
+    List<dynamic> levels(String key) =>
+        snapshot[key] is List ? snapshot[key] as List<dynamic> : <dynamic>[];
+    double notional(List<dynamic> rows) => rows.take(20).fold<double>(0, (sum, row) {
+      if (row is! List || row.length < 2) return sum;
+      return sum + number(row[0]) * number(row[1]);
+    });
+
+    final bids = levels('bids');
+    final asks = levels('asks');
+    if (bids.isEmpty || asks.isEmpty) {
+      return <String, dynamic>{
+        'available': false,
+        'source_market': 'bitget_usdt_futures',
+        'bias': 'UNAVAILABLE',
+        'note': 'Snapshot order book Bitget kosong.',
+      };
+    }
+    final bidNotional = notional(bids);
+    final askNotional = notional(asks);
+    final total = bidNotional + askNotional;
+    final imbalance = total > 0 ? (bidNotional - askNotional) / total : 0.0;
+    final bestBid = (bids.first as List).length > 0
+        ? number((bids.first as List)[0])
+        : 0.0;
+    final bestAsk = (asks.first as List).length > 0
+        ? number((asks.first as List)[0])
+        : 0.0;
+    final spreadBps = bestBid > 0
+        ? ((bestAsk - bestBid) / bestBid) * 10000
+        : 0.0;
+    final bias = imbalance > 0.10
+        ? 'BID DOMINANT'
+        : imbalance < -0.10
+            ? 'ASK DOMINANT'
+            : 'BALANCED';
+    return <String, dynamic>{
+      'available': true,
+      'source_market': 'bitget_usdt_futures',
+      'bid_notional': bidNotional,
+      'ask_notional': askNotional,
+      'imbalance': imbalance,
+      'spread_bps': spreadBps,
+      'best_bid': bestBid,
+      'best_ask': bestAsk,
+      'timestamp': snapshot['timestamp'],
+      'bias': bias,
+      'note': 'Snapshot Bitget USDT-M Futures 20 level; bukan riwayat DOM, absorption, atau bukti spoofing.',
+    };
+  }
+
+  Future<Map<String, dynamic>> load({bool forceNew = false}) async {
+    if (widget.loadAnalysis != null) return widget.loadAnalysis!();
+
+    Future<Map<String, dynamic>> safe(
+      Future<Map<String, dynamic>> request,
+    ) async {
+      try {
+        return await request;
+      } catch (error) {
+        return <String, dynamic>{'unavailable_reason': error.toString()};
+      }
+    }
+
+    // Keep the proven V7 market/intelligence feed as a data-compatibility
+    // source while V8 TradingAgents is independently read from persisted jobs.
+    // Never copy the legacy BUY/SELL decision into the V8 AI decision.
+    // Keep the Vercel cold-start footprint low: requests share one serverless
+    // entrypoint, so sequential reads avoid spawning many cold instances at once.
+    final ai = await safe(api.fetchTradingAgentsAnalysis(
+      symbol: selectedSymbol,
+      forceNew: forceNew,
+    ));
+    final legacy = await safe(api.fetchIntelligence(symbol: selectedSymbol));
+    final structure = await safe(api.fetchMarketStructure(symbol: selectedSymbol));
+    final orderFlow = await safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol));
+    final liquidation = await safe(api.fetchLiquidationHistory(symbol: selectedSymbol));
+    final cvd = await safe(api.fetchCvdHistory(symbol: selectedSymbol));
+    final bitgetDerivatives = await safe(
+      api.fetchBitgetDerivatives(symbol: selectedSymbol),
+    );
+    final bitgetOrderBook = await safe(
+      api.fetchBitgetOrderBook(symbol: selectedSymbol, limit: 100),
+    );
+
+    final legacyMarket = mapVal(legacy['market_context']);
+    final aiMarket = mapVal(ai['market_context']);
+    final market = <String, dynamic>{
+      ...legacyMarket,
+      ...aiMarket,
+    };
+    if (cvd.isNotEmpty && cvd['unavailable_reason'] == null) {
+      market['cvd_history'] = cvd;
+    }
+    if (liquidation.isNotEmpty && liquidation['unavailable_reason'] == null) {
+      market['liquidations'] = {
+        ...liquidation,
+        'bias': number(liquidation['event_count']) > 0
+            ? 'OBSERVED EVENTS'
+            : 'NO OBSERVED EVENTS',
+      };
+    }
+    if (bitgetOrderBook.isNotEmpty &&
+        bitgetOrderBook['unavailable_reason'] == null) {
+      market['order_book'] = summarizeBitgetOrderBook(bitgetOrderBook);
+    }
+    if (bitgetDerivatives.isNotEmpty &&
+        bitgetDerivatives['unavailable_reason'] == null) {
+      market['derivatives'] = bitgetDerivatives;
+    }
+
+    final merged = <String, dynamic>{
+      ...legacy,
+      ...ai,
+      // The V8 decision always wins; legacy signals are never reused.
+      'side': ai['side'] ?? 'NO TRADE',
+      'timestamp': ai['agent_status'] == 'STALE'
+          ? legacy['timestamp']
+          : (ai['timestamp'] ?? legacy['timestamp']),
+      'market_context': market,
+      'derivatives': bitgetDerivatives.isNotEmpty &&
+              bitgetDerivatives['unavailable_reason'] == null
+          ? bitgetDerivatives
+          : (mapVal(ai['derivatives']).isNotEmpty
+              ? ai['derivatives']
+              : mapVal(legacy['derivatives'])),
+      'timeframe_analyses': maps(ai['timeframe_analyses']).isNotEmpty
+          ? ai['timeframe_analyses']
+          : (legacy['timeframe_analyses'] ?? <dynamic>[]),
+    };
+    if (structure.isNotEmpty && structure['unavailable_reason'] == null) {
+      merged['structure'] = structure;
+    } else if (legacy['structure'] != null) {
+      merged['structure'] = legacy['structure'];
+    }
+    if (orderFlow.isNotEmpty && orderFlow['unavailable_reason'] == null) {
+      merged['aggtrades_order_flow'] = orderFlow;
+      merged['order_flow'] = orderFlow;
+    }
+    return merged;
+  }
   Future<List<Map<String, dynamic>>> loadCandles() async {
     try {
-      return await api.fetchCandles(
+      final rows = await api.fetchCandles(
         symbol: selectedSymbol,
         interval: selectedCandleInterval,
         limit: 80,
       );
-    } catch (_) {
+      // Reject malformed OHLC rows before they reach CustomPainter. A single
+      // NaN/Infinity or inverted candle must not break the entire chart render.
+      final valid = rows.where((row) {
+        final open = doubleVal(row['open']);
+        final high = doubleVal(row['high']);
+        final low = doubleVal(row['low']);
+        final close = doubleVal(row['close']);
+        return [open, high, low, close].every(
+              (value) => value.isFinite && value > 0,
+            ) &&
+            high >= low &&
+            high >= open &&
+            high >= close &&
+            low <= open &&
+            low <= close;
+      }).toList(growable: false);
+      if (valid.length < 3) {
+        debugPrint('Candlestick unavailable: fewer than 3 valid OHLC rows.');
+        return <Map<String, dynamic>>[];
+      }
+      return valid;
+    } catch (error, stackTrace) {
+      // Keep network failures local to the chart; never let a candle request
+      // crash the whole dashboard or leave an unhandled Future in widget tests.
+      debugPrint('Candlestick load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       return <Map<String, dynamic>>[];
     }
   }
@@ -119,37 +297,66 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
-  Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
-  Future<List<Map<String, dynamic>>> loadSignals() async {
-    try {
-      return await api.fetchSignals(status: 'all', limit: 50);
-    } catch (_) {
-      return <Map<String, dynamic>>[];
+  Future<List<Map<String, dynamic>>> loadNotes() async {
+    if (widget.loadNotifications != null) {
+      return widget.loadNotifications!();
     }
+    return api.fetchNotifications(
+      strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> loadSignals() {
+    return api.fetchSignals(
+      status: 'all',
+      limit: 100,
+      strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+    );
   }
 
   Future<Map<String, dynamic>> loadSignalPerformance() async {
-    try { return await api.fetchSignalPerformance(); }
-    catch (error) { return <String, dynamic>{'unavailable_reason': error.toString()}; }
+    try {
+      return await api.fetchSignalPerformance();
+    } catch (error) {
+      return <String, dynamic>{'unavailable_reason': error.toString()};
+    }
   }
 
   Future<Map<String, dynamic>> loadBacktest() async {
     try {
-      return await api.fetchBacktest(symbol: selectedSymbol);
+      return await api.fetchBacktest(
+        symbol: selectedSymbol,
+        interval: '1h',
+        limit: 300,
+      );
     } catch (error) {
       return <String, dynamic>{'unavailable_reason': error.toString()};
     }
   }
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
-    final results = await Future.wait(supportedSymbols.map((symbol) async {
+    // Scan sequentially. Five simultaneous intelligence requests previously
+    // multiplied the Vercel cold-start load and could starve the main dashboard.
+    final results = <Map<String, dynamic>>[];
+    for (final symbol in supportedSymbols) {
+      if (results.isNotEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
       try {
         final result = await api.fetchIntelligence(symbol: symbol);
-        return <String, dynamic>{...result, 'scanner_status': 'OK'};
+        results.add(<String, dynamic>{
+          ...result,
+          'symbol': symbol,
+          'scanner_status': 'OK',
+        });
       } catch (error) {
-        return <String, dynamic>{'symbol': symbol, 'side': 'UNAVAILABLE', 'scanner_status': error.toString()};
+        results.add(<String, dynamic>{
+          'symbol': symbol,
+          'side': 'UNAVAILABLE',
+          'scanner_status': error.toString(),
+        });
       }
-    }));
+    }
     return results;
   }
 
@@ -159,18 +366,56 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     WidgetsBinding.instance.addObserver(this);
     analysis = load();
     candles = loadCandles();
-    notifications = loadNotes();
-    scanner = loadScanner();
-    signals = loadSignals();
-    backtest = loadBacktest();
-    signalPerformance = loadSignalPerformance();
-    startPolling();
+    // Render the core market dashboard first. Load secondary feeds afterwards
+    // so they do not compete with the initial market-data requests.
+    notifications = Future.value(<Map<String, dynamic>>[]);
+    scanner = Future.value(<Map<String, dynamic>>[]);
+    signals = Future.value(<Map<String, dynamic>>[]);
+    backtest = Future.value(<String, dynamic>{'unavailable_reason': 'Memuat baseline...'});
+    signalPerformance = Future.value(<String, dynamic>{});
+    if (widget.loadAnalysis == null) {
+      unawaited(loadSecondaryFeeds(includeScanner: true));
+      startPolling();
+    } else {
+      // Widget tests and embedded previews inject their own data sources;
+      // avoid background timers/network polling in those controlled contexts.
+      notifications = loadNotes();
+    }
+  }
+
+  Future<void> loadSecondaryFeeds({bool includeScanner = false}) async {
+    // Secondary panels are independent. Start their requests together so a
+    // slow notifications endpoint cannot leave Backtest, Signal Center and
+    // Performance stuck in loading state. Every loader handles its own errors.
+    try {
+      await Future.wait([analysis, candles]);
+    } catch (_) {
+      // Secondary feeds remain useful when a primary panel is unavailable.
+    }
+    if (!mounted) return;
+    setState(() {
+      notifications = loadNotes();
+      signals = loadSignals();
+      backtest = loadBacktest();
+      signalPerformance = loadSignalPerformance();
+      if (includeScanner) scanner = loadScanner();
+    });
+    final pending = <Future<void>>[
+      notifications.then<void>((_) {}),
+      signals.then<void>((_) {}),
+      backtest.then<void>((_) {}),
+      signalPerformance.then<void>((_) {}),
+      if (includeScanner) scanner.then<void>((_) {}),
+    ];
+    // Future.wait is safe because each loader converts transport errors into
+    // an explicit unavailable state; it does not block one panel's rendering.
+    await Future.wait(pending);
   }
 
   void startPolling() {
     poller?.cancel();
-    poller = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() { notifications = loadNotes(); signals = loadSignals(); signalPerformance = loadSignalPerformance(); backtest = loadBacktest(); });
+    poller = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) unawaited(loadSecondaryFeeds());
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -182,7 +427,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(PushNotificationService.initialize());
-      setState(() { analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+      setState(() { analysis = load(); candles = loadCandles(); });
+      unawaited(loadSecondaryFeeds(includeScanner: true));
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -194,7 +440,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); });
+    unawaited(loadSecondaryFeeds(includeScanner: true));
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -228,6 +475,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.hasError) return _ErrorView(message: snap.error.toString(), retry: refresh);
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
+          signalCenterKey: signalCenterKey,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
           closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval);
@@ -238,9 +486,10 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
-    required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
+    required this.signalCenterKey, required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
     required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
   final Map<String, dynamic> data;
+  final GlobalKey signalCenterKey;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
   final String selectedSymbol;
@@ -270,6 +519,30 @@ class _Dashboard extends StatelessWidget {
     final cvdHistory = mapVal(market['cvd_history']);
     final deriv = mapVal(data['derivatives']);
     final tradePlan = mapVal(data['trade_plan']);
+    final agentReports = mapVal(data['agent_reports']);
+    final agentStatus = txt(data['agent_status'], 'UNKNOWN');
+    final marketAgentReport = txt(agentReports['market_report'], '');
+    final sentimentAgentReport = txt(agentReports['sentiment_report'], '');
+    final newsAgentReport = txt(agentReports['news_report'], '');
+    final investmentPlanReport = txt(agentReports['investment_plan'], '');
+    final traderPlanReport = txt(agentReports['trader_investment_plan'], '');
+    final finalDecisionReport = txt(agentReports['final_trade_decision'], '');
+    String reportStatus(String report) {
+      if (agentStatus == 'STALE') return 'STALE';
+      if (agentStatus == 'UNAVAILABLE') return 'UNAVAILABLE';
+      if (agentStatus == 'DISABLED') return 'DISABLED';
+      if (report.isNotEmpty) return 'COMPLETED';
+      if (agentStatus == 'PENDING' || agentStatus == 'RUNNING') {
+        return agentStatus;
+      }
+      return 'NO DATA';
+    }
+    final marketAgentStatus = reportStatus(marketAgentReport);
+    final sentimentAgentStatus = reportStatus(sentimentAgentReport);
+    final newsAgentStatus = reportStatus(newsAgentReport);
+    final investmentPlanStatus = reportStatus(investmentPlanReport);
+    final traderPlanStatus = reportStatus(traderPlanReport);
+    final finalDecisionStatus = reportStatus(finalDecisionReport);
 
     return RefreshIndicator(
       onRefresh: refresh, color: green, backgroundColor: panel,
@@ -287,11 +560,11 @@ class _Dashboard extends StatelessWidget {
                 Text('INTELLIGENCE TERMINAL', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.4)),
               ])),
               Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                decoration: BoxDecoration(color: green.withValues(alpha: .09),
-                  borderRadius: BorderRadius.circular(20), border: Border.all(color: green.withValues(alpha: .25))),
+                decoration: BoxDecoration(color: blue.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(20), border: Border.all(color: blue.withValues(alpha: .25))),
                 child: const Row(children: [
-                  Icon(Icons.circle, size: 7, color: green), SizedBox(width: 5),
-                  Text('API ONLINE', style: TextStyle(color: green, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Icon(Icons.circle, size: 7, color: blue), SizedBox(width: 5),
+                  Text('V8 READ-ONLY', style: TextStyle(color: blue, fontSize: 9, fontWeight: FontWeight.bold)),
                 ])),
               IconButton(onPressed: refreshing ? null : refresh,
                 icon: refreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -310,7 +583,7 @@ class _Dashboard extends StatelessWidget {
                   items: supportedSymbols.map((symbol) => DropdownMenuItem(value: symbol, child: Text(symbol))).toList(),
                   onChanged: refreshing ? null : onSymbolChanged,
                 ),
-                const Text('Spot market • Binance public data', style: TextStyle(color: muted, fontSize: 10)),
+                const Text('USDT-M Futures • Bitget public data', style: TextStyle(color: muted, fontSize: 10)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 const Text('ANALYSIS TIME', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1)),
@@ -319,7 +592,7 @@ class _Dashboard extends StatelessWidget {
               ]),
             ]),
             const SizedBox(height: 16),
-            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Binance Spot'),
+            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bitget USDT-M Futures'),
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 8),
@@ -335,7 +608,7 @@ class _Dashboard extends StatelessWidget {
                 Row(children: [
                   const Expanded(child: Text('AI MARKET BIAS', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.3))),
                   Icon(Icons.auto_awesome, color: accent, size: 14), const SizedBox(width: 5),
-                  Text('RULE-BASED ENGINE', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.bold)),
+                  Text('TRADINGAGENTS V8', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.bold)),
                 ]),
                 const SizedBox(height: 12),
                 Row(children: [
@@ -381,21 +654,29 @@ class _Dashboard extends StatelessWidget {
                 const Text('ALUR ANALISIS', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.2)),
                 const SizedBox(height: 9),
                 const Wrap(spacing: 7, runSpacing: 7, children: [
-                  _Tag('H1 • BIAS'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
+                  _Tag('H1 • BIAS'), _Tag('M30 • CONFIRM'), _Tag('M15 • SETUP'), _Tag('M5 • TRIGGER'),
                 ]),
                 const SizedBox(height: 12),
                 if (tradePlan.isEmpty)
-                  const Text('Belum ada entry valid. H1 dan M15 wajib searah, dengan minimal satu pemicu searah dari M5 atau order flow/aggTrades.',
+                  const Text('Belum ada entry valid. Rating TradingAgents wajib searah dengan H1, M30, M15; M5 tidak boleh berlawanan.',
                     style: TextStyle(color: muted, fontSize: 11, height: 1.4))
                 else ...[
                   Row(children: [
                     Expanded(child: _PlanValue('ENTRY', tradePlan['entry'])),
                     Expanded(child: _PlanValue('STOP LOSS', tradePlan['stop_loss'])),
-                    Expanded(child: _PlanValue('TAKE PROFIT', tradePlan['take_profit'])),
                   ]),
                   const SizedBox(height: 8),
-                  Text('Risk/Reward: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
+                  Row(children: [
+                    Expanded(child: _PlanValue('TP1 • 0.5R', tradePlan['take_profit_1'] ?? tradePlan['take_profit'])),
+                    Expanded(child: _PlanValue('TP2 • 1.0R', tradePlan['take_profit_2'])),
+                    Expanded(child: _PlanValue('TP3 • 1.5R', tradePlan['take_profit_3'] ?? tradePlan['take_profit'])),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
                     style: const TextStyle(color: muted, fontSize: 10)),
+                  if (tradePlan['confirmation_score'] != null)
+                    Text('Confidence (konfirmasi TF): ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
+                      style: const TextStyle(color: blue, fontSize: 9)),
                 ],
               ]),
             ),
@@ -431,25 +712,56 @@ class _Dashboard extends StatelessWidget {
                 note: txt(mapVal(market['liquidations'])['note'], 'Riwayat teramati'))),
             ]),
             const SizedBox(height: 15),
+            _Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Status job: $agentStatus • status tiap analis mengikuti laporan yang tersimpan'),
+            const SizedBox(height: 9),
+            _TextCard(title: 'Market Analyst • ${marketAgentStatus}', items: [marketAgentReport], empty: 'Laporan market belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Sentiment Analyst • ${sentimentAgentStatus}', items: [sentimentAgentReport], empty: 'Laporan sentimen belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'News Analyst • ${newsAgentStatus}', items: [newsAgentReport], empty: 'Laporan berita belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Investment Plan • $investmentPlanStatus', items: [investmentPlanReport], empty: 'Investment plan belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Trader Plan • $traderPlanStatus', items: [traderPlanReport], empty: 'Trader plan belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Final Trade Decision • $finalDecisionStatus', items: [finalDecisionReport], empty: 'Keputusan akhir belum tersedia.'),
+            const SizedBox(height: 15),
             const _Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
             const SizedBox(height: 9),
             _TextCard(items: strings(data['reasons']), empty: 'Belum ada alasan sinyal yang memenuhi syarat.'),
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const _Heading('BACKTEST & PERFORMANCE', 'Evaluasi historis dengan biaya transaksi dan data out-of-sample'),
+            const _Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL CENTER', 'Riwayat sinyal dan status yang tersimpan di backend'),
+            const _Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
-            _SignalCenter(future: signals),
+            KeyedSubtree(
+              key: signalCenterKey,
+              child: _SignalCenter(future: signals),
+            ),
             const SizedBox(height: 15),
             const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
-            _Inbox(future: notes, markRead: markRead),
+            _Inbox(
+              future: notes,
+              markRead: markRead,
+              onOpenSignalCenter: () {
+                final target = signalCenterKey.currentContext;
+                if (target != null) {
+                  unawaited(Scrollable.ensureVisible(
+                    target,
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeInOut,
+                    alignment: 0.08,
+                  ));
+                }
+              },
+            ),
             const SizedBox(height: 18),
             Container(padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(12), border: Border.all(color: line)),
@@ -590,7 +902,7 @@ class _CandlestickChart extends StatelessWidget {
             Row(children: [
               Text('80 candle terakhir • ${interval.toUpperCase()}', style: TextStyle(color: muted, fontSize: 8)),
               const Spacer(),
-              Text('Sumber: Binance Spot', style: const TextStyle(color: muted, fontSize: 8)),
+              Text('Sumber: Bitget USDT-M Futures', style: const TextStyle(color: muted, fontSize: 8)),
             ]),
           ]);
         },
@@ -726,11 +1038,20 @@ class _Structure extends StatelessWidget {
       ['SWING LOW', price(data['last_swing_low'])],
     ];
     return Card(child: Padding(padding: const EdgeInsets.all(13), child: Column(
-      children: rows.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(children: [
-          Expanded(child: Text(r[0], style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .6))),
-          Text(r[1], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-        ]))).toList(),
+      children: [
+        ...rows.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            Expanded(child: Text(r[0], style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .6))),
+            Text(r[1], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          ]))),
+        if (txt(data['method_note'], '').isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text(
+            'Sumber: ' + txt(data['provider'], 'Bitget USDT-M Futures') + ' • ' + txt(data['method_note'], ''),
+            style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
+          )),
+        ],
+      ],
     )));
   }
 }
@@ -1073,29 +1394,49 @@ class _SignalCenter extends StatelessWidget {
                 final symbol = item['symbol'];
                 final status = item['status'];
                 final outcome = item['outcome'];
+                final realizedR = item['realized_r'];
+                final closedAt = item['closed_at'];
                 final reasons = strings(item['reasons']);
                 final lifecycleReasons = reasons.where((reason) =>
                     reason.startsWith('Alasan invalidasi:') ||
                     reason.startsWith('Alasan penutupan:')).toList();
                 final entry = item['entry'];
                 final stop = item['stop_loss'];
-                final target = item['take_profit'];
+                final target1 = item['take_profit_1'] ?? item['take_profit'];
+                final target2 = item['take_profit_2'];
+                final target3 = item['take_profit_3'] ?? item['take_profit'];
+                final confidence = item['confirmation_score'];
+                final confidenceNote = item['confidence_note'];
+                final analysisReasons = reasons.where((reason) =>
+                    !reason.startsWith('Alasan invalidasi:') &&
+                    !reason.startsWith('Alasan penutupan:')).take(5).toList();
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('$symbol • $side',
+                      Text('$symbol • $side • #${item['id']}',
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
-                      Text('$status • $outcome',
+                      Text('$status • $outcome${realizedR == null ? '' : ' • ${realizedR}R'} • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
                           style: TextStyle(color: muted, fontSize: 8)),
+                      if (closedAt != null)
+                        Text('Ditutup: ${txt(closedAt)}',
+                            style: const TextStyle(color: muted, fontSize: 8)),
+                      if (analysisReasons.isNotEmpty)
+                        Text(analysisReasons.join(' '),
+                            maxLines: 3, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: muted, fontSize: 8)),
                       if (lifecycleReasons.isNotEmpty)
                         Text(lifecycleReasons.last,
                             maxLines: 2, overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: blue, fontSize: 8)),
                       if (entry != null)
-                        Text('Entry $entry • SL $stop • TP $target',
+                        Text('Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3',
                             style: TextStyle(color: muted, fontSize: 8)),
+                      if (confidence != null)
+                        Text('Confidence (konfirmasi TF): $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
+                            maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: blue, fontSize: 8)),
                     ],
                   ),
                 );
@@ -1109,29 +1450,107 @@ class _SignalCenter extends StatelessWidget {
 }
 
 class _Inbox extends StatelessWidget {
-  const _Inbox({required this.future, required this.markRead});
+  const _Inbox({
+    required this.future,
+    required this.markRead,
+    required this.onOpenSignalCenter,
+  });
   final Future<List<Map<String, dynamic>>> future;
   final Future<void> Function(int) markRead;
+  final VoidCallback onOpenSignalCenter;
+
   @override
-  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(10),
-    child: FutureBuilder<List<Map<String, dynamic>>>(future: future, builder: (context, snap) {
-      if (snap.connectionState == ConnectionState.waiting) return const SizedBox(height: 2);
-      if (snap.hasError) return Text('Inbox belum tersedia: ' + snap.error.toString(), style: const TextStyle(color: muted, fontSize: 9));
-      final items = snap.data ?? [];
-      if (items.isEmpty) return const Text('Belum ada notifikasi sinyal.', style: TextStyle(color: muted, fontSize: 9));
-      return Column(children: items.take(8).map((item) {
-        final id = item['id'] is int ? item['id'] as int : null;
-        final read = item['read'] == true;
-        return ListTile(contentPadding: EdgeInsets.zero, dense: true,
-          leading: Icon(read ? Icons.notifications_none : Icons.notifications_active, color: read ? muted : green),
-          title: Text(txt(item['title'], 'Signal alert'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          subtitle: Text(txt(item['message'], ''), maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: muted, fontSize: 8)),
-          trailing: read ? const Icon(Icons.done, color: muted, size: 15)
-            : IconButton(onPressed: id == null ? null : () => markRead(id),
-              icon: const Icon(Icons.mark_email_read_outlined, size: 17)));
-      }).toList());
-    })));
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(10),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const SizedBox(height: 2);
+          }
+          if (snap.hasError) {
+            return Text('Inbox belum tersedia: ${snap.error}',
+              style: const TextStyle(color: muted, fontSize: 9));
+          }
+          final items = snap.data ?? [];
+          if (items.isEmpty) {
+            return const Text('Belum ada notifikasi TradingAgents V8.',
+              style: TextStyle(color: muted, fontSize: 9));
+          }
+          return Column(children: items.take(8).map((item) {
+            final id = item['id'] is int ? item['id'] as int : null;
+            final read = item['read'] == true;
+            final signalId = item['signal_id'];
+            final symbol = txt(item['symbol'], '');
+            final side = txt(item['side'], '');
+            final entry = item['entry'];
+            final stop = item['stop_loss'];
+            final target1 = item['take_profit_1'] ?? item['take_profit'];
+            final target2 = item['take_profit_2'];
+            final target3 = item['take_profit_3'] ?? item['take_profit'];
+            final confidence = item['confirmation_score'];
+            final confidenceNote = item['confidence_note'];
+            final signalStatus = item['signal_status'];
+            final signalOutcome = item['signal_outcome'];
+            final realizedR = item['signal_realized_r'];
+            final signalClosedAt = item['signal_closed_at'];
+            final levels = entry == null ? '' :
+                'Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3';
+            final linked = [
+              if (symbol.isNotEmpty) symbol,
+              if (side.isNotEmpty) side,
+              if (signalId != null) 'Signal #$signalId',
+            ].join(' • ');
+            return ListTile(
+              onTap: onOpenSignalCenter,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: Icon(
+                read ? Icons.notifications_none : Icons.notifications_active,
+                color: read ? muted : green,
+              ),
+              title: Text(
+                txt(item['title'], 'Signal alert'),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (linked.isNotEmpty)
+                    Text(linked, style: const TextStyle(color: blue, fontSize: 8)),
+                  if (signalStatus != null)
+                    Text('Status: $signalStatus • ${txt(item['signal_created_at'], txt(item['created_at'], 'Waktu tidak tersedia'))}',
+                      style: const TextStyle(color: muted, fontSize: 8)),
+                  if (signalOutcome != null)
+                    Text('Hasil: $signalOutcome${realizedR == null ? '' : ' • ${realizedR}R'} • ${txt(signalClosedAt, 'Waktu penutupan tidak tersedia')}',
+                      style: const TextStyle(color: blue, fontSize: 8)),
+                  if (levels.isNotEmpty)
+                    Text(levels, style: const TextStyle(color: muted, fontSize: 8)),
+                  if (confidence != null)
+                    Text('Confidence (konfirmasi TF): $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: blue, fontSize: 8)),
+                  Text(
+                    txt(item['message'], ''),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: muted, fontSize: 8),
+                  ),
+                ],
+              ),
+              trailing: read
+                ? const Icon(Icons.done, color: muted, size: 15)
+                : IconButton(
+                    onPressed: id == null ? null : () => markRead(id),
+                    icon: const Icon(Icons.mark_email_read_outlined, size: 17),
+                  ),
+            );
+          }).toList());
+        },
+      ),
+    ),
+  );
 }
 
 class _Empty extends StatelessWidget {

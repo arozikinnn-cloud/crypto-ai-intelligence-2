@@ -4,7 +4,7 @@ import math
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,19 @@ from app.schemas.signals import SignalEventResponse, SignalNotificationResponse
 
 router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"])
 logger = logging.getLogger(__name__)
-CURRENT_STRATEGY_MODE = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+
+def _strategy_mode_filter(column, strategy_mode: str):
+    # reasons_json is stored as TEXT. Match both normal json.dumps spacing and
+    # compact JSON across SQLite tests and PostgreSQL production.
+    encoded = json.dumps(strategy_mode, ensure_ascii=False)
+    escaped = encoded.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+    return or_(
+        column.like(f'%"strategy_mode": {escaped}%', escape="!"),
+        column.like(f'%"strategy_mode":{escaped}%', escape="!"),
+    )
+
+
+CURRENT_STRATEGY_MODE = "TRADINGAGENTS_MULTI_AGENT_V8"
 
 
 def _valid_trade_plan(side: str, plan: dict | None) -> bool:
@@ -60,13 +72,45 @@ def _event_payload(row: SignalEvent) -> dict:
                 )
                 else "LEGACY_UNVERSIONED"
             )
+        entry = plan.get("entry")
+        stop = plan.get("stop_loss")
+        target = plan.get("take_profit")
+        is_current_strategy = strategy_mode == CURRENT_STRATEGY_MODE
+        risk = (
+            abs(float(entry) - float(stop))
+            if isinstance(entry, (int, float))
+            and isinstance(stop, (int, float))
+            and math.isfinite(float(entry))
+            and math.isfinite(float(stop))
+            else None
+        )
+        direction = 1.0 if row.side == "BUY" else -1.0
+        tp1 = plan.get("take_profit_1")
+        tp2 = plan.get("take_profit_2")
+        tp3 = plan.get("take_profit_3") or target
+        if is_current_strategy and risk is not None and risk > 0:
+            tp1 = tp1 if tp1 is not None else float(entry) + direction * risk * 0.5
+            tp2 = tp2 if tp2 is not None else float(entry) + direction * risk
+        confirmation_score = plan.get("confirmation_score")
+        confidence_note = plan.get("confidence_note")
+        if is_current_strategy:
+            confirmation_score = confirmation_score or "3/3 higher-timeframe alignment"
+            confidence_note = confidence_note or (
+                "Konfirmasi arah H1, M30, dan M15; bukan probabilitas win rate "
+                "atau jaminan hasil."
+            )
         return {
             "id": row.id, "symbol": row.symbol, "side": row.side,
             "status": row.status, "timeframe_set": row.timeframe_set,
             "reasons": reasons, "created_at": row.created_at,
-            "updated_at": row.updated_at, "entry": plan.get("entry"),
-            "stop_loss": plan.get("stop_loss"),
-            "take_profit": plan.get("take_profit"),
+            "updated_at": row.updated_at, "entry": entry,
+            "stop_loss": stop,
+            "take_profit": target,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+            "take_profit_3": tp3,
+            "confirmation_score": confirmation_score,
+            "confidence_note": confidence_note,
             "strategy_mode": strategy_mode,
             "ambiguous_candle": bool(stored.get("ambiguous_candle")),
             "outcome": outcome, "realized_r": stored.get("realized_r"),
@@ -202,17 +246,49 @@ def record_signal(
         return
     now = datetime.now(timezone.utc)
     timeframe_set = ",".join(intervals)
-    # One active trade thesis per symbol: do not create another BUY or SELL
-    # while any signal for this symbol is still awaiting its TP/SL outcome.
-    # This lock is symbol-wide, so changing side or requested timeframes cannot
-    # bypass it. The existing signal is never invalidated by a fresh analysis.
+    # Keep one active trade thesis per symbol. A validated V8 thesis may
+    # explicitly supersede a legacy thesis; legacy or duplicate analyses cannot
+    # replace an active V8 thesis or bypass the symbol-wide uniqueness lock.
     active_rows = list(db.scalars(select(SignalEvent).where(
         SignalEvent.symbol == symbol.upper(),
         SignalEvent.status == "ACTIVE",
     )))
     if side in {"BUY", "SELL"} and active_rows:
-        db.commit()
-        return
+        active_v8 = [
+            row for row in active_rows
+            if _event_payload(row).get("strategy_mode") == CURRENT_STRATEGY_MODE
+        ]
+        if strategy_mode == CURRENT_STRATEGY_MODE and not active_v8:
+            # A fully validated V8 multi-agent thesis takes precedence over
+            # legacy technical signals. Invalidate the old thesis explicitly
+            # so the symbol-wide active-signal uniqueness invariant is kept.
+            for previous in active_rows:
+                try:
+                    previous_payload = json.loads(previous.reasons_json)
+                except (TypeError, json.JSONDecodeError):
+                    previous_payload = {"reasons": []}
+                if not isinstance(previous_payload, dict):
+                    previous_payload = {"reasons": []}
+                previous_payload["invalidation_reason"] = (
+                    "Digantikan oleh sinyal TradingAgents V8 yang lolos "
+                    "validasi multi-agent dan data Bitget terbaru."
+                )
+                previous.reasons_json = json.dumps(
+                    previous_payload, ensure_ascii=False
+                )
+                previous.status = "INVALIDATED"
+                previous.updated_at = now
+                db.add(SignalNotification(
+                    signal_id=previous.id,
+                    title=f"{previous.symbol} legacy signal invalidated",
+                    message=previous_payload["invalidation_reason"],
+                    created_at=now,
+                ))
+        else:
+            # Legacy signals cannot replace an active V8 signal, and duplicate
+            # signals from the same strategy remain blocked until TP/SL.
+            db.commit()
+            return
     if side in {"BUY", "SELL"}:
         dedupe_key = f"{symbol.upper()}:{timeframe_set}:{side}:{candle_timestamp}"
         previous_event = db.scalar(
@@ -291,12 +367,24 @@ def record_signal(
 def list_signals(
     status: str = Query(default="ACTIVE", pattern="^(ACTIVE|CLOSED|INVALIDATED|all)$"),
     limit: int = Query(default=50, ge=1, le=200),
+    strategy_mode: str | None = Query(default=None, max_length=80),
     db: Session = Depends(get_db),
 ):
-    statement = select(SignalEvent).order_by(SignalEvent.created_at.desc()).limit(limit)
+    statement = select(SignalEvent).order_by(SignalEvent.created_at.desc())
     if status != "all":
         statement = statement.where(SignalEvent.status == status)
-    return [_event_payload(row) for row in db.scalars(statement)]
+    if strategy_mode:
+        # Filter in SQL before limiting so old/legacy rows cannot crowd V8
+        # signals out of the requested page.
+        statement = statement.where(
+            _strategy_mode_filter(SignalEvent.reasons_json, strategy_mode)
+        )
+    payloads = [_event_payload(row) for row in db.scalars(statement.limit(limit))]
+    if strategy_mode:
+        payloads = [
+            item for item in payloads if item.get("strategy_mode") == strategy_mode
+        ]
+    return payloads
 
 
 @router.get("/performance")
@@ -343,9 +431,9 @@ def signal_performance(db: Session = Depends(get_db)):
         "legacy_losses": legacy_stats["losses"],
         "legacy_win_rate_pct": legacy_stats["win_rate_pct"],
         "method_note": (
-            "Statistik utama hanya menghitung strategi RSI16 + MA40 + Ichimoku "
-            "H1/M15/M5. Sinyal sebelum penandaan versi strategi dipisahkan sebagai "
-            "riwayat legacy dan tidak dicampur ke win-rate strategi terbaru. "
+            "Statistik utama hanya menghitung sinyal TradingAgents V8 yang telah "
+            "melewati validasi data Bitget Futures dan konfirmasi multi-timeframe. "
+            "Sinyal strategi lama dipisahkan sebagai riwayat legacy dan tidak dicampur. "
             "WR dihitung hanya dari sinyal TP/SL terkonfirmasi; TP dan SL pada "
             "candle yang sama dihitung sebagai SL secara konservatif."
         ),
@@ -356,19 +444,59 @@ def signal_performance(db: Session = Depends(get_db)):
 def list_notifications(
     unread_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
+    strategy_mode: str | None = Query(default=None, max_length=80),
     db: Session = Depends(get_db),
 ):
+    # Return the notification and its originating signal as one joined record.
+    # Signal Inbox can therefore show exactly the same strategy, direction,
+    # levels, and lifecycle state as Signal Center.
     statement = (
-        select(SignalNotification)
+        select(SignalNotification, SignalEvent)
+        .outerjoin(SignalEvent, SignalNotification.signal_id == SignalEvent.id)
         .order_by(SignalNotification.created_at.desc())
-        .limit(limit)
     )
     if unread_only:
         statement = statement.where(SignalNotification.read_at.is_(None))
-    return [SignalNotificationResponse(
-        id=row.id, signal_id=row.signal_id, title=row.title, message=row.message,
-        read=row.read_at is not None, created_at=row.created_at,
-    ) for row in db.scalars(statement)]
+    if strategy_mode:
+        # Apply strategy filtering before pagination; otherwise a busy legacy
+        # inbox could hide every newer V8 notification behind the first 200.
+        statement = statement.where(
+            _strategy_mode_filter(SignalEvent.reasons_json, strategy_mode)
+        )
+    statement = statement.limit(limit)
+
+    items = []
+    for notification, signal in db.execute(statement):
+        payload = _event_payload(signal) if signal is not None else {}
+        if strategy_mode and payload.get("strategy_mode") != strategy_mode:
+            continue
+        items.append(SignalNotificationResponse(
+            id=notification.id,
+            signal_id=notification.signal_id,
+            title=notification.title,
+            message=notification.message,
+            read=notification.read_at is not None,
+            created_at=notification.created_at,
+            strategy_mode=payload.get("strategy_mode"),
+            symbol=payload.get("symbol"),
+            side=payload.get("side"),
+            signal_status=payload.get("status"),
+            entry=payload.get("entry"),
+            stop_loss=payload.get("stop_loss"),
+            take_profit=payload.get("take_profit"),
+            take_profit_1=payload.get("take_profit_1"),
+            take_profit_2=payload.get("take_profit_2"),
+            take_profit_3=payload.get("take_profit_3"),
+            confirmation_score=payload.get("confirmation_score"),
+            confidence_note=payload.get("confidence_note"),
+            signal_outcome=payload.get("outcome"),
+            signal_realized_r=payload.get("realized_r"),
+            signal_closed_at=payload.get("closed_at"),
+            signal_created_at=payload.get("created_at"),
+        ))
+        if len(items) >= limit:
+            break
+    return items
 
 
 @router.post("/notifications/{notification_id}/read", response_model=SignalNotificationResponse)

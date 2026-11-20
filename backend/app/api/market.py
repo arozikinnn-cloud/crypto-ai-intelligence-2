@@ -1,12 +1,20 @@
+import logging
+import os
 from dataclasses import asdict
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+
 from app.database.session import get_db
 from app.schemas.market import CandleResponse, MarketDataResponse
 from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
+from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.services.market_data.storage import store_candles
+from app.services.analysis.structure import analyze_structure
 
+logger = logging.getLogger("crypto_ai.market_api")
 router = APIRouter(prefix="/market", tags=["market-data"])
 
 
@@ -40,3 +48,105 @@ async def get_candles(
         stored=stored,
         candles=[CandleResponse(**asdict(candle)) for candle in candles],
     )
+
+
+@router.get(
+    "/bitget/candles",
+    response_model=MarketDataResponse,
+    summary="Fetch and store Bitget USDT-M Futures candles",
+)
+async def get_bitget_futures_candles(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+    interval: str = Query(default="15m"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> MarketDataResponse:
+    try:
+        candles = await BitgetUsdtFuturesMarketData().fetch_klines(
+            symbol, interval, limit
+        )
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    try:
+        stored = store_candles(db, "bitget_usdt_futures", candles)
+    except SQLAlchemyError:
+        db.rollback()
+        if os.getenv("VERCEL_ENV", "").lower() != "preview":
+            raise
+        # Preview can still display verified live candles while the operator
+        # repairs its database secret. stored=0 explicitly means no persistence.
+        logger.exception(
+            "Bitget candles fetched successfully but preview database persistence failed."
+        )
+        stored = 0
+
+    return MarketDataResponse(
+        provider="bitget_usdt_futures",
+        symbol=symbol.upper(),
+        timeframe=interval,
+        count=len(candles),
+        stored=stored,
+        candles=[CandleResponse(**asdict(candle)) for candle in candles],
+    )
+
+
+@router.get(
+    "/bitget/structure",
+    summary="Analyze market structure from Bitget USDT-M Futures candles",
+)
+async def get_bitget_market_structure(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+    interval: str = Query(default="1h"),
+    limit: int = Query(default=200, ge=60, le=500),
+) -> dict:
+    try:
+        candles = await BitgetUsdtFuturesMarketData().fetch_klines(
+            symbol, interval, limit, closed_only=True
+        )
+        result = analyze_structure(candles)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": interval,
+        "provider": "bitget_usdt_futures",
+        **result,
+    }
+
+
+@router.get(
+    "/bitget/derivatives",
+    summary="Fetch Bitget USDT-M Futures open interest and funding rate",
+)
+async def get_bitget_futures_derivatives(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+) -> dict:
+    try:
+        return await BitgetUsdtFuturesMarketData().fetch_derivatives_context(symbol)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get(
+    "/bitget/order-book",
+    summary="Fetch Bitget USDT-M Futures order-book snapshot",
+)
+async def get_bitget_futures_order_book(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> dict:
+    try:
+        return await BitgetUsdtFuturesMarketData().fetch_order_book(symbol, limit)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt ./requirements.txt
+COPY requirements-agent-worker.txt ./requirements-agent-worker.txt
+RUN pip install --no-cache-dir -r requirements-agent-worker.txt
+
+COPY app ./app
+COPY agent_worker.py ./agent_worker.py
+
+RUN adduser --disabled-password --gecos "" --uid 10001 appuser \
+    && mkdir -p /data/tradingagents \
+    && chown -R appuser:appuser /app /data
+USER appuser
+
+CMD ["python", "-m", "agent_worker"]

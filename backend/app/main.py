@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
@@ -10,6 +13,7 @@ from app.core.logging import configure_logging
 from app.database.base import Base
 from app.database.session import engine
 from app.database.migrations import migrate_schema
+import app.models.agent_analysis_job  # noqa: F401
 import app.models.candle  # noqa: F401
 import app.models.market_snapshot  # noqa: F401
 import app.models.cvd_bucket  # noqa: F401
@@ -17,29 +21,45 @@ import app.models.cvd_collector_state  # noqa: F401
 import app.models.liquidation_record  # noqa: F401
 import app.models.signal_event  # noqa: F401
 import app.models.device_token  # noqa: F401
-from app.services.market_data.cvd_collector import stream_binance_aggtrades
-from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
 settings = get_settings()
 configure_logging()
+logger = logging.getLogger("crypto_ai.startup")
 IS_VERCEL = os.getenv("VERCEL") == "1"
+IS_PREVIEW = os.getenv("VERCEL_ENV", "").lower() == "preview"
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Vercel runs short-lived, concurrent serverless instances. Do not run
-    # create_all()/DDL migrations or persistent WebSocket collectors at startup:
-    # concurrent create_all() calls can race on PostgreSQL's implicit table types
-    # (for example pg_type_typname_nsp_index / candles).
+    # Vercel instances are short-lived. Do not run persistent collectors there.
     collector_tasks = []
     stop_event = asyncio.Event()
 
     if IS_VERCEL:
-        # Apply only the idempotent additive PostgreSQL migration; never create
-        # tables or start persistent collectors inside serverless instances.
-        # Apply narrowly scoped additive migrations under a PostgreSQL advisory lock.
-        migrate_schema(engine)
+        try:
+            # Preview may be used for API smoke tests while its external database
+            # is being configured. Keep liveness and public market endpoints up,
+            # but never pretend the database is ready when connection/migration fails.
+            if engine.dialect.name == "sqlite":
+                # Preview's disposable SQLite database is initialized from the
+                # complete ORM metadata. Skip custom DDL migrations here to keep
+                # serverless cold starts short and avoid repeated schema work.
+                Base.metadata.create_all(bind=engine)
+            else:
+                migrate_schema(engine)
+        except Exception:
+            if not IS_PREVIEW:
+                raise
+            logger.exception(
+                "Preview database initialization failed; starting in degraded "
+                "read-only mode. Database-backed endpoints remain unavailable."
+            )
     else:
+        # Persistent WebSocket collectors are only imported in a long-lived
+        # process, never in Vercel's short-lived serverless runtime.
+        from app.services.market_data.cvd_collector import stream_binance_aggtrades
+        from app.services.market_data.liquidation_collector import stream_binance_liquidations
+
         Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
 
@@ -75,10 +95,10 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.0",
+    version="0.4.0",
     description=(
-        "Research-first crypto market intelligence API. "
-        "Public market data only; no order execution."
+        "Crypto AI Intelligence V8 research API powered by a separately hosted "
+        "TradingAgents worker. No exchange order execution is enabled."
     ),
     debug=settings.debug,
     lifespan=lifespan,

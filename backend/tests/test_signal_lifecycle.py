@@ -1,10 +1,12 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 
 from app.api.signals import record_signal
 from app.database.base import Base
 from app.database.session import SessionLocal, engine
+from app.models.agent_analysis_job import AgentAnalysisJob
 from app.models.signal_event import SignalEvent, SignalNotification
 
 
@@ -94,7 +96,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         db.execute(delete(SignalEvent))
         db.commit()
         plan = {"entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
-        current_mode = "ICHIMOKU_RSI16_MA40_H1_M15_M5"
+        current_mode = "TRADINGAGENTS_MULTI_AGENT_V8"
         record_signal(
             db, "TPTEST", "BUY", ["4h", "1h", "15m"], ["setup"],
             "signal-tp", plan, "candle-tp-1", strategy_mode=current_mode,
@@ -284,3 +286,396 @@ def test_manual_close_is_idempotent():
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+def test_v8_inbox_filters_and_returns_linked_signal_details():
+    from app.api.signals import list_notifications
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+
+        signal_candle = datetime.now(timezone.utc).isoformat()
+        later_candle = (
+            datetime.now(timezone.utc) + timedelta(minutes=15)
+        ).isoformat()
+        record_signal(
+            db, "V8INBOX", "BUY", ["1h", "30m", "15m"], ["Aligned V8 setup"],
+            signal_candle, {
+                "entry": 100, "stop_loss": 98, "take_profit": 103,
+                "take_profit_1": 101, "take_profit_2": 102,
+                "take_profit_3": 103,
+                "confirmation_score": "3/3 higher-timeframe alignment",
+                "confidence_note": "Konfirmasi timeframe; bukan probabilitas win rate.",
+            },
+            signal_candle, strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+        )
+        record_signal(
+            db, "LEGACYINBOX", "SELL", ["1h", "15m"], ["Legacy setup"],
+            "legacy-inbox-candle", {"entry": 100, "stop_loss": 102, "take_profit": 97},
+            "legacy-inbox-candle", strategy_mode="LEGACY_UNVERSIONED",
+        )
+
+        from app.api.signals import evaluate_active_signals
+        evaluate_active_signals(
+            db, "V8INBOX", candle_high=104, candle_low=99,
+            candle_timestamp=later_candle,
+        )
+        notifications = list_notifications(
+            unread_only=False,
+            limit=50,
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+            db=db,
+        )
+        assert len(notifications) == 2
+        item = notifications[0]
+        assert item.signal_id is not None
+        assert item.strategy_mode == "TRADINGAGENTS_MULTI_AGENT_V8"
+        assert item.symbol == "V8INBOX"
+        assert item.side == "BUY"
+        assert item.signal_status == "CLOSED"
+        assert item.signal_outcome == "TP"
+        assert item.signal_realized_r == 1.5
+        assert item.signal_closed_at is not None
+        assert item.entry == 100
+        assert item.stop_loss == 98
+        assert item.take_profit == 103
+        assert item.take_profit_1 == 101
+        assert item.take_profit_2 == 102
+        assert item.take_profit_3 == 103
+        assert item.confirmation_score == "3/3 higher-timeframe alignment"
+        assert "bukan probabilitas" in item.confidence_note
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_v8_inbox_filters_before_pagination_when_legacy_history_is_large():
+    from datetime import datetime, timedelta, timezone
+
+    from app.api.signals import list_notifications, list_signals
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        now = datetime.now(timezone.utc)
+        v8 = SignalEvent(
+            dedupe_key="v8-old-page-test",
+            symbol="V8PAGE",
+            side="BUY",
+            status="ACTIVE",
+            timeframe_set="1h,30m,15m",
+            reasons_json=json.dumps({
+                "reasons": ["V8 setup"],
+                "trade_plan": {"entry": 100, "stop_loss": 98, "take_profit": 103},
+                "strategy_mode": "TRADINGAGENTS_MULTI_AGENT_V8",
+            }),
+            created_at=now - timedelta(minutes=500),
+            updated_at=now - timedelta(minutes=500),
+        )
+        db.add(v8)
+        db.flush()
+        db.add(SignalNotification(
+            signal_id=v8.id,
+            title="V8 older signal",
+            message="Persisted V8 notification",
+            created_at=now - timedelta(minutes=500),
+        ))
+        for index in range(205):
+            created = now - timedelta(minutes=204 - index)
+            legacy = SignalEvent(
+                dedupe_key=f"legacy-page-test-{index}",
+                symbol=f"OLD{index:03d}",
+                side="SELL",
+                status="ACTIVE",
+                timeframe_set="1h,15m",
+                reasons_json=json.dumps({
+                    "reasons": ["legacy"],
+                    "trade_plan": {"entry": 100, "stop_loss": 102, "take_profit": 97},
+                    "strategy_mode": "LEGACY_UNVERSIONED",
+                }),
+                created_at=created,
+                updated_at=created,
+            )
+            db.add(legacy)
+            db.flush()
+            db.add(SignalNotification(
+                signal_id=legacy.id,
+                title="Legacy signal",
+                message="Legacy notification",
+                created_at=created,
+            ))
+        db.commit()
+
+        inbox = list_notifications(
+            unread_only=False, limit=10,
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8", db=db,
+        )
+        signals = list_signals(
+            status="all", limit=10,
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8", db=db,
+        )
+        assert len(inbox) == 1
+        assert inbox[0].symbol == "V8PAGE"
+        assert len(signals) == 1
+        assert signals[0]["symbol"] == "V8PAGE"
+        assert inbox[0].signal_id == signals[0]["id"]
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probability():
+    from app.services.analysis.tradingagents_market_context import finalize_v8_decision
+
+    timeframe = {
+        "side": "BUY",
+        "entry": 100.0,
+        "stop_loss": 98.0,
+        "take_profit": 103.0,
+        "reasons": ["Harga di atas MA40."],
+    }
+    market_context = {
+        "symbol": "BTCUSDT",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "timeframes": {
+            "1h": dict(timeframe),
+            "30m": dict(timeframe),
+            "15m": dict(timeframe),
+            "5m": dict(timeframe),
+        },
+    }
+    result = finalize_v8_decision(
+        "Buy",
+        "Research supports a bullish setup.",
+        {"market_report": "Bullish market structure."},
+        market_context,
+    )
+
+    plan = result["trade_plan"]
+    assert result["side"] == "BUY"
+    assert plan["take_profit_1"] == 101.0
+    assert plan["take_profit_2"] == 102.0
+    assert plan["take_profit_3"] == 103.0
+    assert plan["take_profit"] == plan["take_profit_3"]
+    assert plan["confirmation_score"] == "3/3 higher-timeframe alignment"
+    assert "bukan probabilitas win rate" in plan["confidence_note"]
+    assert any(
+        "Level Entry/SL/TP final mengikuti candle tertutup Bitget Futures" in reason
+        for reason in result["reasons"]
+    )
+
+
+def test_validated_v8_signal_replaces_legacy_active_signal_and_legacy_cannot_replace_v8():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+
+        record_signal(
+            db, "PRIORITYTEST", "SELL", ["1h", "15m"], ["Legacy bearish setup"],
+            "legacy-priority-candle",
+            {"entry": 100, "stop_loss": 102, "take_profit": 97},
+            "legacy-priority-candle",
+            strategy_mode="ICHIMOKU_RSI16_MA40_H1_M15_M5",
+        )
+        legacy = db.scalar(select(SignalEvent).where(
+            SignalEvent.symbol == "PRIORITYTEST"
+        ))
+        assert legacy.status == "ACTIVE"
+
+        record_signal(
+            db, "PRIORITYTEST", "BUY", ["1h", "30m", "15m", "5m"],
+            ["Validated TradingAgents V8 bullish setup"],
+            "v8-priority-candle",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+            "v8-priority-candle",
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+        )
+        rows = list(db.scalars(select(SignalEvent).where(
+            SignalEvent.symbol == "PRIORITYTEST"
+        ).order_by(SignalEvent.id)))
+        assert len(rows) == 2
+        assert rows[0].status == "INVALIDATED"
+        assert "Digantikan oleh sinyal TradingAgents V8" in json.loads(
+            rows[0].reasons_json
+        )["invalidation_reason"]
+        assert rows[1].status == "ACTIVE"
+        assert rows[1].side == "BUY"
+
+        # A later legacy analysis must not supersede the active validated V8 thesis.
+        record_signal(
+            db, "PRIORITYTEST", "SELL", ["1h", "15m"], ["New legacy reversal"],
+            "legacy-after-v8-candle",
+            {"entry": 100, "stop_loss": 102, "take_profit": 97},
+            "legacy-after-v8-candle",
+            strategy_mode="ICHIMOKU_RSI16_MA40_H1_M15_M5",
+        )
+        final_rows = list(db.scalars(select(SignalEvent).where(
+            SignalEvent.symbol == "PRIORITYTEST"
+        ).order_by(SignalEvent.id)))
+        assert len(final_rows) == 2
+        assert final_rows[1].status == "ACTIVE"
+        assert final_rows[1].side == "BUY"
+        assert any(
+            "legacy signal invalidated" in item.title
+            for item in db.scalars(select(SignalNotification))
+        )
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_worker_recovers_missing_signal_from_recent_completed_job():
+    from agent_worker import persist_recent_completed_v8_signals
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.execute(delete(AgentAnalysisJob))
+        db.commit()
+        now = datetime.now(timezone.utc)
+        result = {
+            "side": "BUY",
+            "reasons": ["V8 multi-agent and Bitget timeframes aligned."],
+            "trade_plan": {
+                "entry": 100, "stop_loss": 98, "take_profit": 103,
+                "take_profit_1": 101, "take_profit_2": 102,
+                "take_profit_3": 103,
+                "confirmation_score": "3/3 higher-timeframe alignment",
+                "confidence_note": "Not a win-rate probability.",
+            },
+            "market_context": {
+                "collected_at": now.isoformat(),
+                "timeframes": {
+                    "15m": {"candle_close_time": now.isoformat()},
+                },
+            },
+        }
+        db.add(AgentAnalysisJob(
+            symbol="RECOVERYTEST",
+            ticker="RECOVERY-USD",
+            status="COMPLETED",
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            result_json=json.dumps(result),
+        ))
+        db.commit()
+
+        checked = persist_recent_completed_v8_signals(session_factory=SessionLocal)
+        assert checked == 1
+        signal = db.scalar(select(SignalEvent).where(
+            SignalEvent.symbol == "RECOVERYTEST"
+        ))
+        assert signal is not None
+        assert signal.status == "ACTIVE"
+        assert signal.side == "BUY"
+        payload = json.loads(signal.reasons_json)
+        assert payload["trade_plan"]["take_profit_1"] == 101
+        assert payload["strategy_mode"] == "TRADINGAGENTS_MULTI_AGENT_V8"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.execute(delete(AgentAnalysisJob))
+        db.commit()
+        db.close()
+
+
+def test_v8_surfaces_soft_analyst_conflicts_and_blocks_final_plan_conflicts():
+    from app.services.analysis.tradingagents_market_context import finalize_v8_decision
+
+    timeframe = {
+        "side": "SELL",
+        "entry": 100.0,
+        "stop_loss": 102.0,
+        "take_profit": 97.0,
+        "reasons": ["Harga di bawah MA40."],
+    }
+    context = {
+        "symbol": "BTCUSDT",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "timeframes": {
+            "1h": dict(timeframe),
+            "30m": dict(timeframe),
+            "15m": dict(timeframe),
+            "5m": dict(timeframe),
+        },
+    }
+    soft_conflict = finalize_v8_decision(
+        "Sell",
+        "Rating: Sell",
+        {
+            "sentiment_report": "**Overall Sentiment:** **Bullish**",
+            "investment_plan": "**Recommendation**: Sell",
+            "trader_investment_plan": "**Action**: Sell",
+            "final_trade_decision": "**Rating**: Sell",
+        },
+        context,
+    )
+    assert soft_conflict["side"] == "SELL"
+    assert any(
+        "sentiment_report=BUY" in reason for reason in soft_conflict["reasons"]
+    )
+
+    hard_conflict = finalize_v8_decision(
+        "Sell",
+        "Rating: Sell",
+        {
+            "investment_plan": "**Recommendation**: Buy",
+            "trader_investment_plan": "**Action**: Sell",
+            "final_trade_decision": "**Rating**: Sell",
+        },
+        context,
+    )
+    assert hard_conflict["side"] == "NO TRADE"
+    assert hard_conflict["trade_plan"] is None
+    assert any("Konflik keputusan final" in reason for reason in hard_conflict["reasons"])
+
+
+def test_v8_blocks_signal_when_bitget_market_snapshot_is_stale():
+    from app.services.analysis.tradingagents_market_context import finalize_v8_decision
+
+    timeframe = {
+        "side": "BUY",
+        "entry": 100.0,
+        "stop_loss": 98.0,
+        "take_profit": 103.0,
+        "reasons": ["Harga di atas MA40."],
+    }
+    context = {
+        "symbol": "BTCUSDT",
+        "collected_at": (
+            datetime.now(timezone.utc) - timedelta(minutes=30)
+        ).isoformat(),
+        "timeframes": {
+            "1h": dict(timeframe),
+            "30m": dict(timeframe),
+            "15m": dict(timeframe),
+            "5m": dict(timeframe),
+        },
+    }
+    result = finalize_v8_decision("Buy", "Rating: Buy", {}, context)
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+    assert any("Data Bitget tidak cukup baru" in reason for reason in result["reasons"])
