@@ -1445,6 +1445,9 @@ class _Inbox extends StatelessWidget {
             final confidence = item['confirmation_score'];
             final confidenceNote = item['confidence_note'];
             final signalStatus = item['signal_status'];
+            final signalOutcome = item['signal_outcome'];
+            final realizedR = item['signal_realized_r'];
+            final signalClosedAt = item['signal_closed_at'];
             final levels = entry == null ? '' :
                 'Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3';
             final linked = [
@@ -1471,6 +1474,9 @@ class _Inbox extends StatelessWidget {
                   if (signalStatus != null)
                     Text('Status: $signalStatus • ${txt(item['signal_created_at'], txt(item['created_at'], 'Waktu tidak tersedia'))}',
                       style: const TextStyle(color: muted, fontSize: 8)),
+                  if (signalOutcome != null)
+                    Text('Hasil: $signalOutcome${realizedR == null ? '' : ' • ${realizedR}R'} • ${txt(signalClosedAt, 'Waktu penutupan tidak tersedia')}',
+                      style: const TextStyle(color: blue, fontSize: 8)),
                   if (levels.isNotEmpty)
                     Text(levels, style: const TextStyle(color: muted, fontSize: 8)),
                   if (confidence != null)
