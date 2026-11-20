@@ -234,10 +234,9 @@ def record_signal(
         return
     now = datetime.now(timezone.utc)
     timeframe_set = ",".join(intervals)
-    # One active trade thesis per symbol: do not create another BUY or SELL
-    # while any signal for this symbol is still awaiting its TP/SL outcome.
-    # This lock is symbol-wide, so changing side or requested timeframes cannot
-    # bypass it. The existing signal is never invalidated by a fresh analysis.
+    # Keep one active trade thesis per symbol. A validated V8 thesis may
+    # explicitly supersede a legacy thesis; legacy or duplicate analyses cannot
+    # replace an active V8 thesis or bypass the symbol-wide uniqueness lock.
     active_rows = list(db.scalars(select(SignalEvent).where(
         SignalEvent.symbol == symbol.upper(),
         SignalEvent.status == "ACTIVE",
