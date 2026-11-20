@@ -67,16 +67,13 @@ void main() {
     }
   });
 
-  test('keeps the Android client read-only when manual enqueue requires a server token', () async {
+  test('Android never enqueues TradingAgents jobs or sends server-only secrets', () async {
+    var postCount = 0;
     final client = MockClient((request) async {
-      if (request.method == 'POST' &&
+      if (request.method == 'POST') postCount++;
+      if (request.method == 'GET' &&
           request.url.path.endsWith('/agent-analysis/jobs')) {
-        expect(request.headers.containsKey('X-TradingAgents-Enqueue-Token'), isFalse);
-        return http.Response(
-          jsonEncode({'detail': 'Unauthorized TradingAgents enqueue request.'}),
-          401,
-          headers: {'content-type': 'application/json'},
-        );
+        return http.Response('Unauthorized', 401);
       }
       return http.Response('Not found', 404);
     });
@@ -92,7 +89,8 @@ void main() {
       expect(result['agent_status'], 'DISABLED');
       expect(result['execution_ready'], isFalse);
       expect(result['trade_plan'], isNull);
-      expect((result['context_notes'] as List).join(' '), contains('Unauthorized'));
+      expect((result['context_notes'] as List).join(' '), contains('HTTP 401'));
+      expect(postCount, 0);
     } finally {
       api.close();
     }
