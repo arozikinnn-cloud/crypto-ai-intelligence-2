@@ -247,30 +247,40 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     return merged;
   }
   Future<List<Map<String, dynamic>>> loadCandles() async {
-    // Preserve request failures so the chart can show a recoverable error
-    // instead of silently treating network/API failures as an empty market.
-    final rows = await api.fetchCandles(
-      symbol: selectedSymbol,
-      interval: selectedCandleInterval,
-      limit: 80,
-    );
-    // Reject malformed OHLC rows before they reach CustomPainter. A single
-    // NaN/Infinity or inverted candle must not break the entire chart render.
-    final valid = rows.where((row) {
-      final open = doubleVal(row['open']);
-      final high = doubleVal(row['high']);
-      final low = doubleVal(row['low']);
-      final close = doubleVal(row['close']);
-      return [open, high, low, close].every((value) => value.isFinite && value > 0) &&
-          high >= low && high >= open && high >= close &&
-          low <= open && low <= close;
-    }).toList(growable: false);
-    if (valid.length < 3) {
-      throw const FormatException(
-        'Data OHLC Bitget tidak valid atau kurang dari 3 candle.',
+    try {
+      final rows = await api.fetchCandles(
+        symbol: selectedSymbol,
+        interval: selectedCandleInterval,
+        limit: 80,
       );
+      // Reject malformed OHLC rows before they reach CustomPainter. A single
+      // NaN/Infinity or inverted candle must not break the entire chart render.
+      final valid = rows.where((row) {
+        final open = doubleVal(row['open']);
+        final high = doubleVal(row['high']);
+        final low = doubleVal(row['low']);
+        final close = doubleVal(row['close']);
+        return [open, high, low, close].every(
+              (value) => value.isFinite && value > 0,
+            ) &&
+            high >= low &&
+            high >= open &&
+            high >= close &&
+            low <= open &&
+            low <= close;
+      }).toList(growable: false);
+      if (valid.length < 3) {
+        debugPrint('Candlestick unavailable: fewer than 3 valid OHLC rows.');
+        return <Map<String, dynamic>>[];
+      }
+      return valid;
+    } catch (error, stackTrace) {
+      // Keep network failures local to the chart; never let a candle request
+      // crash the whole dashboard or leave an unhandled Future in widget tests.
+      debugPrint('Candlestick load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return <Map<String, dynamic>>[];
     }
-    return valid;
   }
 
   Future<void> changeCandleInterval(String interval) async {
