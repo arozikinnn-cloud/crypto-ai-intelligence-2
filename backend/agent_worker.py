@@ -125,6 +125,80 @@ def recover_stale_agent_jobs(db, stale_after_minutes: int = 120) -> int:
     return result.rowcount or 0
 
 
+def persist_recent_completed_v8_signals(
+    session_factory=SessionLocal,
+    max_age_minutes: int = 90,
+) -> int:
+    """Recover V8 signals that were not persisted after a completed AI job.
+
+    This is important when a legacy active signal previously held the
+    symbol-wide uniqueness lock. The V8-priority rule can now invalidate that
+    legacy thesis and persist the already-validated V8 signal without rerunning
+    an expensive model call.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=max(1, max_age_minutes)
+    )
+    db = session_factory()
+    snapshots = []
+    try:
+        jobs = list(db.scalars(
+            select(AgentAnalysisJob)
+            .where(
+                AgentAnalysisJob.status == "COMPLETED",
+                AgentAnalysisJob.completed_at.is_not(None),
+                AgentAnalysisJob.completed_at >= cutoff,
+                AgentAnalysisJob.result_json.is_not(None),
+            )
+            .order_by(AgentAnalysisJob.completed_at.desc())
+            .limit(50)
+        ))
+        for job in jobs:
+            try:
+                result = json.loads(job.result_json or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(result, dict) and result.get("trade_plan"):
+                snapshots.append((job.symbol, result))
+    finally:
+        db.close()
+
+    checked = 0
+    for symbol, result in snapshots:
+        plan = result.get("trade_plan") or {}
+        market_context = result.get("market_context") or {}
+        timeframes = market_context.get("timeframes") or {}
+        signal_candle_timestamp = (
+            (timeframes.get("15m") or {}).get("candle_close_time")
+            or market_context.get("collected_at")
+        )
+        if not signal_candle_timestamp:
+            continue
+        signal_db = session_factory()
+        try:
+            record_signal(
+                signal_db,
+                symbol,
+                result.get("side", ""),
+                ["1h", "30m", "15m", "5m"],
+                result.get("reasons") or [],
+                signal_candle_timestamp,
+                plan,
+                signal_candle_timestamp=signal_candle_timestamp,
+                strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+            )
+            checked += 1
+        except Exception:
+            signal_db.rollback()
+            logger.exception(
+                "Could not recover V8 signal for completed %s analysis",
+                symbol,
+            )
+        finally:
+            signal_db.close()
+    return checked
+
+
 def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
     """Claim and process one queued job; PostgreSQL row locking prevents double claims."""
     db = session_factory()
@@ -239,6 +313,13 @@ async def main() -> None:
     )
     Base.metadata.create_all(bind=engine)
     migrate_schema(engine)
+    recovered_signals = await asyncio.to_thread(
+        persist_recent_completed_v8_signals
+    )
+    logging.getLogger("crypto_ai.tradingagents_worker").info(
+        "Checked recent completed V8 analyses for missing Signal Center records: %s",
+        recovered_signals,
+    )
     stop_event = asyncio.Event()
     logger.info("TradingAgents worker started.")
     try:
