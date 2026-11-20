@@ -475,6 +475,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.hasError) return _ErrorView(message: snap.error.toString(), retry: refresh);
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
+          signalCenterKey: signalCenterKey,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
           closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval);
@@ -485,9 +486,10 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
-    required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
+    required this.signalCenterKey, required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
     required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
   final Map<String, dynamic> data;
+  final GlobalKey signalCenterKey;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
   final String selectedSymbol;
