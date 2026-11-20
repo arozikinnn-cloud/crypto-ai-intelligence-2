@@ -102,9 +102,12 @@ class AnalysisApi {
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);
     if (jobs.isEmpty) {
-      return _agentUnavailableDashboard(
+      return await _attachActiveSignal(
+        _agentUnavailableDashboard(
+          symbol,
+          'Belum ada hasil TradingAgents tersimpan. Worker terjadwal akan mengisi histori.',
+        ),
         symbol,
-        'Belum ada hasil TradingAgents tersimpan. Worker terjadwal akan mengisi histori.',
       );
     }
 
@@ -128,7 +131,7 @@ class AnalysisApi {
       final dashboard = _agentJobToDashboard(freshCompleted);
       if (runningJob != null &&
           runningJob['id'] != freshCompleted['id']) {
-        return {
+        return await _attachActiveSignal({
           ...dashboard,
           'refresh_status': runningJob['status'],
           'context_notes': <String>[
@@ -138,29 +141,127 @@ class AnalysisApi {
                 : <String>[]),
             'Analisis TradingAgents terbaru sedang berjalan; laporan selesai terakhir tetap ditampilkan sampai hasil baru tersimpan.',
           ],
-        };
+        }, symbol);
       }
-      return dashboard;
+      return await _attachActiveSignal(dashboard, symbol);
     }
 
     final latestStatus = latestJob['status']?.toString();
     if (latestStatus == 'COMPLETED') {
-      return _agentStaleDashboard(latestJob);
+      return await _attachActiveSignal(_agentStaleDashboard(latestJob), symbol);
     }
     if (latestStatus == 'FAILED') {
-      return _agentUnavailableDashboard(
+      return await _attachActiveSignal(
+        _agentUnavailableDashboard(
+          symbol,
+          'Analisis terakhir gagal: ${latestJob['error_message'] ?? 'unknown error'}',
+        ),
         symbol,
-        'Analisis terakhir gagal: ${latestJob['error_message'] ?? 'unknown error'}',
       );
     }
     if (latestStatus == 'PENDING' || latestStatus == 'RUNNING') {
       // Do not hold the whole dashboard open while a cloud worker runs.
-      return _agentJobToDashboard(latestJob, timedOut: true);
+      return await _attachActiveSignal(
+        _agentJobToDashboard(latestJob, timedOut: true),
+        symbol,
+      );
     }
-    return _agentUnavailableDashboard(
+    return await _attachActiveSignal(
+      _agentUnavailableDashboard(
+        symbol,
+        'Belum ada hasil analisis TradingAgents yang dapat ditampilkan.',
+      ),
       symbol,
-      'Belum ada hasil analisis TradingAgents yang dapat ditampilkan.',
     );
+  }
+
+  Future<Map<String, dynamic>> _attachActiveSignal(
+    Map<String, dynamic> dashboard,
+    String symbol,
+  ) async {
+    try {
+      final activeSignals = await fetchSignals(
+        status: 'ACTIVE',
+        limit: 100,
+        strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+      );
+      Map<String, dynamic>? active;
+      for (final signal in activeSignals) {
+        if (signal['symbol']?.toString().toUpperCase() == symbol.toUpperCase()) {
+          active = signal;
+          break;
+        }
+      }
+      if (active == null) return dashboard;
+
+      final linked = Map<String, dynamic>.from(dashboard);
+      linked['linked_signal'] = active;
+      final aiSide = linked['side']?.toString().toUpperCase() ?? 'NO TRADE';
+      final activeSide = active['side']?.toString().toUpperCase() ?? 'NO TRADE';
+      final signalId = active['id']?.toString() ?? '?';
+      final notes = linked['context_notes'] is List
+          ? (linked['context_notes'] as List).map((item) => item.toString()).toList()
+          : <String>[];
+
+      if (aiSide == activeSide && (aiSide == 'BUY' || aiSide == 'SELL')) {
+        final entry = _numberOrNull(active['entry']);
+        final stop = _numberOrNull(active['stop_loss']);
+        final target = _numberOrNull(active['take_profit']);
+        if (entry != null && stop != null && target != null) {
+          final risk = (entry - stop).abs();
+          final reward = (target - entry).abs();
+          final rr = risk > 0 ? reward / risk : null;
+          linked['candidate_trade_plan'] = linked['trade_plan'];
+          linked['trade_plan'] = <String, dynamic>{
+            'symbol': active['symbol'] ?? symbol,
+            'side': activeSide,
+            'entry': entry,
+            'stop_loss': stop,
+            'take_profit': target,
+            if (rr != null) 'risk_reward': rr,
+            'status': 'ACTIVE_SIGNAL_TRACKED',
+            'source': 'Signal Center active signal #$signalId',
+          };
+        }
+        linked['signal_alignment'] = 'ALIGNED';
+        notes.add(
+          'AI dan Signal Center searah ($activeSide). Sinyal aktif #$signalId '
+          'menjadi acuan level Entry/SL/TP sampai hasil TP/SL terkonfirmasi.',
+        );
+      } else if (aiSide == 'BUY' || aiSide == 'SELL') {
+        linked['ai_research_side'] = aiSide;
+        linked['side'] = 'NO TRADE';
+        linked['trade_plan'] = null;
+        linked['signal_alignment'] = 'CONFLICT';
+        final conflict =
+            'Konflik arah: AI terbaru $aiSide, tetapi sinyal aktif #$signalId adalah $activeSide. '
+            'Sistem menahan sinyal baru sampai sinyal aktif selesai atau tervalidasi.';
+        linked['reasons'] = <String>[
+          if (linked['reasons'] is List)
+            ...(linked['reasons'] as List).map((item) => item.toString()),
+          conflict,
+        ];
+        linked['score_note'] = conflict;
+        notes.add(conflict);
+      } else {
+        linked['signal_alignment'] = 'ACTIVE_SIGNAL_TRACKED';
+        notes.add(
+          'Sinyal aktif #$signalId ($activeSide) tetap dipantau di Signal Center; '
+          'analisis AI terbaru belum memberikan sinyal baru.',
+        );
+      }
+      linked['context_notes'] = notes;
+      return linked;
+    } catch (_) {
+      // Signal linkage is supplemental; a notifications outage must not hide
+      // the latest persisted TradingAgents report.
+      return dashboard;
+    }
+  }
+
+  double? _numberOrNull(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
   }
 
   bool _isFreshAgentJob(Map<String, dynamic> job) {
