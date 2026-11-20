@@ -76,6 +76,8 @@ jobs:
           exit "$result"
       - name: Install and launch debug APK on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 35
           target: google_apis
@@ -83,7 +85,6 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel off
-          env: ANDROID_I_WANT_MY_TCG: yes
           script: |
             adb install -r build/app/outputs/flutter-apk/app-debug.apk
             adb shell monkey -p com.cryptoai.crypto_ai_app 1
