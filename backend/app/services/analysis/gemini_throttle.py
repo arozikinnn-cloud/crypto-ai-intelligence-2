@@ -25,6 +25,17 @@ def is_retryable_provider_error(error: BaseException) -> bool:
     """Recognize rate limits and transient Google API availability failures."""
     status = getattr(error, "status_code", None) or getattr(error, "code", None)
     message = str(error).lower()
+    # A daily quota exhaustion cannot recover through short exponential retries.
+    # Fail fast so the scheduled worker does not waste its whole run sleeping.
+    if any(
+        marker in message
+        for marker in (
+            "requests per day limit exceeded",
+            "generaterequestsperday",
+            "per day quota exceeded",
+        )
+    ):
+        return False
     return (
         status in {429, 500, 502, 503, 504}
         or any(
