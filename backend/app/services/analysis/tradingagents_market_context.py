@@ -162,14 +162,22 @@ def finalize_v8_decision(
             and 1.49 <= ratio <= 1.51
         )
         if valid:
+            # Three transparent reference targets are derived from the same
+            # ATR risk unit. The existing take_profit remains TP3 so the
+            # established forward outcome tracker keeps its 1.5R semantics.
+            direction = 1.0 if agent_side == "BUY" else -1.0
             plan = {
                 "symbol": market_context["symbol"],
                 "side": agent_side,
                 "entry": entry,
                 "stop_loss": stop,
                 "take_profit": target,
+                "take_profit_1": entry + direction * risk * 0.5,
+                "take_profit_2": entry + direction * risk * 1.0,
+                "take_profit_3": target,
                 "risk_reward": 1.5,
                 "source": "Bitget closed 15m candles; ATR(14) x 1.5",
+                "target_method": "TP1=0.5R, TP2=1.0R, TP3=1.5R; reference levels, no partial execution",
                 "status": "PAPER_VALIDATION_REQUIRED",
             }
             reasons.append("TradingAgents dan 1H/30m/15m searah; rencana risiko 1:1.5 valid.")
