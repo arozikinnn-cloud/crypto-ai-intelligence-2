@@ -1,10 +1,12 @@
 import json
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 
 from app.api.signals import record_signal
 from app.database.base import Base
 from app.database.session import SessionLocal, engine
+from app.models.agent_analysis_job import AgentAnalysisJob
 from app.models.signal_event import SignalEvent, SignalNotification
 
 
@@ -519,5 +521,64 @@ def test_validated_v8_signal_replaces_legacy_active_signal_and_legacy_cannot_rep
         db.rollback()
         db.execute(delete(SignalNotification))
         db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_worker_recovers_missing_signal_from_recent_completed_job():
+    from agent_worker import persist_recent_completed_v8_signals
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.execute(delete(AgentAnalysisJob))
+        db.commit()
+        now = datetime.now(timezone.utc)
+        result = {
+            "side": "BUY",
+            "reasons": ["V8 multi-agent and Bitget timeframes aligned."],
+            "trade_plan": {
+                "entry": 100, "stop_loss": 98, "take_profit": 103,
+                "take_profit_1": 101, "take_profit_2": 102,
+                "take_profit_3": 103,
+                "confirmation_score": "3/3 higher-timeframe alignment",
+                "confidence_note": "Not a win-rate probability.",
+            },
+            "market_context": {
+                "collected_at": now.isoformat(),
+                "timeframes": {
+                    "15m": {"candle_close_time": now.isoformat()},
+                },
+            },
+        }
+        db.add(AgentAnalysisJob(
+            symbol="RECOVERYTEST",
+            ticker="RECOVERY-USD",
+            status="COMPLETED",
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+            result_json=json.dumps(result),
+        ))
+        db.commit()
+
+        checked = persist_recent_completed_v8_signals(session_factory=SessionLocal)
+        assert checked == 1
+        signal = db.scalar(select(SignalEvent).where(
+            SignalEvent.symbol == "RECOVERYTEST"
+        ))
+        assert signal is not None
+        assert signal.status == "ACTIVE"
+        assert signal.side == "BUY"
+        payload = json.loads(signal.reasons_json)
+        assert payload["trade_plan"]["take_profit_1"] == 101
+        assert payload["strategy_mode"] == "TRADINGAGENTS_MULTI_AGENT_V8"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.execute(delete(AgentAnalysisJob))
         db.commit()
         db.close()
