@@ -308,7 +308,7 @@ class AnalysisApi {
   }
 
   Future<Map<String, dynamic>> fetchMarketStructure({String symbol = 'BTCUSDT', String interval = '1h'}) async {
-    final uri = _endpoint('analysis/structure', {
+    final uri = _endpoint('market/bitget/structure', {
       'symbol': symbol,
       'interval': interval,
       'limit': '200',
