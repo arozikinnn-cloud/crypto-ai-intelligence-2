@@ -361,7 +361,12 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
 
   Future<void> loadSecondaryFeeds({bool includeScanner = false}) async {
-    await Future<void>.delayed(const Duration(seconds: 2));
+    // Wait for the core market view before opening secondary API requests.
+    try {
+      await Future.wait([analysis, candles]);
+    } catch (_) {
+      // Secondary feeds may still be useful when one primary panel is unavailable.
+    }
     if (!mounted) return;
     setState(() => notifications = loadNotes());
     await notifications;
