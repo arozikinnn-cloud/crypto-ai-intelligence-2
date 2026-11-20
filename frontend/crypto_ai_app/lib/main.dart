@@ -277,8 +277,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     signals = Future.value(<Map<String, dynamic>>[]);
     backtest = Future.value(<String, dynamic>{'unavailable_reason': 'Memuat baseline...'});
     signalPerformance = Future.value(<String, dynamic>{});
-    unawaited(loadSecondaryFeeds(includeScanner: true));
-    startPolling();
+    if (widget.loadAnalysis == null) {
+      unawaited(loadSecondaryFeeds(includeScanner: true));
+      startPolling();
+    } else {
+      // Widget tests and embedded previews inject their own data sources;
+      // avoid background timers/network polling in those controlled contexts.
+      notifications = loadNotes();
+    }
   }
 
   Future<void> loadSecondaryFeeds({bool includeScanner = false}) async {
