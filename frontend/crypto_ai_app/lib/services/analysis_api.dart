@@ -495,9 +495,11 @@ class AnalysisApi {
 
   Future<List<Map<String, dynamic>>> fetchNotifications({
     bool unreadOnly = false,
+    String? strategyMode,
   }) async {
     final uri = _endpoint('signals/notifications', {
       'unread_only': unreadOnly.toString(),
+      if (strategyMode != null) 'strategy_mode': strategyMode,
     });
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
