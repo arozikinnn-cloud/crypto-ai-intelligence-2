@@ -257,3 +257,6 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# Bounded scheduled worker: one analysis cycle per GitHub Actions invocation.
