@@ -491,4 +491,56 @@ void main() {
     }
   });
 
+
+  test('enforces the 90-minute TradingAgents freshness window', () async {
+    Future<Map<String, dynamic>> loadAtAge(Duration age) async {
+      final collectedAt = DateTime.now().toUtc().subtract(age).toIso8601String();
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/agent-analysis/jobs')) {
+          return http.Response(jsonEncode([
+            {
+              'id': 31,
+              'symbol': 'BTCUSDT',
+              'status': 'COMPLETED',
+              'completed_at': collectedAt,
+              'result': {
+                'side': 'BUY',
+                'rating': 'Buy',
+                'reports': {'market_report': 'Freshness boundary test'},
+                'market_context': {'collected_at': collectedAt},
+                'timeframe_analyses': {},
+                'trade_plan': {
+                  'entry': 100,
+                  'stop_loss': 98,
+                  'take_profit': 103,
+                },
+              },
+            }
+          ]), 200, headers: {'content-type': 'application/json'});
+        }
+        if (request.url.path.endsWith('/signals')) {
+          return http.Response('[]', 200, headers: {'content-type': 'application/json'});
+        }
+        return http.Response('Not found', 404);
+      });
+      final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+      try {
+        return await api.fetchTradingAgentsAnalysis();
+      } finally {
+        api.close();
+      }
+    }
+
+    final withinWindow = await loadAtAge(const Duration(minutes: 89));
+    expect(withinWindow['agent_status'], 'COMPLETED');
+    expect(withinWindow['side'], 'BUY');
+    expect(withinWindow['trade_plan'], isNotNull);
+
+    final outsideWindow = await loadAtAge(const Duration(minutes: 91));
+    expect(outsideWindow['agent_status'], 'STALE');
+    expect(outsideWindow['side'], 'NO TRADE');
+    expect(outsideWindow['trade_plan'], isNull);
+    expect(outsideWindow['score_note'], contains('90 menit'));
+  });
+
 }

@@ -96,7 +96,7 @@ secrets; they are not enabled as a substitute for a production worker.
 ## Free-tier scheduled execution (best effort, not 24/7)
 
 A GitHub Actions workflow is included at `.github/workflows/tradingagents-v8-scheduled.yml`.
-It runs one bounded TradingAgents job per invocation (scheduled every six hours, or manually
+It runs one bounded TradingAgents job per invocation (scheduled every hour at minute 17 UTC, or manually
 dispatched). It is an episodic runner, not a persistent worker, and it cannot guarantee exact
 start times, continuous monitoring, or immediate push notifications. GitHub scheduled workflows
 run from the default branch; while this PR is unmerged, use workflow_dispatch against the feature
