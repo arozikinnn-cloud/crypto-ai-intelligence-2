@@ -32,7 +32,7 @@ on:
 
 jobs:
   flutter:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     defaults:
       run:
         working-directory: frontend/crypto_ai_app
@@ -67,8 +67,6 @@ jobs:
           exit "$result"
       - name: Install and launch debug APK on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          ANDROID_I_WANT_MY_TCG: "yes"
         with:
           api-level: 30
           target: default
@@ -77,7 +75,6 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          disable-linux-hw-accel: true
           script: |
             adb install -r "$GITHUB_WORKSPACE/frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-debug.apk"
             adb shell monkey -p com.cryptoai.crypto_ai_app 1
