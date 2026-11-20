@@ -282,7 +282,7 @@ class AnalysisApi {
         DateTime.tryParse(job['completed_at']?.toString() ?? '');
     if (collectedAt == null) return false;
     final age = DateTime.now().toUtc().difference(collectedAt.toUtc());
-    // The scheduled free-tier TradingAgents worker runs hourly. Keep the
+    // The scheduled free-tier TradingAgents worker runs every four hours. Keep the
     // result visible for a bounded 90-minute window, then fail closed to NO TRADE.
     return age >= const Duration(seconds: -60) &&
         age <= const Duration(minutes: 90);
