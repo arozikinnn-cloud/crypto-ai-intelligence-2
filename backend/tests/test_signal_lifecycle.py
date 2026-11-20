@@ -315,19 +315,27 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
             "legacy-inbox-candle", strategy_mode="LEGACY_UNVERSIONED",
         )
 
+        from app.api.signals import evaluate_active_signals
+        evaluate_active_signals(
+            db, "V8INBOX", candle_high=104, candle_low=99,
+            candle_timestamp="later-closed-candle",
+        )
         notifications = list_notifications(
             unread_only=False,
             limit=50,
             strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
             db=db,
         )
-        assert len(notifications) == 1
+        assert len(notifications) == 2
         item = notifications[0]
         assert item.signal_id is not None
         assert item.strategy_mode == "TRADINGAGENTS_MULTI_AGENT_V8"
         assert item.symbol == "V8INBOX"
         assert item.side == "BUY"
-        assert item.signal_status == "ACTIVE"
+        assert item.signal_status == "CLOSED"
+        assert item.signal_outcome == "TP"
+        assert item.signal_realized_r == 1.5
+        assert item.signal_closed_at is not None
         assert item.entry == 100
         assert item.stop_loss == 98
         assert item.take_profit == 103
