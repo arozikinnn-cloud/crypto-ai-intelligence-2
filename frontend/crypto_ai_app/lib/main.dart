@@ -1364,7 +1364,7 @@ class _SignalCenter extends StatelessWidget {
                 final confidenceNote = item['confidence_note'];
                 final analysisReasons = reasons.where((reason) =>
                     !reason.startsWith('Alasan invalidasi:') &&
-                    !reason.startsWith('Alasan penutupan:')).take(2).toList();
+                    !reason.startsWith('Alasan penutupan:')).take(5).toList();
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(
