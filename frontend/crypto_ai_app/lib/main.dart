@@ -521,6 +521,12 @@ class _Dashboard extends StatelessWidget {
     final marketAgentReport = txt(agentReports['market_report'], '');
     final sentimentAgentReport = txt(agentReports['sentiment_report'], '');
     final newsAgentReport = txt(agentReports['news_report'], '');
+    final investmentPlanReport = txt(agentReports['investment_plan'], '');
+    final traderPlanReport = txt(agentReports['trader_investment_plan'], '');
+    final researchPlanStatus =
+        investmentPlanReport.isNotEmpty || traderPlanReport.isNotEmpty
+            ? 'COMPLETED'
+            : 'NO DATA';
 
     return RefreshIndicator(
       onRefresh: refresh, color: green, backgroundColor: panel,
@@ -698,7 +704,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 7),
             _TextCard(title: 'News Analyst • ${newsAgentReport.isEmpty ? 'NO DATA' : 'COMPLETED'}', items: [newsAgentReport], empty: 'Laporan berita belum tersedia.'),
             const SizedBox(height: 7),
-            _TextCard(title: 'Research / Trader Plan', items: [txt(agentReports['investment_plan']), txt(agentReports['trader_investment_plan'])].where((v) => v.isNotEmpty).toList(), empty: 'Rencana riset belum tersedia.'),
+            _TextCard(title: 'Research / Trader Plan • $researchPlanStatus', items: [investmentPlanReport, traderPlanReport].where((v) => v.isNotEmpty).toList(), empty: 'Rencana riset belum tersedia.'),
             const SizedBox(height: 15),
             const _Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
             const SizedBox(height: 9),
