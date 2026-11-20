@@ -243,8 +243,41 @@ def record_signal(
         SignalEvent.status == "ACTIVE",
     )))
     if side in {"BUY", "SELL"} and active_rows:
-        db.commit()
-        return
+        active_v8 = [
+            row for row in active_rows
+            if _event_payload(row).get("strategy_mode") == CURRENT_STRATEGY_MODE
+        ]
+        if strategy_mode == CURRENT_STRATEGY_MODE and not active_v8:
+            # A fully validated V8 multi-agent thesis takes precedence over
+            # legacy technical signals. Invalidate the old thesis explicitly
+            # so the symbol-wide active-signal uniqueness invariant is kept.
+            for previous in active_rows:
+                try:
+                    previous_payload = json.loads(previous.reasons_json)
+                except (TypeError, json.JSONDecodeError):
+                    previous_payload = {"reasons": []}
+                if not isinstance(previous_payload, dict):
+                    previous_payload = {"reasons": []}
+                previous_payload["invalidation_reason"] = (
+                    "Digantikan oleh sinyal TradingAgents V8 yang lolos "
+                    "validasi multi-agent dan data Bitget terbaru."
+                )
+                previous.reasons_json = json.dumps(
+                    previous_payload, ensure_ascii=False
+                )
+                previous.status = "INVALIDATED"
+                previous.updated_at = now
+                db.add(SignalNotification(
+                    signal_id=previous.id,
+                    title=f"{previous.symbol} legacy signal invalidated",
+                    message=previous_payload["invalidation_reason"],
+                    created_at=now,
+                ))
+        else:
+            # Legacy signals cannot replace an active V8 signal, and duplicate
+            # signals from the same strategy remain blocked until TP/SL.
+            db.commit()
+            return
     if side in {"BUY", "SELL"}:
         dedupe_key = f"{symbol.upper()}:{timeframe_set}:{side}:{candle_timestamp}"
         previous_event = db.scalar(
