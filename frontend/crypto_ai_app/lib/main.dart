@@ -154,6 +154,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
       ...ai,
       // The V8 decision always wins; legacy signals are never reused.
       'side': ai['side'] ?? 'NO TRADE',
+      'timestamp': ai['agent_status'] == 'STALE'
+          ? legacy['timestamp']
+          : (ai['timestamp'] ?? legacy['timestamp']),
       'market_context': market,
       'derivatives': mapVal(ai['derivatives']).isNotEmpty
           ? ai['derivatives']
