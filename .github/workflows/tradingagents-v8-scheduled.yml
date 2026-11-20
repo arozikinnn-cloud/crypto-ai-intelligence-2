@@ -6,7 +6,6 @@ on:
     branches:
       - feature/v8-tradingagents-multi-agent
     paths:
-      - .github/workflows/tradingagents-v8-scheduled.yml
       - backend/agent_worker.py
       - backend/app/services/analysis/gemini_throttle.py
       - backend/app/services/analysis/tradingagents_market_context.py
