@@ -366,7 +366,7 @@ def list_signals(
         # signals out of the requested page.
         statement = statement.where(
             SignalEvent.reasons_json.contains(
-                f'"strategy_mode": "{strategy_mode}"', autoescape=True
+                f'"strategy_mode":"{strategy_mode}"', autoescape=True
             )
         )
     payloads = [_event_payload(row) for row in db.scalars(statement.limit(limit))]
