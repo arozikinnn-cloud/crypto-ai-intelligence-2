@@ -143,7 +143,7 @@ class AnalysisApi {
       if (detail.isNotEmpty) detail,
     ],
     'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
-    'agent_status': 'DISABLED',
+    'agent_status': 'UNAVAILABLE',
     'agent_reports': <String, dynamic>{},
     'execution_ready': false,
     'trade_plan': null,
