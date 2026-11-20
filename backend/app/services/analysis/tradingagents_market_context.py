@@ -182,7 +182,10 @@ def finalize_v8_decision(
                 ),
                 "risk_reward": 1.5,
                 "source": "Bitget closed 15m candles; ATR(14) x 1.5",
-                "target_method": "TP1=0.5R, TP2=1.0R, TP3=1.5R; reference levels, no partial execution",
+                "target_method": (
+                    "TP1=0.5R, TP2=1.0R, TP3=1.5R; reference levels, "
+                    "no partial execution"
+                ),
                 "status": "PAPER_VALIDATION_REQUIRED",
             }
             reasons.append("TradingAgents dan 1H/30m/15m searah; rencana risiko 1:1.5 valid.")
