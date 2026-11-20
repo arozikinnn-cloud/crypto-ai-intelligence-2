@@ -175,6 +175,11 @@ def finalize_v8_decision(
                 "take_profit_1": entry + direction * risk * 0.5,
                 "take_profit_2": entry + direction * risk * 1.0,
                 "take_profit_3": target,
+                "confirmation_score": "3/3 higher-timeframe alignment",
+                "confidence_note": (
+                    "Konfirmasi arah H1, M30, dan M15; bukan probabilitas win rate "
+                    "atau jaminan hasil."
+                ),
                 "risk_reward": 1.5,
                 "source": "Bitget closed 15m candles; ATR(14) x 1.5",
                 "target_method": "TP1=0.5R, TP2=1.0R, TP3=1.5R; reference levels, no partial execution",
