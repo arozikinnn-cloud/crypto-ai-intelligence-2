@@ -298,7 +298,13 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
 
         record_signal(
             db, "V8INBOX", "BUY", ["1h", "30m", "15m"], ["Aligned V8 setup"],
-            "v8-inbox-candle", {"entry": 100, "stop_loss": 98, "take_profit": 103},
+            "v8-inbox-candle", {
+                "entry": 100, "stop_loss": 98, "take_profit": 103,
+                "take_profit_1": 101, "take_profit_2": 102,
+                "take_profit_3": 103,
+                "confirmation_score": "3/3 higher-timeframe alignment",
+                "confidence_note": "Konfirmasi timeframe; bukan probabilitas win rate.",
+            },
             "v8-inbox-candle", strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
         )
         record_signal(
@@ -323,6 +329,11 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         assert item.entry == 100
         assert item.stop_loss == 98
         assert item.take_profit == 103
+        assert item.take_profit_1 == 101
+        assert item.take_profit_2 == 102
+        assert item.take_profit_3 == 103
+        assert item.confirmation_score == "3/3 higher-timeframe alignment"
+        assert "bukan probabilitas" in item.confidence_note
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
