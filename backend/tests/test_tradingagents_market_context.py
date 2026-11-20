@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.services.analysis.tradingagents_market_context import finalize_v8_decision
 
 
@@ -19,7 +21,7 @@ def _context(side="BUY"):
     return {
         "provider": "bitget_usdt_futures",
         "symbol": "BTCUSDT",
-        "collected_at": "2026-11-18T00:00:00+00:00",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
         "timeframes": timeframes,
         "derivatives": {"open_interest": 1000, "funding_rate": 0.0001},
         "order_book": {"imbalance": 0.1},
