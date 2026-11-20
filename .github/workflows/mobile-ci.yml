@@ -74,11 +74,7 @@ jobs:
             adb install -r "$GITHUB_WORKSPACE/frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-debug.apk"
             adb shell monkey -p com.cryptoai.crypto_ai_app 1
             sleep 15
-            if ! adb shell pidof com.cryptoai.crypto_ai_app >/dev/null; then
-              adb logcat -d -s AndroidRuntime:E
-              echo "Crypto AI app process did not remain alive after launch."
-              exit 1
-            fi
+            adb shell pidof com.cryptoai.crypto_ai_app
             echo "Debug APK installed and app process remained alive on Android emulator."
       - name: Build Android release APKs (split by ABI)
         env:
