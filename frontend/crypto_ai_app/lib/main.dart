@@ -517,6 +517,10 @@ class _Dashboard extends StatelessWidget {
     final deriv = mapVal(data['derivatives']);
     final tradePlan = mapVal(data['trade_plan']);
     final agentReports = mapVal(data['agent_reports']);
+    final agentStatus = txt(data['agent_status'], 'UNKNOWN');
+    final marketAgentReport = txt(agentReports['market_report'], '');
+    final sentimentAgentReport = txt(agentReports['sentiment_report'], '');
+    final newsAgentReport = txt(agentReports['news_report'], '');
 
     return RefreshIndicator(
       onRefresh: refresh, color: green, backgroundColor: panel,
@@ -686,13 +690,13 @@ class _Dashboard extends StatelessWidget {
                 note: txt(mapVal(market['liquidations'])['note'], 'Riwayat teramati'))),
             ]),
             const SizedBox(height: 15),
-            const _Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Laporan analis dan keputusan riset V8'),
+            _Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Status job: $agentStatus • status tiap analis mengikuti laporan yang tersimpan'),
             const SizedBox(height: 9),
-            _TextCard(title: 'Market Analyst', items: [txt(agentReports['market_report'])], empty: 'Laporan market belum tersedia.'),
+            _TextCard(title: 'Market Analyst • ${marketAgentReport.isEmpty ? 'NO DATA' : 'COMPLETED'}', items: [marketAgentReport], empty: 'Laporan market belum tersedia.'),
             const SizedBox(height: 7),
-            _TextCard(title: 'Sentiment Analyst', items: [txt(agentReports['sentiment_report'])], empty: 'Laporan sentimen belum tersedia.'),
+            _TextCard(title: 'Sentiment Analyst • ${sentimentAgentReport.isEmpty ? 'NO DATA' : 'COMPLETED'}', items: [sentimentAgentReport], empty: 'Laporan sentimen belum tersedia.'),
             const SizedBox(height: 7),
-            _TextCard(title: 'News Analyst', items: [txt(agentReports['news_report'])], empty: 'Laporan berita belum tersedia.'),
+            _TextCard(title: 'News Analyst • ${newsAgentReport.isEmpty ? 'NO DATA' : 'COMPLETED'}', items: [newsAgentReport], empty: 'Laporan berita belum tersedia.'),
             const SizedBox(height: 7),
             _TextCard(title: 'Research / Trader Plan', items: [txt(agentReports['investment_plan']), txt(agentReports['trader_investment_plan'])].where((v) => v.isNotEmpty).toList(), empty: 'Rencana riset belum tersedia.'),
             const SizedBox(height: 15),
