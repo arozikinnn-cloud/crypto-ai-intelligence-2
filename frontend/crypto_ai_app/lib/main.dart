@@ -93,9 +93,55 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
-  Future<Map<String, dynamic>> load({bool forceNew = false}) =>
-      widget.loadAnalysis?.call() ??
-      api.fetchTradingAgentsAnalysis(symbol: selectedSymbol, forceNew: forceNew);
+  Future<Map<String, dynamic>> load({bool forceNew = false}) async {
+    if (widget.loadAnalysis != null) return widget.loadAnalysis!();
+
+    final ai = await api.fetchTradingAgentsAnalysis(
+      symbol: selectedSymbol,
+      forceNew: forceNew,
+    );
+    Future<Map<String, dynamic>> safe(
+      Future<Map<String, dynamic>> request,
+    ) async {
+      try {
+        return await request;
+      } catch (error) {
+        return <String, dynamic>{'unavailable_reason': error.toString()};
+      }
+    }
+
+    final extras = await Future.wait([
+      safe(api.fetchMarketStructure(symbol: selectedSymbol)),
+      safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol)),
+      safe(api.fetchLiquidationHistory(symbol: selectedSymbol)),
+    ]);
+    final cvd = await safe(api.fetchCvdHistory(symbol: selectedSymbol));
+    final structure = extras[0];
+    final orderFlow = extras[1];
+    final liquidation = extras[2];
+    final market = Map<String, dynamic>.from(mapVal(ai['market_context']));
+    if (cvd.isNotEmpty && cvd['unavailable_reason'] == null) {
+      market['cvd_history'] = cvd;
+    }
+    if (liquidation.isNotEmpty && liquidation['unavailable_reason'] == null) {
+      market['liquidations'] = {
+        ...liquidation,
+        'bias': number(liquidation['event_count']) > 0
+            ? 'OBSERVED EVENTS'
+            : 'NO OBSERVED EVENTS',
+      };
+    }
+    return <String, dynamic>{
+      ...ai,
+      if (structure.isNotEmpty && structure['unavailable_reason'] == null)
+        'structure': structure,
+      if (orderFlow.isNotEmpty && orderFlow['unavailable_reason'] == null) ...{
+        'aggtrades_order_flow': orderFlow,
+        'order_flow': orderFlow,
+      },
+      'market_context': market,
+    };
+  }
   Future<List<Map<String, dynamic>>> loadCandles() async {
     try {
       return await api.fetchCandles(
@@ -142,10 +188,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     }
   }
 
-  Future<Map<String, dynamic>> loadBacktest() async => <String, dynamic>{
-    'unavailable_reason':
-        'Backtest multi-agent V8 belum diimplementasikan. Statistik strategi RSI/MA/Ichimoku lama tidak digunakan sebagai hasil V8.',
-  };
+  Future<Map<String, dynamic>> loadBacktest() async {
+    try {
+      return await api.fetchBacktest(
+        symbol: selectedSymbol,
+        interval: '1h',
+        limit: 300,
+      );
+    } catch (error) {
+      return <String, dynamic>{'unavailable_reason': error.toString()};
+    }
+  }
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
     // Avoid firing five expensive LLM research jobs from the dashboard scanner.
@@ -448,7 +501,7 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const _Heading('BACKTEST & PERFORMANCE', 'Backtest historis TradingAgents belum tersedia; metrik hanya dari forward signal V8'),
+            const _Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
