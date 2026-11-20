@@ -1321,6 +1321,7 @@ class _SignalPerformance extends StatelessWidget {
             );
           }
           final wr = data['win_rate_pct'];
+          final closedCount = number(data['completed']);
           final winRateLabel = wr == null ? 'N/A' : '${wr}%';
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1338,6 +1339,14 @@ class _SignalPerformance extends StatelessWidget {
                 _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
                 _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
               ]),
+              if (closedCount < 30)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 7),
+                  child: Text(
+                    'SAMPEL MASIH KECIL: win rate hanya deskriptif dan belum cukup untuk menilai keunggulan strategi (minimal 30 sinyal selesai disarankan).',
+                    style: TextStyle(color: red, fontSize: 8, height: 1.4),
+                  ),
+                ),
               const SizedBox(height: 7),
               Text(
                 txt(data['method_note'], ''),
