@@ -1357,6 +1357,8 @@ class _SignalCenter extends StatelessWidget {
                 final symbol = item['symbol'];
                 final status = item['status'];
                 final outcome = item['outcome'];
+                final realizedR = item['realized_r'];
+                final closedAt = item['closed_at'];
                 final reasons = strings(item['reasons']);
                 final lifecycleReasons = reasons.where((reason) =>
                     reason.startsWith('Alasan invalidasi:') ||
@@ -1378,8 +1380,11 @@ class _SignalCenter extends StatelessWidget {
                     children: [
                       Text('$symbol • $side • #${item['id']}',
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
-                      Text('$status • $outcome • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
+                      Text('$status • $outcome${realizedR == null ? '' : ' • ${realizedR}R'} • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
                           style: TextStyle(color: muted, fontSize: 8)),
+                      if (closedAt != null)
+                        Text('Ditutup: ${txt(closedAt)}',
+                            style: const TextStyle(color: muted, fontSize: 8)),
                       if (analysisReasons.isNotEmpty)
                         Text(analysisReasons.join(' '),
                             maxLines: 3, overflow: TextOverflow.ellipsis,
