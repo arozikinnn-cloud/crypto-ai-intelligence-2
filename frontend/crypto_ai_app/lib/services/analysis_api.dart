@@ -332,6 +332,42 @@ class AnalysisApi {
     return decoded;
   }
 
+  Future<Map<String, dynamic>> fetchBitgetDerivatives({String symbol = 'BTCUSDT'}) async {
+    final uri = _endpoint('market/bitget/derivatives', {'symbol': symbol});
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Bitget derivatives API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid Bitget derivatives response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchBitgetOrderBook({
+    String symbol = 'BTCUSDT',
+    int limit = 100,
+  }) async {
+    final uri = _endpoint('market/bitget/order-book', {
+      'symbol': symbol,
+      'limit': limit.toString(),
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Bitget order-book API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid Bitget order-book response format.');
+    }
+    return decoded;
+  }
+
   Future<Map<String, dynamic>> fetchMarketStructure({String symbol = 'BTCUSDT', String interval = '1h'}) async {
     final uri = _endpoint('market/bitget/structure', {
       'symbol': symbol,
