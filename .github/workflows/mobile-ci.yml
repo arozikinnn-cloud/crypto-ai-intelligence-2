@@ -78,7 +78,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel off
           script: |
-            adb install -r build/app/outputs/flutter-apk/app-debug.apk
+            adb install -r "$GITHUB_WORKSPACE/frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-debug.apk"
             adb shell monkey -p com.cryptoai.crypto_ai_app 1
             sleep 15
             if ! adb shell pidof com.cryptoai.crypto_ai_app >/dev/null; then
