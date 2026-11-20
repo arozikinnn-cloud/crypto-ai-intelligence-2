@@ -21,8 +21,6 @@ import app.models.cvd_collector_state  # noqa: F401
 import app.models.liquidation_record  # noqa: F401
 import app.models.signal_event  # noqa: F401
 import app.models.device_token  # noqa: F401
-from app.services.market_data.cvd_collector import stream_binance_aggtrades
-from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
 settings = get_settings()
 configure_logging()
@@ -43,8 +41,12 @@ async def lifespan(_app: FastAPI):
             # is being configured. Keep liveness and public market endpoints up,
             # but never pretend the database is ready when connection/migration fails.
             if engine.dialect.name == "sqlite":
+                # Preview's disposable SQLite database is initialized from the
+                # complete ORM metadata. Skip custom DDL migrations here to keep
+                # serverless cold starts short and avoid repeated schema work.
                 Base.metadata.create_all(bind=engine)
-            migrate_schema(engine)
+            else:
+                migrate_schema(engine)
         except Exception:
             if not IS_PREVIEW:
                 raise
@@ -53,6 +55,11 @@ async def lifespan(_app: FastAPI):
                 "read-only mode. Database-backed endpoints remain unavailable."
             )
     else:
+        # Persistent WebSocket collectors are only imported in a long-lived
+        # process, never in Vercel's short-lived serverless runtime.
+        from app.services.market_data.cvd_collector import stream_binance_aggtrades
+        from app.services.market_data.liquidation_collector import stream_binance_liquidations
+
         Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
 
