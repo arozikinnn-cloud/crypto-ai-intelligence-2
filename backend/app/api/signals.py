@@ -67,6 +67,11 @@ def _event_payload(row: SignalEvent) -> dict:
             "updated_at": row.updated_at, "entry": plan.get("entry"),
             "stop_loss": plan.get("stop_loss"),
             "take_profit": plan.get("take_profit"),
+            "take_profit_1": plan.get("take_profit_1"),
+            "take_profit_2": plan.get("take_profit_2"),
+            "take_profit_3": plan.get("take_profit_3") or plan.get("take_profit"),
+            "confirmation_score": plan.get("confirmation_score"),
+            "confidence_note": plan.get("confidence_note"),
             "strategy_mode": strategy_mode,
             "ambiguous_candle": bool(stored.get("ambiguous_candle")),
             "outcome": outcome, "realized_r": stored.get("realized_r"),
@@ -408,6 +413,11 @@ def list_notifications(
             entry=payload.get("entry"),
             stop_loss=payload.get("stop_loss"),
             take_profit=payload.get("take_profit"),
+            take_profit_1=payload.get("take_profit_1"),
+            take_profit_2=payload.get("take_profit_2"),
+            take_profit_3=payload.get("take_profit_3"),
+            confirmation_score=payload.get("confirmation_score"),
+            confidence_note=payload.get("confidence_note"),
             signal_created_at=payload.get("created_at"),
         ))
         if len(items) >= limit:
