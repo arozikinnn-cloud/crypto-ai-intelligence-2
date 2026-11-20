@@ -363,7 +363,7 @@ void main() {
             'side': 'SELL',
             'status': 'ACTIVE',
             'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
-            'created_at': '2026-11-20T01:09:02Z',
+            'created_at': DateTime.now().toUtc().subtract(const Duration(hours: 2)).toIso8601String(),
           }
         ]), 200, headers: {'content-type': 'application/json'});
       }
