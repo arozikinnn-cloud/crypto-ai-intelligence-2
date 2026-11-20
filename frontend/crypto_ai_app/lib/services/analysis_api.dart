@@ -592,19 +592,12 @@ class AnalysisApi {
     final filtered = strategyMode == null
         ? rows
         : rows.where((item) => item['strategy_mode']?.toString() == strategyMode);
-    final now = DateTime.now().toUtc();
-    return filtered.map((item) {
-      final row = Map<String, dynamic>.from(item);
-      if (strategyMode == 'TRADINGAGENTS_MULTI_AGENT_V8' &&
-          row['status']?.toString() == 'ACTIVE') {
-        final createdAt = DateTime.tryParse(row['created_at']?.toString() ?? '');
-        if (createdAt == null ||
-            now.difference(createdAt.toUtc()) > const Duration(minutes: 30)) {
-          row['status'] = 'STALE';
-        }
-      }
-      return row;
-    }).toList(growable: false);
+    // An active signal does not become stale merely because it is older
+    // than 30 minutes. The backend owns its TP/SL lifecycle; only a confirmed
+    // outcome or explicit invalidation may change the persisted status.
+    return filtered
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>> fetchSignalPerformance() async {
