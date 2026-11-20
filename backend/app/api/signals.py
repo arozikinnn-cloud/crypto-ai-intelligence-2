@@ -19,11 +19,13 @@ def _strategy_mode_filter(column, strategy_mode: str):
     # reasons_json is stored as TEXT. Match both normal json.dumps spacing and
     # compact JSON across SQLite tests and PostgreSQL production.
     encoded = json.dumps(strategy_mode, ensure_ascii=False)
-    escaped = encoded.replace("\\\\", "\\\\\\\\").replace("%", "\\\\%").replace("_", "\\\\_")
+    escaped = encoded.replace("!", "!!").replace("%", "!%").replace("_", "!_")
     return or_(
-        column.like(f'%"strategy_mode": {escaped}%', escape="\\\\"),
-        column.like(f'%"strategy_mode":{escaped}%', escape="\\\\"),
+        column.like(f'%"strategy_mode": {escaped}%', escape="!"),
+        column.like(f'%"strategy_mode":{escaped}%', escape="!"),
     )
+
+
 CURRENT_STRATEGY_MODE = "TRADINGAGENTS_MULTI_AGENT_V8"
 
 
