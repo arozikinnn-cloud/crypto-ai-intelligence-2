@@ -37,6 +37,9 @@ def is_retryable_provider_error(error: BaseException) -> bool:
                 "502",
                 "503",
                 "504",
+                "timeout",
+                "timed out",
+                "temporarily unavailable",
             )
         )
     )
@@ -60,7 +63,7 @@ def _call_with_throttle(
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> Any:
-    """Serialize requests and retry rate-limit responses with bounded backoff."""
+    """Serialize requests and retry rate limits or transient transport failures."""
     global _LAST_REQUEST_AT
     with _REQUEST_LOCK:
         for attempt in range(max_retries + 1):
@@ -113,7 +116,7 @@ def install_gemini_free_tier_throttle() -> None:
     model_class._generate = throttled_generate
     model_class._v8_rate_throttle_installed = True
     logger.info(
-        "Gemini request pacing enabled: one request every %.1fs; %d rate-limit retries.",
+        "Gemini request pacing enabled: one request every %.1fs; %d transient-error retries.",
         min_interval,
         max_retries,
     )

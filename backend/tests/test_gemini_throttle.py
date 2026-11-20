@@ -96,3 +96,40 @@ def test_retries_transient_503_provider_error(monkeypatch):
     assert result == "ok"
     assert len(attempts) == 2
     assert sleeps == [26.0]
+
+
+
+def test_retries_transient_read_timeout(monkeypatch):
+    monkeypatch.setattr(throttle, "_LAST_REQUEST_AT", 0.0)
+    clock = [100.0]
+    sleeps = []
+    attempts = []
+
+    def fake_monotonic():
+        return clock[0]
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        clock[0] += seconds
+
+    def flaky_call():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise TimeoutError("The read operation timed out")
+        return "ok"
+
+    result = throttle._call_with_throttle(
+        flaky_call,
+        min_interval=13.0,
+        max_retries=1,
+        sleep=fake_sleep,
+        monotonic=fake_monotonic,
+    )
+
+    assert result == "ok"
+    assert len(attempts) == 2
+    assert sleeps == [26.0]
+
+
+def test_does_not_retry_unrelated_timeout_word_in_validation_error():
+    assert not is_retryable_provider_error(ValueError("timeout setting is invalid"))
