@@ -180,7 +180,7 @@ void main() {
           'cvd_points': [],
         }), 200);
       }
-      if (request.url.path.endsWith('/analysis/structure')) {
+      if (request.url.path.endsWith('/market/bitget/structure')) {
         return http.Response(jsonEncode({
           'symbol': 'BTCUSDT',
           'trend': 'bearish',
