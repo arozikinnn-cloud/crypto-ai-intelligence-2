@@ -210,7 +210,10 @@ def finalize_v8_decision(
         reasons.append(
             "Perbedaan analis yang perlu diperhatikan: " + ", ".join(
                 f"{name}={bias}" for name, bias in soft_conflicts.items()
-            ) + f"; keputusan konsolidasi TradingAgents={agent_side}. Detail ada di laporan tiap agent."
+            ) + (
+                f"; keputusan konsolidasi TradingAgents={agent_side}. "
+                "Detail ada di laporan tiap agent."
+            )
         )
     if not data_is_fresh:
         reasons.append(
