@@ -1485,7 +1485,7 @@ class _Inbox extends StatelessWidget {
                   if (levels.isNotEmpty)
                     Text(levels, style: const TextStyle(color: muted, fontSize: 8)),
                   if (confidence != null)
-                    Text('Konfirmasi: $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
+                    Text('Confidence (konfirmasi TF): $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
                       maxLines: 2, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: blue, fontSize: 8)),
                   Text(
