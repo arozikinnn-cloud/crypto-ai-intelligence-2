@@ -10,12 +10,22 @@ import 'services/analysis_api.dart';
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
 const green = Color(0xFF25D6A2), red = Color(0xFFFF647C), blue = Color(0xFF65A9FF);
+// Keep V7 dashboard market coverage while V8 AI runs independently.
 const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await PushNotificationService.initialize();
+  // Push notifications are optional. A Firebase/network/configuration issue
+  // must never prevent the trading dashboard from opening.
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await PushNotificationService.initialize();
+  } catch (error, stackTrace) {
+    debugPrint('Optional Firebase initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
   runApp(const CryptoAIApp());
 }
 
@@ -93,9 +103,76 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
-  Future<Map<String, dynamic>> load({bool forceNew = false}) =>
-      widget.loadAnalysis?.call() ??
-      api.fetchTradingAgentsAnalysis(symbol: selectedSymbol, forceNew: forceNew);
+  Future<Map<String, dynamic>> load({bool forceNew = false}) async {
+    if (widget.loadAnalysis != null) return widget.loadAnalysis!();
+
+    Future<Map<String, dynamic>> safe(
+      Future<Map<String, dynamic>> request,
+    ) async {
+      try {
+        return await request;
+      } catch (error) {
+        return <String, dynamic>{'unavailable_reason': error.toString()};
+      }
+    }
+
+    // Keep the proven V7 market/intelligence feed as a data-compatibility
+    // source while V8 TradingAgents is independently read from persisted jobs.
+    // Never copy the legacy BUY/SELL decision into the V8 AI decision.
+    // Keep the Vercel cold-start footprint low: requests share one serverless
+    // entrypoint, so sequential reads avoid spawning many cold instances at once.
+    final ai = await safe(api.fetchTradingAgentsAnalysis(
+      symbol: selectedSymbol,
+      forceNew: forceNew,
+    ));
+    final legacy = await safe(api.fetchIntelligence(symbol: selectedSymbol));
+    final structure = await safe(api.fetchMarketStructure(symbol: selectedSymbol));
+    final orderFlow = await safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol));
+    final liquidation = await safe(api.fetchLiquidationHistory(symbol: selectedSymbol));
+    final cvd = await safe(api.fetchCvdHistory(symbol: selectedSymbol));
+
+    final legacyMarket = mapVal(legacy['market_context']);
+    final aiMarket = mapVal(ai['market_context']);
+    final market = <String, dynamic>{
+      ...legacyMarket,
+      ...aiMarket,
+    };
+    if (cvd.isNotEmpty && cvd['unavailable_reason'] == null) {
+      market['cvd_history'] = cvd;
+    }
+    if (liquidation.isNotEmpty && liquidation['unavailable_reason'] == null) {
+      market['liquidations'] = {
+        ...liquidation,
+        'bias': number(liquidation['event_count']) > 0
+            ? 'OBSERVED EVENTS'
+            : 'NO OBSERVED EVENTS',
+      };
+    }
+
+    final merged = <String, dynamic>{
+      ...legacy,
+      ...ai,
+      // The V8 decision always wins; legacy signals are never reused.
+      'side': ai['side'] ?? 'NO TRADE',
+      'market_context': market,
+      'derivatives': mapVal(ai['derivatives']).isNotEmpty
+          ? ai['derivatives']
+          : mapVal(legacy['derivatives']),
+      'timeframe_analyses': maps(ai['timeframe_analyses']).isNotEmpty
+          ? ai['timeframe_analyses']
+          : (legacy['timeframe_analyses'] ?? <dynamic>[]),
+    };
+    if (structure.isNotEmpty && structure['unavailable_reason'] == null) {
+      merged['structure'] = structure;
+    } else if (legacy['structure'] != null) {
+      merged['structure'] = legacy['structure'];
+    }
+    if (orderFlow.isNotEmpty && orderFlow['unavailable_reason'] == null) {
+      merged['aggtrades_order_flow'] = orderFlow;
+      merged['order_flow'] = orderFlow;
+    }
+    return merged;
+  }
   Future<List<Map<String, dynamic>>> loadCandles() async {
     try {
       return await api.fetchCandles(
@@ -118,10 +195,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
-    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(forceNew: true); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
-  Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
+  Future<List<Map<String, dynamic>>> loadNotes() async {
+    try {
+      return await (widget.loadNotifications?.call() ?? api.fetchNotifications());
+    } catch (error) {
+      debugPrint('Notification feed unavailable: $error');
+      return <Map<String, dynamic>>[];
+    }
+  }
   Future<List<Map<String, dynamic>>> loadSignals() async {
     try {
       return await api.fetchSignals(
@@ -142,15 +226,42 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     }
   }
 
-  Future<Map<String, dynamic>> loadBacktest() async => <String, dynamic>{
-    'unavailable_reason':
-        'Backtest multi-agent V8 belum diimplementasikan. Statistik strategi RSI/MA/Ichimoku lama tidak digunakan sebagai hasil V8.',
-  };
+  Future<Map<String, dynamic>> loadBacktest() async {
+    try {
+      return await api.fetchBacktest(
+        symbol: selectedSymbol,
+        interval: '1h',
+        limit: 300,
+      );
+    } catch (error) {
+      return <String, dynamic>{'unavailable_reason': error.toString()};
+    }
+  }
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
-    // Avoid firing five expensive LLM research jobs from the dashboard scanner.
-    // Multi-symbol scanning will be enabled after queue concurrency and cost controls exist.
-    return <Map<String, dynamic>>[];
+    // Scan sequentially. Five simultaneous intelligence requests previously
+    // multiplied the Vercel cold-start load and could starve the main dashboard.
+    final results = <Map<String, dynamic>>[];
+    for (final symbol in supportedSymbols) {
+      if (results.isNotEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      try {
+        final result = await api.fetchIntelligence(symbol: symbol);
+        results.add(<String, dynamic>{
+          ...result,
+          'symbol': symbol,
+          'scanner_status': 'OK',
+        });
+      } catch (error) {
+        results.add(<String, dynamic>{
+          'symbol': symbol,
+          'side': 'UNAVAILABLE',
+          'scanner_status': error.toString(),
+        });
+      }
+    }
+    return results;
   }
 
   @override
@@ -159,22 +270,47 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     WidgetsBinding.instance.addObserver(this);
     analysis = load();
     candles = loadCandles();
-    notifications = loadNotes();
-    scanner = loadScanner();
-    signals = loadSignals();
-    backtest = loadBacktest();
-    signalPerformance = loadSignalPerformance();
+    // Render the core market dashboard first. Load secondary feeds afterwards
+    // so they do not compete with the initial market-data requests.
+    notifications = Future.value(<Map<String, dynamic>>[]);
+    scanner = Future.value(<Map<String, dynamic>>[]);
+    signals = Future.value(<Map<String, dynamic>>[]);
+    backtest = Future.value(<String, dynamic>{'unavailable_reason': 'Memuat baseline...'});
+    signalPerformance = Future.value(<String, dynamic>{});
+    unawaited(loadSecondaryFeeds());
     startPolling();
+  }
+
+  Future<void> loadSecondaryFeeds() async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    setState(() => notifications = loadNotes());
+    await notifications;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => signals = loadSignals());
+    await signals;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => backtest = loadBacktest());
+    await backtest;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => signalPerformance = loadSignalPerformance());
+    await signalPerformance;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (mounted) setState(() => scanner = loadScanner());
   }
 
   void startPolling() {
     poller?.cancel();
-    poller = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() { notifications = loadNotes(); signals = loadSignals(); signalPerformance = loadSignalPerformance(); backtest = loadBacktest(); });
+    poller = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) unawaited(loadSecondaryFeeds());
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (mounted && !refreshing) setState(() { analysis = load(forceNew: true); candles = loadCandles(); signalPerformance = loadSignalPerformance(); });
+      if (mounted && !refreshing) setState(() { analysis = load(); candles = loadCandles(); signalPerformance = loadSignalPerformance(); });
     });
   }
 
@@ -194,7 +330,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(forceNew: true); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
@@ -288,11 +424,11 @@ class _Dashboard extends StatelessWidget {
                 Text('INTELLIGENCE TERMINAL', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1.4)),
               ])),
               Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                decoration: BoxDecoration(color: green.withValues(alpha: .09),
-                  borderRadius: BorderRadius.circular(20), border: Border.all(color: green.withValues(alpha: .25))),
+                decoration: BoxDecoration(color: blue.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(20), border: Border.all(color: blue.withValues(alpha: .25))),
                 child: const Row(children: [
-                  Icon(Icons.circle, size: 7, color: green), SizedBox(width: 5),
-                  Text('API ONLINE', style: TextStyle(color: green, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Icon(Icons.circle, size: 7, color: blue), SizedBox(width: 5),
+                  Text('V8 READ-ONLY', style: TextStyle(color: blue, fontSize: 9, fontWeight: FontWeight.bold)),
                 ])),
               IconButton(onPressed: refreshing ? null : refresh,
                 icon: refreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -311,7 +447,7 @@ class _Dashboard extends StatelessWidget {
                   items: supportedSymbols.map((symbol) => DropdownMenuItem(value: symbol, child: Text(symbol))).toList(),
                   onChanged: refreshing ? null : onSymbolChanged,
                 ),
-                const Text('Spot market • Binance public data', style: TextStyle(color: muted, fontSize: 10)),
+                const Text('USDT-M Futures • Bitget public data', style: TextStyle(color: muted, fontSize: 10)),
               ])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 const Text('ANALYSIS TIME', style: TextStyle(color: muted, fontSize: 9, letterSpacing: 1)),
@@ -320,7 +456,7 @@ class _Dashboard extends StatelessWidget {
               ]),
             ]),
             const SizedBox(height: 16),
-            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Binance Spot'),
+            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bitget USDT-M Futures'),
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 8),
@@ -336,7 +472,7 @@ class _Dashboard extends StatelessWidget {
                 Row(children: [
                   const Expanded(child: Text('AI MARKET BIAS', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.3))),
                   Icon(Icons.auto_awesome, color: accent, size: 14), const SizedBox(width: 5),
-                  Text('RULE-BASED ENGINE', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.bold)),
+                  Text('TRADINGAGENTS V8', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.bold)),
                 ]),
                 const SizedBox(height: 12),
                 Row(children: [
@@ -448,11 +584,11 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const _Heading('BACKTEST & PERFORMANCE', 'Backtest historis TradingAgents belum tersedia; metrik hanya dari forward signal V8'),
+            const _Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL CENTER', 'Forward tracking sinyal V8 dari candle Bitget; bukan eksekusi Hummingbot/live'),
+            const _Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
@@ -601,7 +737,7 @@ class _CandlestickChart extends StatelessWidget {
             Row(children: [
               Text('80 candle terakhir • ${interval.toUpperCase()}', style: TextStyle(color: muted, fontSize: 8)),
               const Spacer(),
-              Text('Sumber: Binance Spot', style: const TextStyle(color: muted, fontSize: 8)),
+              Text('Sumber: Bitget USDT-M Futures', style: const TextStyle(color: muted, fontSize: 8)),
             ]),
           ]);
         },
@@ -737,11 +873,20 @@ class _Structure extends StatelessWidget {
       ['SWING LOW', price(data['last_swing_low'])],
     ];
     return Card(child: Padding(padding: const EdgeInsets.all(13), child: Column(
-      children: rows.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(children: [
-          Expanded(child: Text(r[0], style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .6))),
-          Text(r[1], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-        ]))).toList(),
+      children: [
+        ...rows.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            Expanded(child: Text(r[0], style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .6))),
+            Text(r[1], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          ]))),
+        if (txt(data['method_note'], '').isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text(
+            'Sumber: ' + txt(data['provider'], 'Bitget USDT-M Futures') + ' • ' + txt(data['method_note'], ''),
+            style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
+          )),
+        ],
+      ],
     )));
   }
 }
