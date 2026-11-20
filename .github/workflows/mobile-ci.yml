@@ -16,13 +16,6 @@ on:
       - "backend/agent_worker.py"
       - ".github/workflows/tradingagents-v8-scheduled.yml"
       - ".github/workflows/mobile-ci.yml"
-  pull_request:
-    branches: [main, feature/v8-tradingagents-multi-agent]
-    paths:
-      - "frontend/crypto_ai_app/**"
-      - "backend/agent_worker.py"
-      - ".github/workflows/tradingagents-v8-scheduled.yml"
-      - ".github/workflows/mobile-ci.yml"
   workflow_dispatch:
     inputs:
       api_base_url:
