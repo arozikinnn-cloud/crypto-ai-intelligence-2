@@ -523,26 +523,18 @@ class _Dashboard extends StatelessWidget {
     final newsAgentReport = txt(agentReports['news_report'], '');
     final investmentPlanReport = txt(agentReports['investment_plan'], '');
     final traderPlanReport = txt(agentReports['trader_investment_plan'], '');
-    final marketAgentStatus = agentStatus == 'STALE'
-        ? 'STALE'
-        : marketAgentReport.isEmpty
-            ? 'NO DATA'
-            : 'COMPLETED';
-    final sentimentAgentStatus = agentStatus == 'STALE'
-        ? 'STALE'
-        : sentimentAgentReport.isEmpty
-            ? 'NO DATA'
-            : 'COMPLETED';
-    final newsAgentStatus = agentStatus == 'STALE'
-        ? 'STALE'
-        : newsAgentReport.isEmpty
-            ? 'NO DATA'
-            : 'COMPLETED';
-    final researchPlanStatus = agentStatus == 'STALE'
-        ? 'STALE'
-        : investmentPlanReport.isNotEmpty || traderPlanReport.isNotEmpty
-            ? 'COMPLETED'
-            : 'NO DATA';
+    final finalDecisionReport = txt(agentReports['final_trade_decision'], '');
+    String reportStatus(String report) {
+      if (agentStatus == 'STALE') return 'STALE';
+      if (agentStatus == 'UNAVAILABLE') return 'UNAVAILABLE';
+      return report.isEmpty ? 'NO DATA' : 'COMPLETED';
+    }
+    final marketAgentStatus = reportStatus(marketAgentReport);
+    final sentimentAgentStatus = reportStatus(sentimentAgentReport);
+    final newsAgentStatus = reportStatus(newsAgentReport);
+    final investmentPlanStatus = reportStatus(investmentPlanReport);
+    final traderPlanStatus = reportStatus(traderPlanReport);
+    final finalDecisionStatus = reportStatus(finalDecisionReport);
 
     return RefreshIndicator(
       onRefresh: refresh, color: green, backgroundColor: panel,
@@ -720,7 +712,11 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 7),
             _TextCard(title: 'News Analyst • ${newsAgentStatus}', items: [newsAgentReport], empty: 'Laporan berita belum tersedia.'),
             const SizedBox(height: 7),
-            _TextCard(title: 'Research / Trader Plan • $researchPlanStatus', items: [investmentPlanReport, traderPlanReport].where((v) => v.isNotEmpty).toList(), empty: 'Rencana riset belum tersedia.'),
+            _TextCard(title: 'Investment Plan • $investmentPlanStatus', items: [investmentPlanReport], empty: 'Investment plan belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Trader Plan • $traderPlanStatus', items: [traderPlanReport], empty: 'Trader plan belum tersedia.'),
+            const SizedBox(height: 7),
+            _TextCard(title: 'Final Trade Decision • $finalDecisionStatus', items: [finalDecisionReport], empty: 'Keputusan akhir belum tersedia.'),
             const SizedBox(height: 15),
             const _Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
             const SizedBox(height: 9),
