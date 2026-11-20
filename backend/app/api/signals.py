@@ -481,6 +481,9 @@ def list_notifications(
             take_profit_3=payload.get("take_profit_3"),
             confirmation_score=payload.get("confirmation_score"),
             confidence_note=payload.get("confidence_note"),
+            signal_outcome=payload.get("outcome"),
+            signal_realized_r=payload.get("realized_r"),
+            signal_closed_at=payload.get("closed_at"),
             signal_created_at=payload.get("created_at"),
         ))
         if len(items) >= limit:
