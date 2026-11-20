@@ -436,6 +436,7 @@ def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probabili
     }
     market_context = {
         "symbol": "BTCUSDT",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
         "timeframes": {
             "1h": dict(timeframe),
             "30m": dict(timeframe),
@@ -582,3 +583,82 @@ def test_worker_recovers_missing_signal_from_recent_completed_job():
         db.execute(delete(AgentAnalysisJob))
         db.commit()
         db.close()
+
+
+def test_v8_surfaces_soft_analyst_conflicts_and_blocks_final_plan_conflicts():
+    from app.services.analysis.tradingagents_market_context import finalize_v8_decision
+
+    timeframe = {
+        "side": "SELL",
+        "entry": 100.0,
+        "stop_loss": 102.0,
+        "take_profit": 97.0,
+        "reasons": ["Harga di bawah MA40."],
+    }
+    context = {
+        "symbol": "BTCUSDT",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "timeframes": {
+            "1h": dict(timeframe),
+            "30m": dict(timeframe),
+            "15m": dict(timeframe),
+            "5m": dict(timeframe),
+        },
+    }
+    soft_conflict = finalize_v8_decision(
+        "Sell",
+        "Rating: Sell",
+        {
+            "sentiment_report": "**Overall Sentiment:** **Bullish**",
+            "investment_plan": "**Recommendation**: Sell",
+            "trader_investment_plan": "**Action**: Sell",
+            "final_trade_decision": "**Rating**: Sell",
+        },
+        context,
+    )
+    assert soft_conflict["side"] == "SELL"
+    assert any(
+        "sentiment_report=BUY" in reason for reason in soft_conflict["reasons"]
+    )
+
+    hard_conflict = finalize_v8_decision(
+        "Sell",
+        "Rating: Sell",
+        {
+            "investment_plan": "**Recommendation**: Buy",
+            "trader_investment_plan": "**Action**: Sell",
+            "final_trade_decision": "**Rating**: Sell",
+        },
+        context,
+    )
+    assert hard_conflict["side"] == "NO TRADE"
+    assert hard_conflict["trade_plan"] is None
+    assert any("Konflik keputusan final" in reason for reason in hard_conflict["reasons"])
+
+
+def test_v8_blocks_signal_when_bitget_market_snapshot_is_stale():
+    from app.services.analysis.tradingagents_market_context import finalize_v8_decision
+
+    timeframe = {
+        "side": "BUY",
+        "entry": 100.0,
+        "stop_loss": 98.0,
+        "take_profit": 103.0,
+        "reasons": ["Harga di atas MA40."],
+    }
+    context = {
+        "symbol": "BTCUSDT",
+        "collected_at": (
+            datetime.now(timezone.utc) - timedelta(minutes=30)
+        ).isoformat(),
+        "timeframes": {
+            "1h": dict(timeframe),
+            "30m": dict(timeframe),
+            "15m": dict(timeframe),
+            "5m": dict(timeframe),
+        },
+    }
+    result = finalize_v8_decision("Buy", "Rating: Buy", {}, context)
+    assert result["side"] == "NO TRADE"
+    assert result["trade_plan"] is None
+    assert any("Data Bitget tidak cukup baru" in reason for reason in result["reasons"])
