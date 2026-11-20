@@ -14,8 +14,17 @@ const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await PushNotificationService.initialize();
+  // Push notifications are optional. A Firebase/network/configuration issue
+  // must never prevent the trading dashboard from opening.
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await PushNotificationService.initialize();
+  } catch (error, stackTrace) {
+    debugPrint('Optional Firebase initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
   runApp(const CryptoAIApp());
 }
 
@@ -96,10 +105,6 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   Future<Map<String, dynamic>> load({bool forceNew = false}) async {
     if (widget.loadAnalysis != null) return widget.loadAnalysis!();
 
-    final ai = await api.fetchTradingAgentsAnalysis(
-      symbol: selectedSymbol,
-      forceNew: forceNew,
-    );
     Future<Map<String, dynamic>> safe(
       Future<Map<String, dynamic>> request,
     ) async {
@@ -110,16 +115,33 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
       }
     }
 
-    final extras = await Future.wait([
+    // Keep the proven V7 market/intelligence feed as a data-compatibility
+    // source while V8 TradingAgents is independently read from persisted jobs.
+    // Never copy the legacy BUY/SELL decision into the V8 AI decision.
+    final results = await Future.wait([
+      safe(api.fetchTradingAgentsAnalysis(
+        symbol: selectedSymbol,
+        forceNew: forceNew,
+      )),
+      safe(api.fetchIntelligence(symbol: selectedSymbol)),
       safe(api.fetchMarketStructure(symbol: selectedSymbol)),
       safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol)),
       safe(api.fetchLiquidationHistory(symbol: selectedSymbol)),
+      safe(api.fetchCvdHistory(symbol: selectedSymbol)),
     ]);
-    final cvd = await safe(api.fetchCvdHistory(symbol: selectedSymbol));
-    final structure = extras[0];
-    final orderFlow = extras[1];
-    final liquidation = extras[2];
-    final market = Map<String, dynamic>.from(mapVal(ai['market_context']));
+    final ai = results[0];
+    final legacy = results[1];
+    final structure = results[2];
+    final orderFlow = results[3];
+    final liquidation = results[4];
+    final cvd = results[5];
+
+    final legacyMarket = mapVal(legacy['market_context']);
+    final aiMarket = mapVal(ai['market_context']);
+    final market = <String, dynamic>{
+      ...legacyMarket,
+      ...aiMarket,
+    };
     if (cvd.isNotEmpty && cvd['unavailable_reason'] == null) {
       market['cvd_history'] = cvd;
     }
@@ -131,16 +153,30 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
             : 'NO OBSERVED EVENTS',
       };
     }
-    return <String, dynamic>{
+
+    final merged = <String, dynamic>{
+      ...legacy,
       ...ai,
-      if (structure.isNotEmpty && structure['unavailable_reason'] == null)
-        'structure': structure,
-      if (orderFlow.isNotEmpty && orderFlow['unavailable_reason'] == null) ...{
-        'aggtrades_order_flow': orderFlow,
-        'order_flow': orderFlow,
-      },
+      // The V8 decision always wins; legacy signals are never reused.
+      'side': ai['side'] ?? 'NO TRADE',
       'market_context': market,
+      'derivatives': mapVal(ai['derivatives']).isNotEmpty
+          ? ai['derivatives']
+          : mapVal(legacy['derivatives']),
+      'timeframe_analyses': maps(ai['timeframe_analyses']).isNotEmpty
+          ? ai['timeframe_analyses']
+          : (legacy['timeframe_analyses'] ?? <dynamic>[]),
     };
+    if (structure.isNotEmpty && structure['unavailable_reason'] == null) {
+      merged['structure'] = structure;
+    } else if (legacy['structure'] != null) {
+      merged['structure'] = legacy['structure'];
+    }
+    if (orderFlow.isNotEmpty && orderFlow['unavailable_reason'] == null) {
+      merged['aggtrades_order_flow'] = orderFlow;
+      merged['order_flow'] = orderFlow;
+    }
+    return merged;
   }
   Future<List<Map<String, dynamic>>> loadCandles() async {
     try {
@@ -167,7 +203,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
-  Future<List<Map<String, dynamic>>> loadNotes() => widget.loadNotifications?.call() ?? api.fetchNotifications();
+  Future<List<Map<String, dynamic>>> loadNotes() async {
+    try {
+      return await (widget.loadNotifications?.call() ?? api.fetchNotifications());
+    } catch (error) {
+      debugPrint('Notification feed unavailable: $error');
+      return <Map<String, dynamic>>[];
+    }
+  }
   Future<List<Map<String, dynamic>>> loadSignals() async {
     try {
       return await api.fetchSignals(
@@ -201,9 +244,24 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
-    // Avoid firing five expensive LLM research jobs from the dashboard scanner.
-    // Multi-symbol scanning will be enabled after queue concurrency and cost controls exist.
-    return <Map<String, dynamic>>[];
+    // Restore the V7 market scanner using the existing cached/technical
+    // intelligence endpoint. This does not enqueue TradingAgents jobs.
+    return Future.wait(supportedSymbols.map((symbol) async {
+      try {
+        final result = await api.fetchIntelligence(symbol: symbol);
+        return <String, dynamic>{
+          ...result,
+          'symbol': symbol,
+          'scanner_status': 'OK',
+        };
+      } catch (error) {
+        return <String, dynamic>{
+          'symbol': symbol,
+          'side': 'UNAVAILABLE',
+          'scanner_status': error.toString(),
+        };
+      }
+    }));
   }
 
   @override
