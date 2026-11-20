@@ -48,8 +48,8 @@ def run_tradingagents(symbol: str) -> dict:
     # Use the worker-level paced retry wrapper instead of overlapping SDK retries.
     config["llm_max_retries"] = 0
     config["checkpoint_enabled"] = True
-    config["results_dir"] = os.getenv("TRADINGAGENTS_RESULTS_DIR", "/data/tradingagents/results")
-    config["data_cache_dir"] = os.getenv("TRADINGAGENTS_CACHE_DIR", "/data/tradingagents/cache")
+    config["results_dir"] = os.getenv("TRADINGAGENTS_RESULTS_DIR", "/tmp/tradingagents/results")
+    config["data_cache_dir"] = os.getenv("TRADINGAGENTS_CACHE_DIR", "/tmp/tradingagents/cache")
     config["memory_log_path"] = os.getenv(
         "TRADINGAGENTS_MEMORY_LOG_PATH", "/data/tradingagents/memory/trading_memory.md"
     )
