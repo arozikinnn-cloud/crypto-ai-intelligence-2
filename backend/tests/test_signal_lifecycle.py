@@ -284,3 +284,48 @@ def test_manual_close_is_idempotent():
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+def test_v8_inbox_filters_and_returns_linked_signal_details():
+    from app.api.signals import list_notifications
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+
+        record_signal(
+            db, "V8INBOX", "BUY", ["1h", "30m", "15m"], ["Aligned V8 setup"],
+            "v8-inbox-candle", {"entry": 100, "stop_loss": 98, "take_profit": 103},
+            "v8-inbox-candle", strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+        )
+        record_signal(
+            db, "LEGACYINBOX", "SELL", ["1h", "15m"], ["Legacy setup"],
+            "legacy-inbox-candle", {"entry": 100, "stop_loss": 102, "take_profit": 97},
+            "legacy-inbox-candle", strategy_mode="LEGACY_UNVERSIONED",
+        )
+
+        notifications = list_notifications(
+            unread_only=False,
+            limit=50,
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+            db=db,
+        )
+        assert len(notifications) == 1
+        item = notifications[0]
+        assert item.signal_id is not None
+        assert item.strategy_mode == "TRADINGAGENTS_MULTI_AGENT_V8"
+        assert item.symbol == "V8INBOX"
+        assert item.side == "BUY"
+        assert item.signal_status == "ACTIVE"
+        assert item.entry == 100
+        assert item.stop_loss == 98
+        assert item.take_profit == 103
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
