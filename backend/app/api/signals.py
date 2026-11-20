@@ -306,7 +306,9 @@ def list_signals(
         # Filter in SQL before limiting so old/legacy rows cannot crowd V8
         # signals out of the requested page.
         statement = statement.where(
-            SignalEvent.reasons_json.contains(f'"strategy_mode": "{strategy_mode}"')
+            SignalEvent.reasons_json.contains(
+                f'"strategy_mode": "{strategy_mode}"', autoescape=True
+            )
         )
     payloads = [_event_payload(row) for row in db.scalars(statement.limit(limit))]
     if strategy_mode:
@@ -390,7 +392,9 @@ def list_notifications(
         # Apply strategy filtering before pagination; otherwise a busy legacy
         # inbox could hide every newer V8 notification behind the first 200.
         statement = statement.where(
-            SignalEvent.reasons_json.contains(f'"strategy_mode": "{strategy_mode}"')
+            SignalEvent.reasons_json.contains(
+                f'"strategy_mode": "{strategy_mode}"', autoescape=True
+            )
         )
     statement = statement.limit(limit)
 
