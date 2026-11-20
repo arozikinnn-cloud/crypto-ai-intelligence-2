@@ -409,3 +409,39 @@ def test_v8_inbox_filters_before_pagination_when_legacy_history_is_large():
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probability():
+    from app.services.analysis.tradingagents_market_context import finalize_v8_decision
+
+    timeframe = {
+        "side": "BUY",
+        "entry": 100.0,
+        "stop_loss": 98.0,
+        "take_profit": 103.0,
+        "reasons": ["Harga di atas MA40."],
+    }
+    market_context = {
+        "symbol": "BTCUSDT",
+        "timeframes": {
+            "1h": dict(timeframe),
+            "30m": dict(timeframe),
+            "15m": dict(timeframe),
+            "5m": dict(timeframe),
+        },
+    }
+    result = finalize_v8_decision(
+        "Buy",
+        "Research supports a bullish setup.",
+        {"market_report": "Bullish market structure."},
+        market_context,
+    )
+
+    plan = result["trade_plan"]
+    assert result["side"] == "BUY"
+    assert plan["take_profit_1"] == 101.0
+    assert plan["take_profit_2"] == 102.0
+    assert plan["take_profit_3"] == 103.0
+    assert plan["take_profit"] == plan["take_profit_3"]
+    assert plan["confirmation_score"] == "3/3 higher-timeframe alignment"
+    assert "bukan probabilitas win rate" in plan["confidence_note"]
