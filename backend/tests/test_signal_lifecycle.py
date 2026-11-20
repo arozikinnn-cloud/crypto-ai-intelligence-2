@@ -334,7 +334,7 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
 def test_v8_inbox_filters_before_pagination_when_legacy_history_is_large():
     from datetime import datetime, timedelta, timezone
 
-    from app.api.signals import list_signals
+    from app.api.signals import list_notifications, list_signals
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
