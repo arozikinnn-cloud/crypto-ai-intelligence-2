@@ -106,7 +106,10 @@ class AnalysisApi {
 
     final job = Map<String, dynamic>.from(decoded.first as Map);
     final status = job['status']?.toString();
-    if (status == 'COMPLETED') return _agentJobToDashboard(job);
+    if (status == 'COMPLETED') {
+      if (!_isFreshAgentJob(job)) return _agentStaleDashboard(job);
+      return _agentJobToDashboard(job);
+    }
     if (status == 'FAILED') {
       return _agentUnavailableDashboard(
         symbol,
@@ -122,6 +125,57 @@ class AnalysisApi {
       symbol,
       'Belum ada hasil analisis TradingAgents yang dapat ditampilkan.',
     );
+  }
+
+  bool _isFreshAgentJob(Map<String, dynamic> job) {
+    final result = job['result'] is Map<String, dynamic>
+        ? job['result'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final context = result['market_context'] is Map<String, dynamic>
+        ? result['market_context'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final collectedAt = DateTime.tryParse(
+          context['collected_at']?.toString() ?? '',
+        ) ??
+        DateTime.tryParse(job['completed_at']?.toString() ?? '');
+    if (collectedAt == null) return false;
+    final age = DateTime.now().toUtc().difference(collectedAt.toUtc());
+    return age >= const Duration(seconds: -60) &&
+        age <= const Duration(minutes: 30);
+  }
+
+  Map<String, dynamic> _agentStaleDashboard(Map<String, dynamic> job) {
+    final dashboard = _agentJobToDashboard(job);
+    final result = job['result'] is Map<String, dynamic>
+        ? job['result'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final context = result['market_context'] is Map<String, dynamic>
+        ? result['market_context'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final collectedAt = context['collected_at']?.toString() ??
+        job['completed_at']?.toString() ??
+        'waktu tidak diketahui';
+    return {
+      ...dashboard,
+      'side': 'NO TRADE',
+      'agent_status': 'STALE',
+      'confluence_score': 0,
+      'score_note': 'Hasil TradingAgents melewati batas kesegaran 30 menit.',
+      'reasons': <String>[
+        'Hasil AI terakhir sudah kedaluwarsa; menunggu analisis baru.',
+        'Data pasar AI terakhir dikumpulkan: $collectedAt.',
+      ],
+      'context_notes': <String>[
+        'Status AI: STALE',
+        'Rencana lama tidak ditampilkan sebagai sinyal aktif.',
+        'Tidak ada order exchange yang dibuat.',
+      ],
+      'execution_ready': false,
+      'trade_plan': null,
+      'timeframe_analyses': <dynamic>[],
+      'market_context': <String, dynamic>{},
+      'derivatives': <String, dynamic>{},
+    };
   }
 
   Map<String, dynamic> _agentUnavailableDashboard(
@@ -363,7 +417,19 @@ class AnalysisApi {
     final filtered = strategyMode == null
         ? rows
         : rows.where((item) => item['strategy_mode']?.toString() == strategyMode);
-    return filtered.toList(growable: false);
+    final now = DateTime.now().toUtc();
+    return filtered.map((item) {
+      final row = Map<String, dynamic>.from(item);
+      if (strategyMode == 'TRADINGAGENTS_MULTI_AGENT_V8' &&
+          row['status']?.toString() == 'ACTIVE') {
+        final createdAt = DateTime.tryParse(row['created_at']?.toString() ?? '');
+        if (createdAt == null ||
+            now.difference(createdAt.toUtc()) > const Duration(minutes: 30)) {
+          row['status'] = 'STALE';
+        }
+      }
+      return row;
+    }).toList(growable: false);
   }
 
   Future<Map<String, dynamic>> fetchSignalPerformance() async {
