@@ -33,7 +33,7 @@ void main() {
       final result = await api.fetchTradingAgentsAnalysis();
 
       expect(result['side'], 'NO TRADE');
-      expect(result['agent_status'], 'DISABLED');
+      expect(result['agent_status'], 'UNAVAILABLE');
       expect(result['execution_ready'], isFalse);
       expect(result['trade_plan'], isNull);
       expect(result['strategy_mode'], 'TRADINGAGENTS_MULTI_AGENT_V8');
@@ -59,7 +59,7 @@ void main() {
       final result = await api.fetchTradingAgentsAnalysis();
 
       expect(result['side'], 'NO TRADE');
-      expect(result['agent_status'], 'DISABLED');
+      expect(result['agent_status'], 'UNAVAILABLE');
       expect(result['execution_ready'], isFalse);
       expect((result['context_notes'] as List).join(' '), contains('HTTP 500'));
     } finally {
@@ -86,7 +86,7 @@ void main() {
       final result = await api.fetchTradingAgentsAnalysis(forceNew: true);
 
       expect(result['side'], 'NO TRADE');
-      expect(result['agent_status'], 'DISABLED');
+      expect(result['agent_status'], 'UNAVAILABLE');
       expect(result['execution_ready'], isFalse);
       expect(result['trade_plan'], isNull);
       expect((result['context_notes'] as List).join(' '), contains('HTTP 401'));
@@ -164,6 +164,41 @@ void main() {
     }
   });
 
+
+
+  test('returns a running TradingAgents job immediately without blocking the dashboard', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/agent-analysis/jobs')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 88,
+            'symbol': 'BTCUSDT',
+            'status': 'RUNNING',
+            'created_at': '2026-11-20T00:00:00Z',
+            'result': {},
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(
+      client: client,
+      baseUrl: 'https://example.test/api/v1',
+    );
+
+    try {
+      final stopwatch = Stopwatch()..start();
+      final result = await api.fetchTradingAgentsAnalysis();
+      stopwatch.stop();
+
+      expect(result['agent_status'], 'RUNNING');
+      expect(result['side'], 'NO TRADE');
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+    } finally {
+      api.close();
+    }
+  });
 
   test('loads dashboard market context and historical baseline from live API routes', () async {
     final client = MockClient((request) async {
