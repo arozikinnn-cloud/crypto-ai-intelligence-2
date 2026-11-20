@@ -67,7 +67,7 @@ class AnalysisApi {
     // worker; the app only reads persisted jobs from Neon.
     final latestUri = _endpoint('agent-analysis/jobs', {
       'symbol': symbol,
-      'limit': '1',
+      'limit': '5',
     });
     final latestResponse = await _client
         .get(latestUri, headers: const {'Accept': 'application/json'})
@@ -97,29 +97,62 @@ class AnalysisApi {
         'Format histori TradingAgents dari backend tidak valid.',
       );
     }
-    if (decoded.isEmpty || decoded.first is! Map<String, dynamic>) {
+    final jobs = decoded
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+    if (jobs.isEmpty) {
       return _agentUnavailableDashboard(
         symbol,
         'Belum ada hasil TradingAgents tersimpan. Worker terjadwal akan mengisi histori.',
       );
     }
 
-    final job = Map<String, dynamic>.from(decoded.first as Map);
-    final status = job['status']?.toString();
-    if (status == 'COMPLETED') {
-      if (!_isFreshAgentJob(job)) return _agentStaleDashboard(job);
-      return _agentJobToDashboard(job);
+    final latestJob = jobs.first;
+    Map<String, dynamic>? freshCompleted;
+    Map<String, dynamic>? runningJob;
+    for (final job in jobs) {
+      final status = job['status']?.toString();
+      if (runningJob == null && (status == 'PENDING' || status == 'RUNNING')) {
+        runningJob = job;
+      }
+      if (status == 'COMPLETED' && _isFreshAgentJob(job)) {
+        freshCompleted = job;
+        break;
+      }
     }
-    if (status == 'FAILED') {
+
+    // Keep the last valid report visible while a newer scheduled analysis is
+    // running. A transient PENDING/RUNNING job must not blank all agent cards.
+    if (freshCompleted != null) {
+      final dashboard = _agentJobToDashboard(freshCompleted);
+      if (runningJob != null &&
+          runningJob['id'] != freshCompleted['id']) {
+        return {
+          ...dashboard,
+          'refresh_status': runningJob['status'],
+          'context_notes': <String>[
+            ...strings(dashboard['context_notes']),
+            'Analisis TradingAgents terbaru sedang berjalan; laporan selesai terakhir tetap ditampilkan sampai hasil baru tersimpan.',
+          ],
+        };
+      }
+      return dashboard;
+    }
+
+    final latestStatus = latestJob['status']?.toString();
+    if (latestStatus == 'COMPLETED') {
+      return _agentStaleDashboard(latestJob);
+    }
+    if (latestStatus == 'FAILED') {
       return _agentUnavailableDashboard(
         symbol,
-        'Analisis terakhir gagal: ${job['error_message'] ?? 'unknown error'}',
+        'Analisis terakhir gagal: ${latestJob['error_message'] ?? 'unknown error'}',
       );
     }
-    if (status == 'PENDING' || status == 'RUNNING') {
+    if (latestStatus == 'PENDING' || latestStatus == 'RUNNING') {
       // Do not hold the whole dashboard open while a cloud worker runs.
-      // Show the current job state immediately; the dashboard refreshes later.
-      return _agentJobToDashboard(job, timedOut: true);
+      return _agentJobToDashboard(latestJob, timedOut: true);
     }
     return _agentUnavailableDashboard(
       symbol,
