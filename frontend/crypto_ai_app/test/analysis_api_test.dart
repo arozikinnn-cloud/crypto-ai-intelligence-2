@@ -135,7 +135,10 @@ void main() {
             'result': {
               'side': 'NO TRADE',
               'reasons': ['TradingAgents and multi-timeframe confirmation disagree.'],
-              'market_context': {'provider': 'bitget_usdt_futures'},
+              'market_context': {
+                'provider': 'bitget_usdt_futures',
+                'collected_at': DateTime.now().toUtc().toIso8601String(),
+              },
               'timeframe_analyses': {},
               'trade_plan': null,
             },
