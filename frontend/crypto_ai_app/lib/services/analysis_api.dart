@@ -299,7 +299,7 @@ class AnalysisApi {
       'side': 'NO TRADE',
       'agent_status': 'STALE',
       'confluence_score': 0,
-      'score_note': 'Hasil TradingAgents melewati batas kesegaran 30 menit.',
+      'score_note': 'Hasil TradingAgents melewati batas kesegaran 90 menit.',
       'reasons': <String>[
         'Hasil AI terakhir sudah kedaluwarsa; menunggu analisis baru.',
         'Data pasar AI terakhir dikumpulkan: $collectedAt.',
