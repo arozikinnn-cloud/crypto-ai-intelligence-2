@@ -15,6 +15,11 @@ class SignalEventResponse(BaseModel):
     entry: float | None = None
     stop_loss: float | None = None
     take_profit: float | None = None
+    take_profit_1: float | None = None
+    take_profit_2: float | None = None
+    take_profit_3: float | None = None
+    confirmation_score: str | None = None
+    confidence_note: str | None = None
     outcome: str | None = None
     realized_r: float | None = None
     closed_at: datetime | None = None
@@ -34,4 +39,9 @@ class SignalNotificationResponse(BaseModel):
     entry: float | None = None
     stop_loss: float | None = None
     take_profit: float | None = None
+    take_profit_1: float | None = None
+    take_profit_2: float | None = None
+    take_profit_3: float | None = None
+    confirmation_score: str | None = None
+    confidence_note: str | None = None
     signal_created_at: datetime | None = None
