@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import datetime, timezone
 
 from app.services.analysis.engine import analyze_market
@@ -123,6 +124,27 @@ async def collect_bitget_v8_context(
     }
 
 
+def _explicit_report_bias(report: object) -> str | None:
+    """Read only explicit analyst labels, not incidental words in prose."""
+    if not isinstance(report, str) or not report.strip():
+        return None
+    normalized = re.sub(r"[*_`]", "", report)
+    match = re.search(
+        r"(?:overall sentiment|rating|recommendation|action)\\s*[:\\-]\\s*"
+        r"(bullish|bearish|buy|sell|hold|neutral)\\b",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    value = match.group(1).lower()
+    if value in {"bullish", "buy"}:
+        return "BUY"
+    if value in {"bearish", "sell"}:
+        return "SELL"
+    return "NO TRADE"
+
+
 def finalize_v8_decision(
     rating: str, final_decision: str, reports: dict, market_context: dict
 ) -> dict:
@@ -131,20 +153,66 @@ def finalize_v8_decision(
 
     result = normalize_tradingagents_result(rating, final_decision, reports)
     agent_side = result["side"]
+    # A disagreement from the final investment/trader plan is a hard veto.
+    # Market, sentiment, and news analysts may disagree, but that disagreement
+    # is explicitly surfaced alongside the consolidated TradingAgents decision.
+    hard_conflicts = {
+        name: bias
+        for name in ("investment_plan", "trader_investment_plan", "final_trade_decision")
+        if (bias := _explicit_report_bias(reports.get(name))) is not None
+        and agent_side in {"BUY", "SELL"}
+        and bias in {"BUY", "SELL"}
+        and bias != agent_side
+    }
+    soft_conflicts = {
+        name: bias
+        for name in ("market_report", "sentiment_report", "news_report")
+        if (bias := _explicit_report_bias(reports.get(name))) is not None
+        and agent_side in {"BUY", "SELL"}
+        and bias in {"BUY", "SELL"}
+        and bias != agent_side
+    }
     timeframes = market_context["timeframes"]
     higher_timeframes = [timeframes[name]["side"] for name in ("1h", "30m", "15m")]
     five_minute_side = timeframes["5m"]["side"]
+    collected_at = datetime.fromisoformat(
+        str(market_context.get("collected_at", "")).replace("Z", "+00:00")
+    ) if market_context.get("collected_at") else None
+    if collected_at is not None and collected_at.tzinfo is None:
+        collected_at = collected_at.replace(tzinfo=timezone.utc)
+    data_age_minutes = (
+        (datetime.now(timezone.utc) - collected_at.astimezone(timezone.utc)).total_seconds() / 60
+        if collected_at is not None else float("inf")
+    )
+    data_is_fresh = -1 <= data_age_minutes <= 20
     confirmed = (
         agent_side in {"BUY", "SELL"}
         and all(side == agent_side for side in higher_timeframes)
         and five_minute_side in {agent_side, "NO TRADE"}
+        and not hard_conflicts
+        and data_is_fresh
     )
 
     plan = None
-    reasons = [
-        f"TradingAgents rating: {result['rating']} ({agent_side}).",
-        "Validasi data harga menggunakan Bitget USDT-M Futures.",
-    ]
+    reasons = [f"TradingAgents rating: {result['rating']} ({agent_side})."]
+    if hard_conflicts:
+        reasons.append(
+            "Konflik keputusan final: " + ", ".join(
+                f"{name}={bias}" for name, bias in hard_conflicts.items()
+            ) + f"; rating utama={agent_side}. Sinyal ditahan menjadi NO TRADE."
+        )
+    if soft_conflicts:
+        reasons.append(
+            "Perbedaan analis yang perlu diperhatikan: " + ", ".join(
+                f"{name}={bias}" for name, bias in soft_conflicts.items()
+            ) + f"; keputusan konsolidasi TradingAgents={agent_side}. Detail ada di laporan tiap agent."
+        )
+    if not data_is_fresh:
+        reasons.append(
+            f"Data Bitget tidak cukup baru ({data_age_minutes:.1f} menit); "
+            "sinyal ditahan sampai snapshot terbaru tersedia."
+        )
+    reasons.append("Validasi data harga menggunakan Bitget USDT-M Futures.")
     for timeframe in ("1h", "30m", "15m", "5m"):
         item = timeframes[timeframe]
         reasons.append(f"{timeframe}: {item['side']} — " + "; ".join(item["reasons"]))
