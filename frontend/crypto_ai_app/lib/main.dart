@@ -247,15 +247,30 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     return merged;
   }
   Future<List<Map<String, dynamic>>> loadCandles() async {
-    try {
-      return await api.fetchCandles(
-        symbol: selectedSymbol,
-        interval: selectedCandleInterval,
-        limit: 80,
+    // Preserve request failures so the chart can show a recoverable error
+    // instead of silently treating network/API failures as an empty market.
+    final rows = await api.fetchCandles(
+      symbol: selectedSymbol,
+      interval: selectedCandleInterval,
+      limit: 80,
+    );
+    // Reject malformed OHLC rows before they reach CustomPainter. A single
+    // NaN/Infinity or inverted candle must not break the entire chart render.
+    final valid = rows.where((row) {
+      final open = doubleVal(row['open']);
+      final high = doubleVal(row['high']);
+      final low = doubleVal(row['low']);
+      final close = doubleVal(row['close']);
+      return [open, high, low, close].every((value) => value.isFinite && value > 0) &&
+          high >= low && high >= open && high >= close &&
+          low <= open && low <= close;
+    }).toList(growable: false);
+    if (valid.length < 3) {
+      throw const FormatException(
+        'Data OHLC Bitget tidak valid atau kurang dari 3 candle.',
       );
-    } catch (_) {
-      return <Map<String, dynamic>>[];
     }
+    return valid;
   }
 
   Future<void> changeCandleInterval(String interval) async {
@@ -361,32 +376,32 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
 
   Future<void> loadSecondaryFeeds({bool includeScanner = false}) async {
-    // Wait for the core market view before opening secondary API requests.
+    // Secondary panels are independent. Start their requests together so a
+    // slow notifications endpoint cannot leave Backtest, Signal Center and
+    // Performance stuck in loading state. Every loader handles its own errors.
     try {
       await Future.wait([analysis, candles]);
     } catch (_) {
-      // Secondary feeds may still be useful when one primary panel is unavailable.
+      // Secondary feeds remain useful when a primary panel is unavailable.
     }
     if (!mounted) return;
-    setState(() => notifications = loadNotes());
-    await notifications;
-    if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    setState(() => signals = loadSignals());
-    await signals;
-    if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    setState(() => backtest = loadBacktest());
-    await backtest;
-    if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    setState(() => signalPerformance = loadSignalPerformance());
-    await signalPerformance;
-    if (!mounted) return;
-    if (includeScanner) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-      if (mounted) setState(() => scanner = loadScanner());
-    }
+    setState(() {
+      notifications = loadNotes();
+      signals = loadSignals();
+      backtest = loadBacktest();
+      signalPerformance = loadSignalPerformance();
+      if (includeScanner) scanner = loadScanner();
+    });
+    final pending = <Future<void>>[
+      notifications.then<void>((_) {}),
+      signals.then<void>((_) {}),
+      backtest.then<void>((_) {}),
+      signalPerformance.then<void>((_) {}),
+      if (includeScanner) scanner.then<void>((_) {}),
+    ];
+    // Future.wait is safe because each loader converts transport errors into
+    // an explicit unavailable state; it does not block one panel's rendering.
+    await Future.wait(pending);
   }
 
   void startPolling() {
