@@ -104,7 +104,7 @@ jobs:
               raise SystemExit("GOOGLE_API_KEY is missing.")
           print("Provider key present; PostgreSQL URL validated (credentials hidden).")
           PY
-      - name: Queue one scheduled BTC analysis if none is pending
+      - name: Queue scheduled analyses for all supported symbols
         if: steps.config.outputs.configured == 'true'
         working-directory: backend
         run: |
@@ -115,46 +115,60 @@ jobs:
           from app.database.migrations import migrate_schema
           from app.database.session import SessionLocal, engine
           from app.models.agent_analysis_job import AgentAnalysisJob
+
+          symbols = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT")
           Base.metadata.create_all(bind=engine)
           migrate_schema(engine)
           db = SessionLocal()
           try:
-              active = db.scalar(
-                  select(AgentAnalysisJob.id)
-                  .where(
-                      AgentAnalysisJob.symbol == "BTCUSDT",
-                      AgentAnalysisJob.status.in_(["PENDING", "RUNNING"]),
+              now = datetime.now(timezone.utc)
+              for symbol in symbols:
+                  active = db.scalar(
+                      select(AgentAnalysisJob.id)
+                      .where(
+                          AgentAnalysisJob.symbol == symbol,
+                          AgentAnalysisJob.status.in_(["PENDING", "RUNNING"]),
+                      )
+                      .limit(1)
                   )
-                  .limit(1)
-              )
-              latest = db.scalar(
-                  select(AgentAnalysisJob)
-                  .where(AgentAnalysisJob.symbol == "BTCUSDT")
-                  .order_by(AgentAnalysisJob.created_at.desc())
-                  .limit(1)
-              )
-              recent_completed = (
-                  latest is not None
-                  and latest.status == "COMPLETED"
-                  and latest.completed_at is not None
-                  and latest.completed_at >= datetime.now(timezone.utc) - timedelta(minutes=45)
-              )
-              if active is not None:
-                  print("Existing pending/running BTCUSDT job found; worker recovery will handle it.")
-              elif recent_completed:
-                  print("A recent completed BTCUSDT result exists; avoiding duplicate AI usage within the hourly cycle.")
-              else:
-                  db.add(AgentAnalysisJob(symbol="BTCUSDT", ticker="BTC-USD", status="PENDING"))
-                  db.commit()
-                  print("Queued BTCUSDT.")
+                  latest = db.scalar(
+                      select(AgentAnalysisJob)
+                      .where(AgentAnalysisJob.symbol == symbol)
+                      .order_by(AgentAnalysisJob.created_at.desc())
+                      .limit(1)
+                  )
+                  recent_completed = (
+                      latest is not None
+                      and latest.status == "COMPLETED"
+                      and latest.completed_at is not None
+                      and latest.completed_at >= now - timedelta(minutes=45)
+                  )
+                  if active is not None:
+                      print(f"{symbol}: existing pending/running job; worker will process or recover it.")
+                  elif recent_completed:
+                      print(f"{symbol}: recent completed result found; avoiding duplicate AI usage.")
+                  else:
+                      base = symbol[:-4]
+                      db.add(AgentAnalysisJob(
+                          symbol=symbol,
+                          ticker=f"{base}-USD",
+                          status="PENDING",
+                      ))
+                      print(f"{symbol}: queued.")
+              db.commit()
           finally:
               db.close()
           PY
-      - name: Run one bounded TradingAgents job
+      - name: Run bounded TradingAgents jobs for supported symbols
         if: steps.config.outputs.configured == 'true'
         working-directory: backend
-        run: python -m agent_worker --once
-      - name: Verify AI result was completed and persisted
+        run: |
+          set -euo pipefail
+          for cycle in 1 2 3 4 5; do
+            echo "===== TradingAgents job cycle $cycle/5 ====="
+            python -m agent_worker --once
+          done
+      - name: Verify all supported AI results were completed and persisted
         if: steps.config.outputs.configured == 'true'
         working-directory: backend
         run: |
@@ -163,28 +177,34 @@ jobs:
           from sqlalchemy import select
           from app.database.session import SessionLocal
           from app.models.agent_analysis_job import AgentAnalysisJob
+
+          symbols = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT")
           db = SessionLocal()
           try:
-              job = db.scalar(
-                  select(AgentAnalysisJob)
-                  .where(AgentAnalysisJob.symbol == "BTCUSDT")
-                  .order_by(AgentAnalysisJob.created_at.desc())
-                  .limit(1)
-              )
-              if job is None:
-                  raise SystemExit("No BTCUSDT analysis job was found.")
-              if job.status != "COMPLETED" or not job.result_json:
-                  raise SystemExit(
-                      f"TradingAgents did not complete: status={job.status}; "
-                      f"error={job.error_message or 'no error detail'}"
+              for symbol in symbols:
+                  job = db.scalar(
+                      select(AgentAnalysisJob)
+                      .where(AgentAnalysisJob.symbol == symbol)
+                      .order_by(AgentAnalysisJob.created_at.desc())
+                      .limit(1)
                   )
-              result = json.loads(job.result_json)
-              if not isinstance(result, dict) or not result.get("side"):
-                  raise SystemExit("Completed job has no persisted decision payload.")
-              print(
-                  "Verified BTCUSDT AI result persisted in PostgreSQL: "
-                  f"status={job.status}, decision={result.get('side')}."
-              )
+                  if job is None:
+                      raise SystemExit(f"No {symbol} analysis job was found.")
+                  if job.status != "COMPLETED" or not job.result_json:
+                      raise SystemExit(
+                          f"{symbol} TradingAgents did not complete: status={job.status}; "
+                          f"error={job.error_message or 'no error detail'}"
+                      )
+                  result = json.loads(job.result_json)
+                  reports = result.get("reports") if isinstance(result, dict) else None
+                  if not isinstance(result, dict) or not result.get("side"):
+                      raise SystemExit(f"{symbol} has no persisted AI decision payload.")
+                  if not isinstance(reports, dict) or not reports:
+                      raise SystemExit(f"{symbol} has no persisted multi-agent reports.")
+                  print(
+                      f"Verified {symbol}: status={job.status}, "
+                      f"decision={result.get('side')}, reports={len(reports)}."
+                  )
           finally:
               db.close()
           PY
