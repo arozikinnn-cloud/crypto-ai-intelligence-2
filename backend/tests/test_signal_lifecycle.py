@@ -472,6 +472,10 @@ def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probabili
     assert plan["take_profit"] == plan["take_profit_3"]
     assert plan["confirmation_score"] == "3/3 higher-timeframe alignment"
     assert "bukan probabilitas win rate" in plan["confidence_note"]
+    assert any(
+        "Level Entry/SL/TP final mengikuti candle tertutup Bitget Futures" in reason
+        for reason in result["reasons"]
+    )
 
 
 def test_validated_v8_signal_replaces_legacy_active_signal_and_legacy_cannot_replace_v8():
