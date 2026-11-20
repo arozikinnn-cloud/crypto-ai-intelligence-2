@@ -260,6 +260,21 @@ jobs:
                           .limit(1)
                       )
                       if signal is None:
+                          # An already-active V8 thesis is the symbol-wide
+                          # duplicate guard and is a valid linked signal.
+                          signal = db.scalar(
+                              select(SignalEvent)
+                              .where(
+                                  SignalEvent.symbol == symbol,
+                                  SignalEvent.status == "ACTIVE",
+                                  SignalEvent.reasons_json.contains(
+                                      '"strategy_mode": "TRADINGAGENTS_MULTI_AGENT_V8"',
+                                      autoescape=True,
+                                  ),
+                              )
+                              .limit(1)
+                          )
+                      if signal is None:
                           raise SystemExit(
                               f"{symbol} has a valid AI trade plan but no linked Signal Center event."
                           )
