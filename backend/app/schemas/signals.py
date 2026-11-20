@@ -27,3 +27,11 @@ class SignalNotificationResponse(BaseModel):
     message: str
     read: bool
     created_at: datetime
+    strategy_mode: str | None = None
+    symbol: str | None = None
+    side: str | None = None
+    signal_status: str | None = None
+    entry: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    signal_created_at: datetime | None = None
