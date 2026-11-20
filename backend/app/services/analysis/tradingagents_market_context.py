@@ -265,6 +265,11 @@ def finalize_v8_decision(
                 "status": "PAPER_VALIDATION_REQUIRED",
             }
             reasons.append("TradingAgents dan 1H/30m/15m searah; rencana risiko 1:1.5 valid.")
+            reasons.append(
+                "Level Entry/SL/TP final mengikuti candle tertutup Bitget Futures "
+                "dan ATR(14); angka harga dalam narasi agent adalah referensi riset, "
+                "bukan level sinyal final."
+            )
         else:
             confirmed = False
             reasons.append("Rencana risiko gagal validasi harga atau rasio 1:1.5.")
