@@ -456,3 +456,68 @@ def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probabili
     assert plan["take_profit"] == plan["take_profit_3"]
     assert plan["confirmation_score"] == "3/3 higher-timeframe alignment"
     assert "bukan probabilitas win rate" in plan["confidence_note"]
+
+
+def test_validated_v8_signal_replaces_legacy_active_signal_and_legacy_cannot_replace_v8():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+
+        record_signal(
+            db, "PRIORITYTEST", "SELL", ["1h", "15m"], ["Legacy bearish setup"],
+            "legacy-priority-candle",
+            {"entry": 100, "stop_loss": 102, "take_profit": 97},
+            "legacy-priority-candle",
+            strategy_mode="ICHIMOKU_RSI16_MA40_H1_M15_M5",
+        )
+        legacy = db.scalar(select(SignalEvent).where(
+            SignalEvent.symbol == "PRIORITYTEST"
+        ))
+        assert legacy.status == "ACTIVE"
+
+        record_signal(
+            db, "PRIORITYTEST", "BUY", ["1h", "30m", "15m", "5m"],
+            ["Validated TradingAgents V8 bullish setup"],
+            "v8-priority-candle",
+            {"entry": 100, "stop_loss": 98, "take_profit": 103},
+            "v8-priority-candle",
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+        )
+        rows = list(db.scalars(select(SignalEvent).where(
+            SignalEvent.symbol == "PRIORITYTEST"
+        ).order_by(SignalEvent.id)))
+        assert len(rows) == 2
+        assert rows[0].status == "INVALIDATED"
+        assert "Digantikan oleh sinyal TradingAgents V8" in json.loads(
+            rows[0].reasons_json
+        )["invalidation_reason"]
+        assert rows[1].status == "ACTIVE"
+        assert rows[1].side == "BUY"
+
+        # A later legacy analysis must not supersede the active validated V8 thesis.
+        record_signal(
+            db, "PRIORITYTEST", "SELL", ["1h", "15m"], ["New legacy reversal"],
+            "legacy-after-v8-candle",
+            {"entry": 100, "stop_loss": 102, "take_profit": 97},
+            "legacy-after-v8-candle",
+            strategy_mode="ICHIMOKU_RSI16_MA40_H1_M15_M5",
+        )
+        final_rows = list(db.scalars(select(SignalEvent).where(
+            SignalEvent.symbol == "PRIORITYTEST"
+        ).order_by(SignalEvent.id)))
+        assert len(final_rows) == 2
+        assert final_rows[1].status == "ACTIVE"
+        assert final_rows[1].side == "BUY"
+        assert any(
+            "legacy signal invalidated" in item.title
+            for item in db.scalars(select(SignalNotification))
+        )
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
