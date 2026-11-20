@@ -166,4 +166,76 @@ void main() {
     }
   });
 
+
+  test('loads dashboard market context and historical baseline from live API routes', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/analysis/order-flow/aggtrades')) {
+        return http.Response(jsonEncode({
+          'symbol': 'BTCUSDT',
+          'trade_count': 20,
+          'buy_aggressor_volume': 3.0,
+          'sell_aggressor_volume': 2.0,
+          'net_delta': 1.0,
+          'bias': 'BUY_PRESSURE',
+          'cvd_points': [],
+        }), 200);
+      }
+      if (request.url.path.endsWith('/analysis/structure')) {
+        return http.Response(jsonEncode({
+          'symbol': 'BTCUSDT',
+          'trend': 'bearish',
+          'event': 'none',
+          'liquidity_sweep': 'none',
+          'last_swing_high': 64000,
+          'last_swing_low': 61000,
+        }), 200);
+      }
+      if (request.url.path.endsWith('/analysis/order-flow/cvd-history')) {
+        return http.Response(jsonEncode({
+          'symbol': 'BTCUSDT',
+          'cvd_scope': 'persisted_observed_history',
+          'points': [
+            {'cumulative_delta': 1.0},
+            {'cumulative_delta': 2.0},
+          ],
+        }), 200);
+      }
+      if (request.url.path.endsWith('/analysis/liquidations/history')) {
+        return http.Response(jsonEncode({
+          'symbol': 'BTCUSDT',
+          'event_count': 0,
+          'points': [],
+          'note': 'No observed events',
+        }), 200);
+      }
+      if (request.url.path.endsWith('/analysis/backtest')) {
+        return http.Response(jsonEncode({
+          'symbol': 'BTCUSDT',
+          'timeframe': '1h',
+          'candles': 299,
+          'train': {'trades': 10},
+          'out_of_sample': {'trades': 11, 'win_rate_pct': 36.36},
+          'quality_checks': {'minimum_oos_trades_met': false},
+        }), 200);
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final flow = await api.fetchAggTradesOrderFlow();
+      final structure = await api.fetchMarketStructure();
+      final cvd = await api.fetchCvdHistory();
+      final liquidations = await api.fetchLiquidationHistory();
+      final backtest = await api.fetchBacktest(limit: 300);
+
+      expect(flow['bias'], 'BUY_PRESSURE');
+      expect(structure['trend'], 'bearish');
+      expect(cvd['cvd_scope'], 'persisted_observed_history');
+      expect(liquidations['event_count'], 0);
+      expect(mapValForTest(backtest['out_of_sample'])['trades'], 11);
+    } finally {
+      api.close();
+    }
+  });
+
 }
