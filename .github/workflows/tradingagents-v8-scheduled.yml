@@ -13,7 +13,7 @@ on:
       - backend/app/schemas/signals.py
   schedule:
     # Episodic scheduled execution, not a persistent 24/7 process.
-    - cron: "17 * * * *"
+    - cron: "17 */4 * * *"
 
 permissions:
   contents: read
