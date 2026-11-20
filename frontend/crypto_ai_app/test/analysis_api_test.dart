@@ -121,4 +121,49 @@ void main() {
     }
   });
 
+
+  test('reads the latest completed V8 job without enqueueing another run', () async {
+    var postCount = 0;
+    final client = MockClient((request) async {
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/agent-analysis/jobs')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 7,
+            'symbol': 'BTCUSDT',
+            'status': 'COMPLETED',
+            'created_at': '2026-11-20T00:00:00Z',
+            'completed_at': '2026-11-20T00:02:00Z',
+            'result': {
+              'side': 'NO TRADE',
+              'reasons': ['TradingAgents and multi-timeframe confirmation disagree.'],
+              'market_context': {'provider': 'bitget_usdt_futures'},
+              'timeframe_analyses': {},
+              'trade_plan': null,
+            },
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      if (request.method == 'POST') {
+        postCount++;
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(
+      client: client,
+      baseUrl: 'https://example.test/api/v1',
+    );
+
+    try {
+      final result = await api.fetchTradingAgentsAnalysis();
+
+      expect(result['side'], 'NO TRADE');
+      expect(result['agent_status'], 'COMPLETED');
+      expect(result['strategy_mode'], 'TRADINGAGENTS_MULTI_AGENT_V8');
+      expect(postCount, 0);
+    } finally {
+      api.close();
+    }
+  });
+
 }
