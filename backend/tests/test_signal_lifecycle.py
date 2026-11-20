@@ -329,3 +329,83 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+def test_v8_inbox_filters_before_pagination_when_legacy_history_is_large():
+    from datetime import datetime, timedelta, timezone
+
+    from app.api.signals import list_signals
+
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        now = datetime.now(timezone.utc)
+        v8 = SignalEvent(
+            dedupe_key="v8-old-page-test",
+            symbol="V8PAGE",
+            side="BUY",
+            status="ACTIVE",
+            timeframe_set="1h,30m,15m",
+            reasons_json=json.dumps({
+                "reasons": ["V8 setup"],
+                "trade_plan": {"entry": 100, "stop_loss": 98, "take_profit": 103},
+                "strategy_mode": "TRADINGAGENTS_MULTI_AGENT_V8",
+            }),
+            created_at=now - timedelta(minutes=500),
+            updated_at=now - timedelta(minutes=500),
+        )
+        db.add(v8)
+        db.flush()
+        db.add(SignalNotification(
+            signal_id=v8.id,
+            title="V8 older signal",
+            message="Persisted V8 notification",
+            created_at=now - timedelta(minutes=500),
+        ))
+        for index in range(205):
+            created = now - timedelta(minutes=204 - index)
+            legacy = SignalEvent(
+                dedupe_key=f"legacy-page-test-{index}",
+                symbol=f"OLD{index:03d}",
+                side="SELL",
+                status="ACTIVE",
+                timeframe_set="1h,15m",
+                reasons_json=json.dumps({
+                    "reasons": ["legacy"],
+                    "trade_plan": {"entry": 100, "stop_loss": 102, "take_profit": 97},
+                    "strategy_mode": "LEGACY_UNVERSIONED",
+                }),
+                created_at=created,
+                updated_at=created,
+            )
+            db.add(legacy)
+            db.flush()
+            db.add(SignalNotification(
+                signal_id=legacy.id,
+                title="Legacy signal",
+                message="Legacy notification",
+                created_at=created,
+            ))
+        db.commit()
+
+        inbox = list_notifications(
+            unread_only=False, limit=10,
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8", db=db,
+        )
+        signals = list_signals(
+            status="all", limit=10,
+            strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8", db=db,
+        )
+        assert len(inbox) == 1
+        assert inbox[0].symbol == "V8PAGE"
+        assert len(signals) == 1
+        assert signals[0]["symbol"] == "V8PAGE"
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
