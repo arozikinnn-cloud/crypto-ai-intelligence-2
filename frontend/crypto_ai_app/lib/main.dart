@@ -119,23 +119,17 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     // Keep the proven V7 market/intelligence feed as a data-compatibility
     // source while V8 TradingAgents is independently read from persisted jobs.
     // Never copy the legacy BUY/SELL decision into the V8 AI decision.
-    final results = await Future.wait([
-      safe(api.fetchTradingAgentsAnalysis(
-        symbol: selectedSymbol,
-        forceNew: forceNew,
-      )),
-      safe(api.fetchIntelligence(symbol: selectedSymbol)),
-      safe(api.fetchMarketStructure(symbol: selectedSymbol)),
-      safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol)),
-      safe(api.fetchLiquidationHistory(symbol: selectedSymbol)),
-      safe(api.fetchCvdHistory(symbol: selectedSymbol)),
-    ]);
-    final ai = results[0];
-    final legacy = results[1];
-    final structure = results[2];
-    final orderFlow = results[3];
-    final liquidation = results[4];
-    final cvd = results[5];
+    // Keep the Vercel cold-start footprint low: requests share one serverless
+    // entrypoint, so sequential reads avoid spawning many cold instances at once.
+    final ai = await safe(api.fetchTradingAgentsAnalysis(
+      symbol: selectedSymbol,
+      forceNew: forceNew,
+    ));
+    final legacy = await safe(api.fetchIntelligence(symbol: selectedSymbol));
+    final structure = await safe(api.fetchMarketStructure(symbol: selectedSymbol));
+    final orderFlow = await safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol));
+    final liquidation = await safe(api.fetchLiquidationHistory(symbol: selectedSymbol));
+    final cvd = await safe(api.fetchCvdHistory(symbol: selectedSymbol));
 
     final legacyMarket = mapVal(legacy['market_context']);
     final aiMarket = mapVal(ai['market_context']);
@@ -245,24 +239,29 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   }
 
   Future<List<Map<String, dynamic>>> loadScanner() async {
-    // Restore the V7 market scanner using the existing cached/technical
-    // intelligence endpoint. This does not enqueue TradingAgents jobs.
-    return Future.wait(supportedSymbols.map((symbol) async {
+    // Scan sequentially. Five simultaneous intelligence requests previously
+    // multiplied the Vercel cold-start load and could starve the main dashboard.
+    final results = <Map<String, dynamic>>[];
+    for (final symbol in supportedSymbols) {
+      if (results.isNotEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
       try {
         final result = await api.fetchIntelligence(symbol: symbol);
-        return <String, dynamic>{
+        results.add(<String, dynamic>{
           ...result,
           'symbol': symbol,
           'scanner_status': 'OK',
-        };
+        });
       } catch (error) {
-        return <String, dynamic>{
+        results.add(<String, dynamic>{
           'symbol': symbol,
           'side': 'UNAVAILABLE',
           'scanner_status': error.toString(),
-        };
+        });
       }
-    }));
+    }
+    return results;
   }
 
   @override
@@ -271,18 +270,45 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     WidgetsBinding.instance.addObserver(this);
     analysis = load();
     candles = loadCandles();
-    notifications = loadNotes();
-    scanner = loadScanner();
-    signals = loadSignals();
-    backtest = loadBacktest();
-    signalPerformance = loadSignalPerformance();
+    // Render the core market dashboard first. Load secondary feeds afterwards
+    // so they do not compete with the initial market-data requests.
+    notifications = Future.value(<Map<String, dynamic>>[]);
+    scanner = Future.value(<Map<String, dynamic>>[]);
+    signals = Future.value(<Map<String, dynamic>>[]);
+    backtest = Future.value(<String, dynamic>{'unavailable_reason': 'Memuat baseline...'});
+    signalPerformance = Future.value(<String, dynamic>{});
+    unawaited(loadSecondaryFeeds(includeScanner: true));
     startPolling();
+  }
+
+  Future<void> loadSecondaryFeeds({bool includeScanner = false}) async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    setState(() => notifications = loadNotes());
+    await notifications;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => signals = loadSignals());
+    await signals;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => backtest = loadBacktest());
+    await backtest;
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    setState(() => signalPerformance = loadSignalPerformance());
+    await signalPerformance;
+    if (!mounted) return;
+    if (includeScanner) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => scanner = loadScanner());
+    }
   }
 
   void startPolling() {
     poller?.cancel();
-    poller = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() { notifications = loadNotes(); signals = loadSignals(); signalPerformance = loadSignalPerformance(); backtest = loadBacktest(); });
+    poller = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) unawaited(loadSecondaryFeeds());
     });
     analysisPoller?.cancel();
     analysisPoller = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -294,7 +320,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(PushNotificationService.initialize());
-      setState(() { analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+      setState(() { analysis = load(); candles = loadCandles(); });
+      unawaited(loadSecondaryFeeds(includeScanner: true));
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
@@ -306,7 +333,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> refresh() async {
     if (refreshing) return;
-    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); notifications = loadNotes(); scanner = loadScanner(); signals = loadSignals(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() { refreshing = true; analysis = load(); candles = loadCandles(); });
+    unawaited(loadSecondaryFeeds(includeScanner: true));
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
 
