@@ -44,4 +44,7 @@ class SignalNotificationResponse(BaseModel):
     take_profit_3: float | None = None
     confirmation_score: str | None = None
     confidence_note: str | None = None
+    signal_outcome: str | None = None
+    signal_realized_r: float | None = None
+    signal_closed_at: datetime | None = None
     signal_created_at: datetime | None = None
