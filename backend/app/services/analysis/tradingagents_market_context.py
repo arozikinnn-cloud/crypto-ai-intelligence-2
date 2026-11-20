@@ -130,8 +130,8 @@ def _explicit_report_bias(report: object) -> str | None:
         return None
     normalized = re.sub(r"[*_`]", "", report)
     match = re.search(
-        r"(?:overall sentiment|rating|recommendation|action)\\s*[:\\-]\\s*"
-        r"(bullish|bearish|buy|sell|hold|neutral)\\b",
+        r"(?:overall sentiment|rating|recommendation|action)\s*[:\-]\s*"
+        r"(bullish|bearish|buy|sell|hold|neutral)\b",
         normalized,
         flags=re.IGNORECASE,
     )
@@ -175,9 +175,14 @@ def finalize_v8_decision(
     timeframes = market_context["timeframes"]
     higher_timeframes = [timeframes[name]["side"] for name in ("1h", "30m", "15m")]
     five_minute_side = timeframes["5m"]["side"]
-    collected_at = datetime.fromisoformat(
-        str(market_context.get("collected_at", "")).replace("Z", "+00:00")
-    ) if market_context.get("collected_at") else None
+    collected_at = None
+    try:
+        if market_context.get("collected_at"):
+            collected_at = datetime.fromisoformat(
+                str(market_context["collected_at"]).replace("Z", "+00:00")
+            )
+    except ValueError:
+        collected_at = None
     if collected_at is not None and collected_at.tzinfo is None:
         collected_at = collected_at.replace(tzinfo=timezone.utc)
     data_age_minutes = (
