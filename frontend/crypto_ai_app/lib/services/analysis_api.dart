@@ -8,7 +8,7 @@ class AnalysisApi {
         _baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'API_BASE_URL',
-                  defaultValue: 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1',
+                  defaultValue: 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1',
                 ))
             .replaceFirst(RegExp(r'/+$'), '');
 
@@ -62,95 +62,96 @@ class AnalysisApi {
     String symbol = 'BTCUSDT',
     bool forceNew = false,
   }) async {
-    Map<String, dynamic>? job;
-    if (!forceNew) {
-      final latestUri = _endpoint('agent-analysis/jobs', {
-        'symbol': symbol,
-        'limit': '1',
-      });
-      final latestResponse = await _client
-          .get(latestUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (latestResponse.statusCode == 200) {
-        final decoded = jsonDecode(latestResponse.body);
-        if (decoded is List && decoded.isNotEmpty &&
-            decoded.first is Map<String, dynamic>) {
-          job = decoded.first as Map<String, dynamic>;
-          final status = job['status']?.toString();
-          if (status == 'COMPLETED') return _agentJobToDashboard(job);
-          if (status == 'FAILED') {
-            throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
-          }
+    // The Android app is a public client: it must never enqueue expensive AI
+    // jobs or carry the server-only enqueue token. GitHub Actions runs the
+    // worker; the app only reads persisted jobs from Neon.
+    final latestUri = _endpoint('agent-analysis/jobs', {
+      'symbol': symbol,
+      'limit': '1',
+    });
+    final latestResponse = await _client
+        .get(latestUri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+
+    if (latestResponse.statusCode == 401 ||
+        latestResponse.statusCode == 403 ||
+        latestResponse.statusCode == 404 ||
+        latestResponse.statusCode >= 500) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Backend V8 tidak dapat membaca histori analisis '
+        '(HTTP ${latestResponse.statusCode}). Periksa deployment V8 dan akses API.',
+      );
+    }
+    if (latestResponse.statusCode != 200) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Backend V8 mengembalikan HTTP ${latestResponse.statusCode}.',
+      );
+    }
+
+    final decoded = jsonDecode(latestResponse.body);
+    if (decoded is! List) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Format histori TradingAgents dari backend tidak valid.',
+      );
+    }
+    if (decoded.isEmpty || decoded.first is! Map<String, dynamic>) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Belum ada hasil TradingAgents tersimpan. Worker terjadwal akan mengisi histori.',
+      );
+    }
+
+    final job = Map<String, dynamic>.from(decoded.first as Map);
+    final status = job['status']?.toString();
+    if (status == 'COMPLETED') return _agentJobToDashboard(job);
+    if (status == 'FAILED') {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Analisis terakhir gagal: ${job['error_message'] ?? 'unknown error'}',
+      );
+    }
+    if (status == 'PENDING' || status == 'RUNNING') {
+      final jobId = job['id'];
+      if (jobId is! int) {
+        return _agentUnavailableDashboard(symbol, 'ID job TradingAgents tidak valid.');
+      }
+      for (var attempt = 0; attempt < 18; attempt++) {
+        await Future<void>.delayed(const Duration(seconds: 5));
+        final statusUri = _endpoint('agent-analysis/jobs/$jobId');
+        final statusResponse = await _client
+            .get(statusUri, headers: const {'Accept': 'application/json'})
+            .timeout(const Duration(seconds: 20));
+        if (statusResponse.statusCode != 200) {
+          return _agentUnavailableDashboard(
+            symbol,
+            'Tidak dapat membaca status job TradingAgents (HTTP ${statusResponse.statusCode}).',
+          );
         }
-      } else if (latestResponse.statusCode >= 500) {
-        return _agentUnavailableDashboard(
-          symbol,
-          'Backend V8 belum dapat dijangkau (HTTP ${latestResponse.statusCode}). Mode read-only aktif.',
-        );
-      } else if (latestResponse.statusCode != 404) {
-        throw Exception(
-          'TradingAgents API error ${latestResponse.statusCode}: '
-          '${_errorMessage(latestResponse.body)}',
-        );
+        final statusPayload = jsonDecode(statusResponse.body);
+        if (statusPayload is! Map<String, dynamic>) {
+          return _agentUnavailableDashboard(symbol, 'Format status job TradingAgents tidak valid.');
+        }
+        final current = Map<String, dynamic>.from(statusPayload);
+        if (current['status'] == 'COMPLETED') return _agentJobToDashboard(current);
+        if (current['status'] == 'FAILED') {
+          return _agentUnavailableDashboard(
+            symbol,
+            'Analisis TradingAgents gagal: ${current['error_message'] ?? 'unknown error'}',
+          );
+        }
+        if (current['status'] != 'PENDING' && current['status'] != 'RUNNING') {
+          return _agentUnavailableDashboard(symbol, 'Status job TradingAgents tidak dikenali.');
+        }
+        if (attempt == 17) return _agentJobToDashboard(current, timedOut: true);
       }
     }
-
-    final hasActiveJob = job != null &&
-        {'PENDING', 'RUNNING'}.contains(job['status']?.toString());
-    if (job == null ||
-        (!hasActiveJob && (forceNew || job['status'] != 'COMPLETED'))) {
-      final createUri = _endpoint('agent-analysis/jobs', {'symbol': symbol});
-      final createResponse = await _client
-          .post(createUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (createResponse.statusCode == 401 ||
-          createResponse.statusCode == 403 ||
-          createResponse.statusCode == 503 ||
-          createResponse.statusCode == 404 ||
-          createResponse.statusCode >= 500) {
-        // Keep the trial APK usable in read-only mode while the private
-        // TradingAgents worker/provider is not configured. Never substitute
-        // legacy indicators or emit a BUY/SELL decision in this state.
-        return _agentUnavailableDashboard(
-          symbol,
-          _errorMessage(createResponse.body),
-        );
-      }
-      if (createResponse.statusCode != 202) {
-        throw Exception(
-          'Unable to start TradingAgents analysis (${createResponse.statusCode}): '
-          '${_errorMessage(createResponse.body)}',
-        );
-      }
-      final decoded = jsonDecode(createResponse.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('Invalid TradingAgents job response.');
-      }
-      job = decoded;
-    }
-
-    final jobId = job['id'];
-    if (jobId is! int) throw const FormatException('TradingAgents job ID is missing.');
-    for (var attempt = 0; attempt < 18; attempt++) {
-      await Future<void>.delayed(const Duration(seconds: 5));
-      final statusUri = _endpoint('agent-analysis/jobs/$jobId');
-      final statusResponse = await _client
-          .get(statusUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (statusResponse.statusCode != 200) {
-        throw Exception('TradingAgents status error: ${statusResponse.statusCode}');
-      }
-      final statusPayload = jsonDecode(statusResponse.body);
-      if (statusPayload is! Map<String, dynamic>) {
-        throw const FormatException('Invalid TradingAgents status response.');
-      }
-      job = statusPayload;
-      if (job['status'] == 'COMPLETED') return _agentJobToDashboard(job);
-      if (job['status'] == 'FAILED') {
-        throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
-      }
-    }
-    return _agentJobToDashboard(job!, timedOut: true);
+    return _agentUnavailableDashboard(
+      symbol,
+      'Belum ada hasil analisis TradingAgents yang dapat ditampilkan.',
+    );
   }
 
   Map<String, dynamic> _agentUnavailableDashboard(
