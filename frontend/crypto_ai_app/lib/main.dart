@@ -91,6 +91,7 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObserver {
   final api = AnalysisApi();
+  final signalCenterKey = GlobalKey();
   late Future<Map<String, dynamic>> analysis;
   late Future<List<Map<String, dynamic>>> notifications;
   late Future<List<Map<String, dynamic>>> scanner;
@@ -474,6 +475,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.hasError) return _ErrorView(message: snap.error.toString(), retry: refresh);
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
+          signalCenterKey: signalCenterKey,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
           closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval);
@@ -484,9 +486,10 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing,
-    required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
+    required this.signalCenterKey, required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
     required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
   final Map<String, dynamic> data;
+  final GlobalKey signalCenterKey;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
   final String selectedSymbol;
@@ -737,11 +740,28 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
-            _SignalCenter(future: signals),
+            KeyedSubtree(
+              key: signalCenterKey,
+              child: _SignalCenter(future: signals),
+            ),
             const SizedBox(height: 15),
             const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
-            _Inbox(future: notes, markRead: markRead),
+            _Inbox(
+              future: notes,
+              markRead: markRead,
+              onOpenSignalCenter: () {
+                final target = signalCenterKey.currentContext;
+                if (target != null) {
+                  unawaited(Scrollable.ensureVisible(
+                    target,
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeInOut,
+                    alignment: 0.08,
+                  ));
+                }
+              },
+            ),
             const SizedBox(height: 18),
             Container(padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(12), border: Border.all(color: line)),
@@ -1430,9 +1450,14 @@ class _SignalCenter extends StatelessWidget {
 }
 
 class _Inbox extends StatelessWidget {
-  const _Inbox({required this.future, required this.markRead});
+  const _Inbox({
+    required this.future,
+    required this.markRead,
+    required this.onOpenSignalCenter,
+  });
   final Future<List<Map<String, dynamic>>> future;
   final Future<void> Function(int) markRead;
+  final VoidCallback onOpenSignalCenter;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -1478,6 +1503,7 @@ class _Inbox extends StatelessWidget {
               if (signalId != null) 'Signal #$signalId',
             ].join(' • ');
             return ListTile(
+              onTap: onOpenSignalCenter,
               contentPadding: EdgeInsets.zero,
               dense: true,
               leading: Icon(

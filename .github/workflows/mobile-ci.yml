@@ -2,7 +2,18 @@ name: Mobile CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "fix/**"]
+    paths:
+      - "frontend/crypto_ai_app/**"
+      - "backend/app/services/analysis/intelligence.py"
+      - "backend/app/api/**"
+      - "backend/app/services/market_data/bitget.py"
+      - "backend/app/services/analysis/tradingagents_*.py"
+      - "backend/agent_worker.py"
+      - ".github/workflows/tradingagents-v8-scheduled.yml"
+      - ".github/workflows/mobile-ci.yml"
+  pull_request:
+    branches: ["feature/**"]
     paths:
       - "frontend/crypto_ai_app/**"
       - "backend/app/services/analysis/intelligence.py"
