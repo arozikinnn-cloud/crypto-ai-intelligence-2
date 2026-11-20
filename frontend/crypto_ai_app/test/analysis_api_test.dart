@@ -352,4 +352,143 @@ void main() {
     }
   });
 
+
+  test('keeps a backend-active V8 signal active regardless of age', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/signals')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 1,
+            'symbol': 'BTCUSDT',
+            'side': 'SELL',
+            'status': 'ACTIVE',
+            'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+            'created_at': '2026-11-20T01:09:02Z',
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final rows = await api.fetchSignals(
+        status: 'ACTIVE',
+        strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+      );
+      expect(rows.single['status'], 'ACTIVE');
+    } finally {
+      api.close();
+    }
+  });
+
+  test('uses the same active signal levels in AI plan and Signal Center', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/agent-analysis/jobs')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 20,
+            'symbol': 'BTCUSDT',
+            'status': 'COMPLETED',
+            'completed_at': DateTime.now().toUtc().toIso8601String(),
+            'result': {
+              'side': 'SELL',
+              'trade_plan': {
+                'entry': 61786.2,
+                'stop_loss': 62143.96,
+                'take_profit': 61249.56,
+                'risk_reward': 1.5,
+              },
+              'market_context': {
+                'collected_at': DateTime.now().toUtc().toIso8601String(),
+              },
+              'reports': {'market_report': 'Latest research'},
+            },
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      if (request.url.path.endsWith('/signals')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 3,
+            'symbol': 'BTCUSDT',
+            'side': 'SELL',
+            'status': 'ACTIVE',
+            'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'entry': 62119.8,
+            'stop_loss': 62507.7,
+            'take_profit': 61537.95,
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final result = await api.fetchTradingAgentsAnalysis();
+      final plan = result['trade_plan'] as Map;
+      final candidate = result['candidate_trade_plan'] as Map;
+      expect(result['side'], 'SELL');
+      expect(result['signal_alignment'], 'ALIGNED');
+      expect((result['linked_signal'] as Map)['id'], 3);
+      expect(plan['entry'], 62119.8);
+      expect(plan['stop_loss'], 62507.7);
+      expect(plan['take_profit'], 61537.95);
+      expect(candidate['entry'], 61786.2);
+    } finally {
+      api.close();
+    }
+  });
+
+  test('blocks a new AI direction that conflicts with an active signal', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/agent-analysis/jobs')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 21,
+            'symbol': 'BTCUSDT',
+            'status': 'COMPLETED',
+            'completed_at': DateTime.now().toUtc().toIso8601String(),
+            'result': {
+              'side': 'BUY',
+              'trade_plan': {'entry': 100, 'stop_loss': 98, 'take_profit': 103},
+              'market_context': {
+                'collected_at': DateTime.now().toUtc().toIso8601String(),
+              },
+              'reports': {'market_report': 'Latest research'},
+            },
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      if (request.url.path.endsWith('/signals')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 4,
+            'symbol': 'BTCUSDT',
+            'side': 'SELL',
+            'status': 'ACTIVE',
+            'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'entry': 100,
+            'stop_loss': 102,
+            'take_profit': 97,
+          }
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final result = await api.fetchTradingAgentsAnalysis();
+      expect(result['side'], 'NO TRADE');
+      expect(result['ai_research_side'], 'BUY');
+      expect(result['signal_alignment'], 'CONFLICT');
+      expect(result['trade_plan'], isNull);
+      expect((result['linked_signal'] as Map)['side'], 'SELL');
+      expect((result['context_notes'] as List).join(' '), contains('Konflik arah'));
+    } finally {
+      api.close();
+    }
+  });
+
 }
