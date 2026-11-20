@@ -362,19 +362,45 @@ def signal_performance(db: Session = Depends(get_db)):
 def list_notifications(
     unread_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
+    strategy_mode: str | None = Query(default=None, max_length=80),
     db: Session = Depends(get_db),
 ):
+    # Return the notification and its originating signal as one joined record.
+    # Signal Inbox can therefore show exactly the same strategy, direction,
+    # levels, and lifecycle state as Signal Center.
     statement = (
-        select(SignalNotification)
+        select(SignalNotification, SignalEvent)
+        .outerjoin(SignalEvent, SignalNotification.signal_id == SignalEvent.id)
         .order_by(SignalNotification.created_at.desc())
-        .limit(limit)
+        .limit(200)
     )
     if unread_only:
         statement = statement.where(SignalNotification.read_at.is_(None))
-    return [SignalNotificationResponse(
-        id=row.id, signal_id=row.signal_id, title=row.title, message=row.message,
-        read=row.read_at is not None, created_at=row.created_at,
-    ) for row in db.scalars(statement)]
+
+    items = []
+    for notification, signal in db.execute(statement):
+        payload = _event_payload(signal) if signal is not None else {}
+        if strategy_mode and payload.get("strategy_mode") != strategy_mode:
+            continue
+        items.append(SignalNotificationResponse(
+            id=notification.id,
+            signal_id=notification.signal_id,
+            title=notification.title,
+            message=notification.message,
+            read=notification.read_at is not None,
+            created_at=notification.created_at,
+            strategy_mode=payload.get("strategy_mode"),
+            symbol=payload.get("symbol"),
+            side=payload.get("side"),
+            signal_status=payload.get("status"),
+            entry=payload.get("entry"),
+            stop_loss=payload.get("stop_loss"),
+            take_profit=payload.get("take_profit"),
+            signal_created_at=payload.get("created_at"),
+        ))
+        if len(items) >= limit:
+            break
+    return items
 
 
 @router.post("/notifications/{notification_id}/read", response_model=SignalNotificationResponse)
