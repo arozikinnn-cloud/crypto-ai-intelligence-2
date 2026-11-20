@@ -37,8 +37,11 @@ def is_retryable_provider_error(error: BaseException) -> bool:
                 "502",
                 "503",
                 "504",
-                "timeout",
                 "timed out",
+                "readtimeout",
+                "connecttimeout",
+                "write timeout",
+                "pool timeout",
                 "temporarily unavailable",
             )
         )
