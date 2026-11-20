@@ -8,7 +8,7 @@ class AnalysisApi {
         _baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'API_BASE_URL',
-                  defaultValue: 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1',
+                  defaultValue: 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1',
                 ))
             .replaceFirst(RegExp(r'/+$'), '');
 
@@ -62,95 +62,66 @@ class AnalysisApi {
     String symbol = 'BTCUSDT',
     bool forceNew = false,
   }) async {
-    Map<String, dynamic>? job;
-    if (!forceNew) {
-      final latestUri = _endpoint('agent-analysis/jobs', {
-        'symbol': symbol,
-        'limit': '1',
-      });
-      final latestResponse = await _client
-          .get(latestUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (latestResponse.statusCode == 200) {
-        final decoded = jsonDecode(latestResponse.body);
-        if (decoded is List && decoded.isNotEmpty &&
-            decoded.first is Map<String, dynamic>) {
-          job = decoded.first as Map<String, dynamic>;
-          final status = job['status']?.toString();
-          if (status == 'COMPLETED') return _agentJobToDashboard(job);
-          if (status == 'FAILED') {
-            throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
-          }
-        }
-      } else if (latestResponse.statusCode >= 500) {
-        return _agentUnavailableDashboard(
-          symbol,
-          'Backend V8 belum dapat dijangkau (HTTP ${latestResponse.statusCode}). Mode read-only aktif.',
-        );
-      } else if (latestResponse.statusCode != 404) {
-        throw Exception(
-          'TradingAgents API error ${latestResponse.statusCode}: '
-          '${_errorMessage(latestResponse.body)}',
-        );
-      }
+    // The Android app is a public client: it must never enqueue expensive AI
+    // jobs or carry the server-only enqueue token. GitHub Actions runs the
+    // worker; the app only reads persisted jobs from Neon.
+    final latestUri = _endpoint('agent-analysis/jobs', {
+      'symbol': symbol,
+      'limit': '1',
+    });
+    final latestResponse = await _client
+        .get(latestUri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+
+    if (latestResponse.statusCode == 401 ||
+        latestResponse.statusCode == 403 ||
+        latestResponse.statusCode == 404 ||
+        latestResponse.statusCode >= 500) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Backend V8 tidak dapat membaca histori analisis '
+        '(HTTP ${latestResponse.statusCode}). Periksa deployment V8 dan akses API.',
+      );
+    }
+    if (latestResponse.statusCode != 200) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Backend V8 mengembalikan HTTP ${latestResponse.statusCode}.',
+      );
     }
 
-    final hasActiveJob = job != null &&
-        {'PENDING', 'RUNNING'}.contains(job['status']?.toString());
-    if (job == null ||
-        (!hasActiveJob && (forceNew || job['status'] != 'COMPLETED'))) {
-      final createUri = _endpoint('agent-analysis/jobs', {'symbol': symbol});
-      final createResponse = await _client
-          .post(createUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (createResponse.statusCode == 401 ||
-          createResponse.statusCode == 403 ||
-          createResponse.statusCode == 503 ||
-          createResponse.statusCode == 404 ||
-          createResponse.statusCode >= 500) {
-        // Keep the trial APK usable in read-only mode while the private
-        // TradingAgents worker/provider is not configured. Never substitute
-        // legacy indicators or emit a BUY/SELL decision in this state.
-        return _agentUnavailableDashboard(
-          symbol,
-          _errorMessage(createResponse.body),
-        );
-      }
-      if (createResponse.statusCode != 202) {
-        throw Exception(
-          'Unable to start TradingAgents analysis (${createResponse.statusCode}): '
-          '${_errorMessage(createResponse.body)}',
-        );
-      }
-      final decoded = jsonDecode(createResponse.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('Invalid TradingAgents job response.');
-      }
-      job = decoded;
+    final decoded = jsonDecode(latestResponse.body);
+    if (decoded is! List) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Format histori TradingAgents dari backend tidak valid.',
+      );
+    }
+    if (decoded.isEmpty || decoded.first is! Map<String, dynamic>) {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Belum ada hasil TradingAgents tersimpan. Worker terjadwal akan mengisi histori.',
+      );
     }
 
-    final jobId = job['id'];
-    if (jobId is! int) throw const FormatException('TradingAgents job ID is missing.');
-    for (var attempt = 0; attempt < 18; attempt++) {
-      await Future<void>.delayed(const Duration(seconds: 5));
-      final statusUri = _endpoint('agent-analysis/jobs/$jobId');
-      final statusResponse = await _client
-          .get(statusUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (statusResponse.statusCode != 200) {
-        throw Exception('TradingAgents status error: ${statusResponse.statusCode}');
-      }
-      final statusPayload = jsonDecode(statusResponse.body);
-      if (statusPayload is! Map<String, dynamic>) {
-        throw const FormatException('Invalid TradingAgents status response.');
-      }
-      job = statusPayload;
-      if (job['status'] == 'COMPLETED') return _agentJobToDashboard(job);
-      if (job['status'] == 'FAILED') {
-        throw Exception('TradingAgents job failed: ${job['error_message'] ?? 'unknown error'}');
-      }
+    final job = Map<String, dynamic>.from(decoded.first as Map);
+    final status = job['status']?.toString();
+    if (status == 'COMPLETED') return _agentJobToDashboard(job);
+    if (status == 'FAILED') {
+      return _agentUnavailableDashboard(
+        symbol,
+        'Analisis terakhir gagal: ${job['error_message'] ?? 'unknown error'}',
+      );
     }
-    return _agentJobToDashboard(job!, timedOut: true);
+    if (status == 'PENDING' || status == 'RUNNING') {
+      // Do not hold the whole dashboard open while a cloud worker runs.
+      // Show the current job state immediately; the dashboard refreshes later.
+      return _agentJobToDashboard(job, timedOut: true);
+    }
+    return _agentUnavailableDashboard(
+      symbol,
+      'Belum ada hasil analisis TradingAgents yang dapat ditampilkan.',
+    );
   }
 
   Map<String, dynamic> _agentUnavailableDashboard(
@@ -163,16 +134,16 @@ class AnalysisApi {
     'max_confluence': 3,
     'score_note': 'TradingAgents belum aktif; tidak ada sinyal trading yang diterbitkan.',
     'reasons': <String>[
-      'Mode uji coba read-only: worker TradingAgents atau kredensial model belum dikonfigurasi.',
+      'Hasil TradingAgents belum tersedia. Periksa worker, kredensial model, dan akses backend.',
     ],
     'context_notes': <String>[
-      'Status AI: DISABLED',
+      'Status AI: UNAVAILABLE',
       'Tidak menggunakan sinyal RSI/MA/Ichimoku lama sebagai pengganti AI V8.',
       'Tidak ada order exchange yang dibuat.',
       if (detail.isNotEmpty) detail,
     ],
     'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
-    'agent_status': 'DISABLED',
+    'agent_status': 'UNAVAILABLE',
     'agent_reports': <String, dynamic>{},
     'execution_ready': false,
     'trade_plan': null,
@@ -271,6 +242,79 @@ class AnalysisApi {
         .toList(growable: false);
   }
 
+  Future<Map<String, dynamic>> fetchAggTradesOrderFlow({String symbol = 'BTCUSDT'}) async {
+    final uri = _endpoint('analysis/order-flow/aggtrades', {
+      'symbol': symbol,
+      'limit': '500',
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw Exception('Order-flow API error ${response.statusCode}: ${_errorMessage(response.body)}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid order-flow response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchCvdHistory({String symbol = 'BTCUSDT', int limit = 60}) async {
+    final uri = _endpoint('analysis/order-flow/cvd-history', {
+      'symbol': symbol,
+      'limit': limit.toString(),
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('CVD API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid CVD response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchMarketStructure({String symbol = 'BTCUSDT', String interval = '1h'}) async {
+    final uri = _endpoint('market/bitget/structure', {
+      'symbol': symbol,
+      'interval': interval,
+      'limit': '200',
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw Exception('Market-structure API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid market-structure response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchLiquidationHistory({String symbol = 'BTCUSDT'}) async {
+    final uri = _endpoint('analysis/liquidations/history', {
+      'symbol': symbol,
+      'hours': '24',
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Liquidation API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid liquidation response format.');
+    }
+    return decoded;
+  }
+
   Future<Map<String, dynamic>> fetchBacktest({
     String symbol = 'BTCUSDT',
     String interval = '1h',
@@ -312,7 +356,14 @@ class AnalysisApi {
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) throw const FormatException('Invalid signal response format.');
-    return decoded.whereType<Map<String, dynamic>>().toList(growable: false);
+    final rows = decoded.whereType<Map<String, dynamic>>();
+    // Enforce version isolation on the client as well as the API. This prevents
+    // a stale/older backend that ignores strategy_mode from leaking V7 signals
+    // into the V8 Signal Center.
+    final filtered = strategyMode == null
+        ? rows
+        : rows.where((item) => item['strategy_mode']?.toString() == strategyMode);
+    return filtered.toList(growable: false);
   }
 
   Future<Map<String, dynamic>> fetchSignalPerformance() async {
