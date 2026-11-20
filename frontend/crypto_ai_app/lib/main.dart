@@ -526,8 +526,8 @@ class _Dashboard extends StatelessWidget {
     final finalDecisionReport = txt(agentReports['final_trade_decision'], '');
     String reportStatus(String report) {
       // A persisted report is authoritative for that individual agent.
-      // Global job status describes the latest job and must not hide valid
-      // reports already returned from a completed job.
+      // Global job status describes the latest job, not each agent's saved
+      // result; it must never hide a valid report from a completed job.
       if (report.trim().isNotEmpty) return 'COMPLETED';
       if (agentStatus == 'STALE') return 'STALE';
       if (agentStatus == 'UNAVAILABLE') return 'UNAVAILABLE';
