@@ -659,7 +659,7 @@ class _Dashboard extends StatelessWidget {
                   Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
                     style: const TextStyle(color: muted, fontSize: 10)),
                   if (tradePlan['confirmation_score'] != null)
-                    Text('Konfirmasi: ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
+                    Text('Confidence (konfirmasi TF): ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
                       style: const TextStyle(color: blue, fontSize: 9)),
                 ],
               ]),
@@ -1397,7 +1397,7 @@ class _SignalCenter extends StatelessWidget {
                         Text('Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3',
                             style: TextStyle(color: muted, fontSize: 8)),
                       if (confidence != null)
-                        Text('Konfirmasi: $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
+                        Text('Confidence (konfirmasi TF): $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
                             maxLines: 2, overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: blue, fontSize: 8)),
                     ],
