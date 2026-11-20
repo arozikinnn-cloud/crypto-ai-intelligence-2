@@ -1345,7 +1345,14 @@ class _SignalCenter extends StatelessWidget {
                     reason.startsWith('Alasan penutupan:')).toList();
                 final entry = item['entry'];
                 final stop = item['stop_loss'];
-                final target = item['take_profit'];
+                final target1 = item['take_profit_1'] ?? item['take_profit'];
+                final target2 = item['take_profit_2'];
+                final target3 = item['take_profit_3'] ?? item['take_profit'];
+                final confidence = item['confirmation_score'];
+                final confidenceNote = item['confidence_note'];
+                final analysisReasons = reasons.where((reason) =>
+                    !reason.startsWith('Alasan invalidasi:') &&
+                    !reason.startsWith('Alasan penutupan:')).take(2).toList();
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(
@@ -1355,13 +1362,21 @@ class _SignalCenter extends StatelessWidget {
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
                       Text('$status • $outcome',
                           style: TextStyle(color: muted, fontSize: 8)),
+                      if (analysisReasons.isNotEmpty)
+                        Text(analysisReasons.join(' '),
+                            maxLines: 3, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: muted, fontSize: 8)),
                       if (lifecycleReasons.isNotEmpty)
                         Text(lifecycleReasons.last,
                             maxLines: 2, overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: blue, fontSize: 8)),
                       if (entry != null)
-                        Text('Entry $entry • SL $stop • TP $target',
+                        Text('Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3',
                             style: TextStyle(color: muted, fontSize: 8)),
+                      if (confidence != null)
+                        Text('Konfirmasi: $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
+                            maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: blue, fontSize: 8)),
                     ],
                   ),
                 );
@@ -1406,8 +1421,14 @@ class _Inbox extends StatelessWidget {
             final side = txt(item['side'], '');
             final entry = item['entry'];
             final stop = item['stop_loss'];
-            final target = item['take_profit'];
-            final levels = entry == null ? '' : 'Entry $entry • SL $stop • TP $target';
+            final target1 = item['take_profit_1'] ?? item['take_profit'];
+            final target2 = item['take_profit_2'];
+            final target3 = item['take_profit_3'] ?? item['take_profit'];
+            final confidence = item['confirmation_score'];
+            final confidenceNote = item['confidence_note'];
+            final signalStatus = item['signal_status'];
+            final levels = entry == null ? '' :
+                'Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3';
             final linked = [
               if (symbol.isNotEmpty) symbol,
               if (side.isNotEmpty) side,
@@ -1429,8 +1450,14 @@ class _Inbox extends StatelessWidget {
                 children: [
                   if (linked.isNotEmpty)
                     Text(linked, style: const TextStyle(color: blue, fontSize: 8)),
+                  if (signalStatus != null)
+                    Text('Status: $signalStatus', style: const TextStyle(color: muted, fontSize: 8)),
                   if (levels.isNotEmpty)
                     Text(levels, style: const TextStyle(color: muted, fontSize: 8)),
+                  if (confidence != null)
+                    Text('Konfirmasi: $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: blue, fontSize: 8)),
                   Text(
                     txt(item['message'], ''),
                     maxLines: 2,
