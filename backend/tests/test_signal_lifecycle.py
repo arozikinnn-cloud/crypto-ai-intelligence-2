@@ -428,6 +428,7 @@ def test_v8_inbox_filters_before_pagination_when_legacy_history_is_large():
         assert inbox[0].symbol == "V8PAGE"
         assert len(signals) == 1
         assert signals[0]["symbol"] == "V8PAGE"
+        assert inbox[0].signal_id == signals[0]["id"]
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
