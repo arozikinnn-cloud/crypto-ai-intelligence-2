@@ -103,6 +103,59 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
+  Map<String, dynamic> summarizeBitgetOrderBook(
+    Map<String, dynamic> snapshot,
+  ) {
+    List<dynamic> levels(String key) =>
+        snapshot[key] is List ? snapshot[key] as List<dynamic> : <dynamic>[];
+    double notional(List<dynamic> rows) => rows.take(20).fold<double>(0, (sum, row) {
+      if (row is! List || row.length < 2) return sum;
+      return sum + number(row[0]) * number(row[1]);
+    });
+
+    final bids = levels('bids');
+    final asks = levels('asks');
+    if (bids.isEmpty || asks.isEmpty) {
+      return <String, dynamic>{
+        'available': false,
+        'source_market': 'bitget_usdt_futures',
+        'bias': 'UNAVAILABLE',
+        'note': 'Snapshot order book Bitget kosong.',
+      };
+    }
+    final bidNotional = notional(bids);
+    final askNotional = notional(asks);
+    final total = bidNotional + askNotional;
+    final imbalance = total > 0 ? (bidNotional - askNotional) / total : 0.0;
+    final bestBid = (bids.first as List).length > 0
+        ? number((bids.first as List)[0])
+        : 0.0;
+    final bestAsk = (asks.first as List).length > 0
+        ? number((asks.first as List)[0])
+        : 0.0;
+    final spreadBps = bestBid > 0
+        ? ((bestAsk - bestBid) / bestBid) * 10000
+        : 0.0;
+    final bias = imbalance > 0.10
+        ? 'BID DOMINANT'
+        : imbalance < -0.10
+            ? 'ASK DOMINANT'
+            : 'BALANCED';
+    return <String, dynamic>{
+      'available': true,
+      'source_market': 'bitget_usdt_futures',
+      'bid_notional': bidNotional,
+      'ask_notional': askNotional,
+      'imbalance': imbalance,
+      'spread_bps': spreadBps,
+      'best_bid': bestBid,
+      'best_ask': bestAsk,
+      'timestamp': snapshot['timestamp'],
+      'bias': bias,
+      'note': 'Snapshot Bitget USDT-M Futures 20 level; bukan riwayat DOM, absorption, atau bukti spoofing.',
+    };
+  }
+
   Future<Map<String, dynamic>> load({bool forceNew = false}) async {
     if (widget.loadAnalysis != null) return widget.loadAnalysis!();
 
@@ -130,6 +183,12 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     final orderFlow = await safe(api.fetchAggTradesOrderFlow(symbol: selectedSymbol));
     final liquidation = await safe(api.fetchLiquidationHistory(symbol: selectedSymbol));
     final cvd = await safe(api.fetchCvdHistory(symbol: selectedSymbol));
+    final bitgetDerivatives = await safe(
+      api.fetchBitgetDerivatives(symbol: selectedSymbol),
+    );
+    final bitgetOrderBook = await safe(
+      api.fetchBitgetOrderBook(symbol: selectedSymbol, limit: 100),
+    );
 
     final legacyMarket = mapVal(legacy['market_context']);
     final aiMarket = mapVal(ai['market_context']);
@@ -148,6 +207,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
             : 'NO OBSERVED EVENTS',
       };
     }
+    if (bitgetOrderBook.isNotEmpty &&
+        bitgetOrderBook['unavailable_reason'] == null) {
+      market['order_book'] = summarizeBitgetOrderBook(bitgetOrderBook);
+    }
+    if (bitgetDerivatives.isNotEmpty &&
+        bitgetDerivatives['unavailable_reason'] == null) {
+      market['derivatives'] = bitgetDerivatives;
+    }
 
     final merged = <String, dynamic>{
       ...legacy,
@@ -158,9 +225,12 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
           ? legacy['timestamp']
           : (ai['timestamp'] ?? legacy['timestamp']),
       'market_context': market,
-      'derivatives': mapVal(ai['derivatives']).isNotEmpty
-          ? ai['derivatives']
-          : mapVal(legacy['derivatives']),
+      'derivatives': bitgetDerivatives.isNotEmpty &&
+              bitgetDerivatives['unavailable_reason'] == null
+          ? bitgetDerivatives
+          : (mapVal(ai['derivatives']).isNotEmpty
+              ? ai['derivatives']
+              : mapVal(legacy['derivatives'])),
       'timeframe_analyses': maps(ai['timeframe_analyses']).isNotEmpty
           ? ai['timeframe_analyses']
           : (legacy['timeframe_analyses'] ?? <dynamic>[]),
