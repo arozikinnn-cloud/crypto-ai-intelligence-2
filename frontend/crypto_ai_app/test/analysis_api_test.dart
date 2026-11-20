@@ -274,4 +274,82 @@ void main() {
     }
   });
 
+
+  test('keeps the last fresh agent reports visible while a newer job is running', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('/agent-analysis/jobs')) {
+        return http.Response(jsonEncode([
+          {
+            'id': 9,
+            'symbol': 'BTCUSDT',
+            'status': 'RUNNING',
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            'result': null,
+          },
+          {
+            'id': 8,
+            'symbol': 'BTCUSDT',
+            'status': 'COMPLETED',
+            'created_at': DateTime.now().toUtc().subtract(const Duration(minutes: 5)).toIso8601String(),
+            'completed_at': DateTime.now().toUtc().subtract(const Duration(minutes: 4)).toIso8601String(),
+            'result': {
+              'side': 'SELL',
+              'rating': 'Sell',
+              'reports': {'market_report': 'Laporan market terakhir'},
+              'market_context': {
+                'collected_at': DateTime.now().toUtc().toIso8601String(),
+              },
+              'timeframe_analyses': {},
+              'trade_plan': null,
+            },
+          },
+        ]), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('Not found', 404);
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final result = await api.fetchTradingAgentsAnalysis();
+      expect(result['agent_status'], 'COMPLETED');
+      expect(result['refresh_status'], 'RUNNING');
+      expect(result['side'], 'SELL');
+      expect((result['agent_reports'] as Map)['market_report'], 'Laporan market terakhir');
+      expect((result['context_notes'] as List).join(' '), contains('sedang berjalan'));
+    } finally {
+      api.close();
+    }
+  });
+
+  test('requests only V8 notifications and keeps the source signal id', () async {
+    final client = MockClient((request) async {
+      expect(request.url.queryParameters['strategy_mode'], 'TRADINGAGENTS_MULTI_AGENT_V8');
+      return http.Response(jsonEncode([
+        {
+          'id': 12,
+          'signal_id': 4,
+          'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+          'symbol': 'BTCUSDT',
+          'side': 'SELL',
+          'entry': 61771.6,
+          'stop_loss': 62109.98,
+          'take_profit': 61264.03,
+          'read': false,
+        }
+      ]), 200, headers: {'content-type': 'application/json'});
+    });
+    final api = AnalysisApi(client: client, baseUrl: 'https://example.test/api/v1');
+    try {
+      final rows = await api.fetchNotifications(
+        strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single['signal_id'], 4);
+      expect(rows.single['side'], 'SELL');
+      expect(rows.single['entry'], 61771.6);
+    } finally {
+      api.close();
+    }
+  });
+
 }
