@@ -133,3 +133,11 @@ def test_retries_transient_read_timeout(monkeypatch):
 
 def test_does_not_retry_unrelated_timeout_word_in_validation_error():
     assert not is_retryable_provider_error(ValueError("timeout setting is invalid"))
+
+
+def test_does_not_retry_exhausted_daily_quota():
+    error = FakeGeminiError(
+        "429 RESOURCE_EXHAUSTED: Generate content requests per day limit exceeded "
+        "for GenerateRequestsPerDayPerProjectPerModel-FreeTier."
+    )
+    assert not is_retryable_provider_error(error)
