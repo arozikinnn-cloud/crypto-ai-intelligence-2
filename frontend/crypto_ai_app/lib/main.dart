@@ -790,17 +790,19 @@ class _Structure extends StatelessWidget {
       ['SWING LOW', price(data['last_swing_low'])],
     ];
     return Card(child: Padding(padding: const EdgeInsets.all(13), child: Column(
-      children: rows.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(children: [
-          Expanded(child: Text(r[0], style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .6))),
-          Text(r[1], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-        ]))).toList(),
-      if (txt(data['method_note'], '').isNotEmpty) ...[
-        const SizedBox(height: 8),
-        Align(alignment: Alignment.centerLeft, child: Text(
-          'Sumber: ' + txt(data['provider'], 'Bitget USDT-M Futures') + ' • ' + txt(data['method_note'], ''),
-          style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
-        )),
+      children: [
+        ...rows.map((r) => Padding(padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            Expanded(child: Text(r[0], style: const TextStyle(color: muted, fontSize: 8, letterSpacing: .6))),
+            Text(r[1], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          ]))),
+        if (txt(data['method_note'], '').isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text(
+            'Sumber: ' + txt(data['provider'], 'Bitget USDT-M Futures') + ' • ' + txt(data['method_note'], ''),
+            style: const TextStyle(color: muted, fontSize: 8, height: 1.4),
+          )),
+        ],
       ],
     )));
   }
