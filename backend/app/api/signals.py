@@ -452,7 +452,7 @@ def list_notifications(
         # inbox could hide every newer V8 notification behind the first 200.
         statement = statement.where(
             SignalEvent.reasons_json.contains(
-                f'"strategy_mode": "{strategy_mode}"', autoescape=True
+                f'"strategy_mode":"{strategy_mode}"', autoescape=True
             )
         )
     statement = statement.limit(limit)
