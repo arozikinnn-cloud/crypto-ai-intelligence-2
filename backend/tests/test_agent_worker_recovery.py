@@ -51,3 +51,36 @@ def test_recover_stale_agent_jobs_requeues_only_expired_running_jobs():
         assert pending_after.status == "PENDING"
 
     engine.dispose()
+
+
+def test_recover_stale_agent_jobs_supports_short_expired_worker_lease():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False)
+    now = datetime.now(timezone.utc)
+
+    with session_factory() as db:
+        stale = AgentAnalysisJob(
+            symbol="BTCUSDT",
+            ticker="BTC-USD",
+            status="RUNNING",
+            started_at=now - timedelta(minutes=50),
+        )
+        fresh = AgentAnalysisJob(
+            symbol="ETHUSDT",
+            ticker="ETH-USD",
+            status="RUNNING",
+            started_at=now - timedelta(minutes=20),
+        )
+        db.add_all([stale, fresh])
+        db.commit()
+        stale_id, fresh_id = stale.id, fresh.id
+
+        recovered = recover_stale_agent_jobs(db, stale_after_minutes=45)
+        db.commit()
+
+        assert recovered == 1
+        assert db.get(AgentAnalysisJob, stale_id).status == "PENDING"
+        assert db.get(AgentAnalysisJob, fresh_id).status == "RUNNING"
+
+    engine.dispose()

@@ -106,7 +106,7 @@ def recover_stale_agent_jobs(db, stale_after_minutes: int = 120) -> int:
     left RUNNING by terminated containers or interrupted deployments.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(
-        minutes=max(60, stale_after_minutes)
+        minutes=max(1, stale_after_minutes)
     )
     result = db.execute(
         update(AgentAnalysisJob)
@@ -133,9 +133,13 @@ def process_agent_analysis_once(session_factory=SessionLocal) -> bool:
     try:
         # Recover jobs abandoned by a killed worker before claiming new work.
         settings = get_settings()
-        recover_stale_agent_jobs(
-            db, getattr(settings, "tradingagents_job_stale_minutes", 120)
+        stale_after_minutes = int(
+            os.getenv(
+                "TRADINGAGENTS_JOB_STALE_MINUTES",
+                str(getattr(settings, "tradingagents_job_stale_minutes", 120)),
+            )
         )
+        recover_stale_agent_jobs(db, stale_after_minutes)
         job = db.scalar(
             select(AgentAnalysisJob)
             .where(AgentAnalysisJob.status == "PENDING")

@@ -36,6 +36,7 @@ jobs:
       TRADINGAGENTS_OUTPUT_LANGUAGE: Indonesian
       TRADINGAGENTS_GEMINI_MIN_INTERVAL_SECONDS: "13"
       TRADINGAGENTS_GEMINI_RATE_LIMIT_RETRIES: "5"
+      TRADINGAGENTS_JOB_STALE_MINUTES: "45"
       TRADINGAGENTS_RESULTS_DIR: /tmp/tradingagents/results
       TRADINGAGENTS_CACHE_DIR: /tmp/tradingagents/cache
       TRADINGAGENTS_MEMORY_LOG_PATH: /tmp/tradingagents/memory/trading_memory.md
@@ -108,6 +109,7 @@ jobs:
         working-directory: backend
         run: |
           python - <<'PY'
+          from datetime import datetime, timedelta, timezone
           from sqlalchemy import select
           from app.database.base import Base
           from app.database.migrations import migrate_schema
@@ -117,17 +119,34 @@ jobs:
           migrate_schema(engine)
           db = SessionLocal()
           try:
-              pending = db.scalar(
+              active = db.scalar(
                   select(AgentAnalysisJob.id)
-                  .where(AgentAnalysisJob.status.in_(["PENDING", "RUNNING"]))
+                  .where(
+                      AgentAnalysisJob.symbol == "BTCUSDT",
+                      AgentAnalysisJob.status.in_(["PENDING", "RUNNING"]),
+                  )
                   .limit(1)
               )
-              if pending is None:
+              latest = db.scalar(
+                  select(AgentAnalysisJob)
+                  .where(AgentAnalysisJob.symbol == "BTCUSDT")
+                  .order_by(AgentAnalysisJob.created_at.desc())
+                  .limit(1)
+              )
+              recent_completed = (
+                  latest is not None
+                  and latest.status == "COMPLETED"
+                  and latest.completed_at is not None
+                  and latest.completed_at >= datetime.now(timezone.utc) - timedelta(hours=6)
+              )
+              if active is not None:
+                  print("Existing pending/running BTCUSDT job found; worker recovery will handle it.")
+              elif recent_completed:
+                  print("A recent completed BTCUSDT result exists; avoiding duplicate AI usage.")
+              else:
                   db.add(AgentAnalysisJob(symbol="BTCUSDT", ticker="BTC-USD", status="PENDING"))
                   db.commit()
                   print("Queued BTCUSDT.")
-              else:
-                  print("Existing pending/running job found; avoiding duplicate queue.")
           finally:
               db.close()
           PY
