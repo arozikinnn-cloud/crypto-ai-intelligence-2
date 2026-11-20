@@ -111,12 +111,14 @@ jobs:
         working-directory: backend
         run: |
           python - <<'PY'
+          import json
           from datetime import datetime, timedelta, timezone
           from sqlalchemy import select
           from app.database.base import Base
           from app.database.migrations import migrate_schema
           from app.database.session import SessionLocal, engine
           from app.models.agent_analysis_job import AgentAnalysisJob
+          from app.models.signal_event import SignalEvent
 
           symbols = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT")
           Base.metadata.create_all(bind=engine)
@@ -145,10 +147,48 @@ jobs:
                       and latest.completed_at is not None
                       and latest.completed_at >= now - timedelta(minutes=45)
                   )
+                  missing_signal = False
+                  snapshot_fresh = False
+                  if recent_completed and latest.result_json:
+                      try:
+                          latest_result = json.loads(latest.result_json)
+                      except (TypeError, json.JSONDecodeError):
+                          latest_result = {}
+                      plan = latest_result.get("trade_plan") if isinstance(latest_result, dict) else None
+                      if plan:
+                          market_context = latest_result.get("market_context") or {}
+                          timeframes = market_context.get("timeframes") or {}
+                          candle_time = (timeframes.get("15m") or {}).get("candle_close_time")
+                          side = latest_result.get("side", "")
+                          if candle_time and side in {"BUY", "SELL"}:
+                              dedupe_key = (
+                                  f"{symbol}:1h,30m,15m,5m:{side}:{candle_time}"
+                              )
+                              persisted = db.scalar(
+                                  select(SignalEvent.id)
+                                  .where(SignalEvent.dedupe_key == dedupe_key)
+                                  .limit(1)
+                              )
+                              missing_signal = persisted is None
+                          collected_value = market_context.get("collected_at")
+                          if collected_value:
+                              try:
+                                  collected_at = datetime.fromisoformat(
+                                      str(collected_value).replace("Z", "+00:00")
+                                  )
+                                  if collected_at.tzinfo is None:
+                                      collected_at = collected_at.replace(tzinfo=timezone.utc)
+                                  age = (now - collected_at.astimezone(timezone.utc)).total_seconds() / 60
+                                  snapshot_fresh = -1 <= age <= 20
+                              except ValueError:
+                                  snapshot_fresh = False
                   if active is not None:
                       print(f"{symbol}: existing pending/running job; worker will process or recover it.")
-                  elif recent_completed:
-                      print(f"{symbol}: recent completed result found; avoiding duplicate AI usage.")
+                  elif recent_completed and (not missing_signal or snapshot_fresh):
+                      if missing_signal:
+                          print(f"{symbol}: fresh completed V8 plan has no Signal Center row; worker startup will recover it.")
+                      else:
+                          print(f"{symbol}: recent completed result and linked signal found; avoiding duplicate AI usage.")
                   else:
                       base = symbol[:-4]
                       db.add(AgentAnalysisJob(
@@ -179,6 +219,7 @@ jobs:
           from sqlalchemy import select
           from app.database.session import SessionLocal
           from app.models.agent_analysis_job import AgentAnalysisJob
+          from app.models.signal_event import SignalEvent, SignalNotification
 
           symbols = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT")
           db = SessionLocal()
@@ -203,6 +244,38 @@ jobs:
                       raise SystemExit(f"{symbol} has no persisted AI decision payload.")
                   if not isinstance(reports, dict) or not reports:
                       raise SystemExit(f"{symbol} has no persisted multi-agent reports.")
+                  plan = result.get("trade_plan")
+                  if plan:
+                      context = result.get("market_context") or {}
+                      candle_time = (
+                          (context.get("timeframes") or {}).get("15m", {})
+                      ).get("candle_close_time")
+                      side = result.get("side", "")
+                      if not candle_time or side not in {"BUY", "SELL"}:
+                          raise SystemExit(f"{symbol} has a trade plan without a valid signal candle.")
+                      dedupe_key = f"{symbol}:1h,30m,15m,5m:{side}:{candle_time}"
+                      signal = db.scalar(
+                          select(SignalEvent)
+                          .where(SignalEvent.dedupe_key == dedupe_key)
+                          .limit(1)
+                      )
+                      if signal is None:
+                          raise SystemExit(
+                              f"{symbol} has a valid AI trade plan but no linked Signal Center event."
+                          )
+                      notification = db.scalar(
+                          select(SignalNotification.id)
+                          .where(SignalNotification.signal_id == signal.id)
+                          .limit(1)
+                      )
+                      if notification is None:
+                          raise SystemExit(
+                              f"{symbol} signal {signal.id} has no linked Signal Inbox notification."
+                          )
+                      print(
+                          f"Verified {symbol}: signal_id={signal.id}, "
+                          f"status={signal.status}, side={signal.side}."
+                      )
                   print(
                       f"Verified {symbol}: status={job.status}, "
                       f"decision={result.get('side')}, reports={len(reports)}."
