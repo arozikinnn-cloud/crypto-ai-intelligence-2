@@ -12,6 +12,7 @@ from app.services.market_data.base import MarketDataError
 from app.services.market_data.binance import BinanceMarketData
 from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.services.market_data.storage import store_candles
+from app.services.analysis.structure import analyze_structure
 
 logger = logging.getLogger("crypto_ai.market_api")
 router = APIRouter(prefix="/market", tags=["market-data"])
@@ -90,6 +91,34 @@ async def get_bitget_futures_candles(
         stored=stored,
         candles=[CandleResponse(**asdict(candle)) for candle in candles],
     )
+
+
+@router.get(
+    "/bitget/structure",
+    summary="Analyze market structure from Bitget USDT-M Futures candles",
+)
+async def get_bitget_market_structure(
+    symbol: str = Query(
+        default="BTCUSDT", min_length=5, max_length=20, pattern="^[A-Za-z0-9]+$"
+    ),
+    interval: str = Query(default="1h"),
+    limit: int = Query(default=200, ge=60, le=500),
+) -> dict:
+    try:
+        candles = await BitgetUsdtFuturesMarketData().fetch_klines(
+            symbol, interval, limit, closed_only=True
+        )
+        result = analyze_structure(candles)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": interval,
+        "provider": "bitget_usdt_futures",
+        **result,
+    }
 
 
 @router.get(
