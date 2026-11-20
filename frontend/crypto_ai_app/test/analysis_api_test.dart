@@ -232,7 +232,7 @@ void main() {
       expect(structure['trend'], 'bearish');
       expect(cvd['cvd_scope'], 'persisted_observed_history');
       expect(liquidations['event_count'], 0);
-      expect(mapValForTest(backtest['out_of_sample'])['trades'], 11);
+      expect((backtest['out_of_sample'] as Map)['trades'], 11);
     } finally {
       api.close();
     }
