@@ -297,23 +297,20 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() async {
-    try {
-      return await (widget.loadNotifications?.call() ?? api.fetchNotifications());
-    } catch (error) {
-      debugPrint('Notification feed unavailable: $error');
-      return <Map<String, dynamic>>[];
+    if (widget.loadNotifications != null) {
+      return widget.loadNotifications!();
     }
+    return api.fetchNotifications(
+      strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+    );
   }
-  Future<List<Map<String, dynamic>>> loadSignals() async {
-    try {
-      return await api.fetchSignals(
-        status: 'all',
-        limit: 100,
-        strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
-      );
-    } catch (_) {
-      return <Map<String, dynamic>>[];
-    }
+
+  Future<List<Map<String, dynamic>>> loadSignals() {
+    return api.fetchSignals(
+      status: 'all',
+      limit: 100,
+      strategyMode: 'TRADINGAGENTS_MULTI_AGENT_V8',
+    );
   }
 
   Future<Map<String, dynamic>> loadSignalPerformance() async {
@@ -1354,7 +1351,7 @@ class _SignalCenter extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('$symbol • $side',
+                      Text('$symbol • $side • #${item['id']}',
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
                       Text('$status • $outcome',
                           style: TextStyle(color: muted, fontSize: 8)),
@@ -1381,26 +1378,79 @@ class _Inbox extends StatelessWidget {
   const _Inbox({required this.future, required this.markRead});
   final Future<List<Map<String, dynamic>>> future;
   final Future<void> Function(int) markRead;
+
   @override
-  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(10),
-    child: FutureBuilder<List<Map<String, dynamic>>>(future: future, builder: (context, snap) {
-      if (snap.connectionState == ConnectionState.waiting) return const SizedBox(height: 2);
-      if (snap.hasError) return Text('Inbox belum tersedia: ' + snap.error.toString(), style: const TextStyle(color: muted, fontSize: 9));
-      final items = snap.data ?? [];
-      if (items.isEmpty) return const Text('Belum ada notifikasi sinyal.', style: TextStyle(color: muted, fontSize: 9));
-      return Column(children: items.take(8).map((item) {
-        final id = item['id'] is int ? item['id'] as int : null;
-        final read = item['read'] == true;
-        return ListTile(contentPadding: EdgeInsets.zero, dense: true,
-          leading: Icon(read ? Icons.notifications_none : Icons.notifications_active, color: read ? muted : green),
-          title: Text(txt(item['title'], 'Signal alert'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          subtitle: Text(txt(item['message'], ''), maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: muted, fontSize: 8)),
-          trailing: read ? const Icon(Icons.done, color: muted, size: 15)
-            : IconButton(onPressed: id == null ? null : () => markRead(id),
-              icon: const Icon(Icons.mark_email_read_outlined, size: 17)));
-      }).toList());
-    })));
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(10),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+            return const SizedBox(height: 2);
+          }
+          if (snap.hasError) {
+            return Text('Inbox belum tersedia: ${snap.error}',
+              style: const TextStyle(color: muted, fontSize: 9));
+          }
+          final items = snap.data ?? [];
+          if (items.isEmpty) {
+            return const Text('Belum ada notifikasi TradingAgents V8.',
+              style: TextStyle(color: muted, fontSize: 9));
+          }
+          return Column(children: items.take(8).map((item) {
+            final id = item['id'] is int ? item['id'] as int : null;
+            final read = item['read'] == true;
+            final signalId = item['signal_id'];
+            final symbol = txt(item['symbol'], '');
+            final side = txt(item['side'], '');
+            final entry = item['entry'];
+            final stop = item['stop_loss'];
+            final target = item['take_profit'];
+            final levels = entry == null ? '' : 'Entry $entry • SL $stop • TP $target';
+            final linked = [
+              if (symbol.isNotEmpty) symbol,
+              if (side.isNotEmpty) side,
+              if (signalId != null) 'Signal #$signalId',
+            ].join(' • ');
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: Icon(
+                read ? Icons.notifications_none : Icons.notifications_active,
+                color: read ? muted : green,
+              ),
+              title: Text(
+                txt(item['title'], 'Signal alert'),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (linked.isNotEmpty)
+                    Text(linked, style: const TextStyle(color: blue, fontSize: 8)),
+                  if (levels.isNotEmpty)
+                    Text(levels, style: const TextStyle(color: muted, fontSize: 8)),
+                  Text(
+                    txt(item['message'], ''),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: muted, fontSize: 8),
+                  ),
+                ],
+              ),
+              trailing: read
+                ? const Icon(Icons.done, color: muted, size: 15)
+                : IconButton(
+                    onPressed: id == null ? null : () => markRead(id),
+                    icon: const Icon(Icons.mark_email_read_outlined, size: 17),
+                  ),
+            );
+          }).toList());
+        },
+      ),
+    ),
+  );
 }
 
 class _Empty extends StatelessWidget {
