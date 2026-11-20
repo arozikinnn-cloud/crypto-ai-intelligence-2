@@ -297,12 +297,18 @@ def list_signals(
     statement = select(SignalEvent).order_by(SignalEvent.created_at.desc())
     if status != "all":
         statement = statement.where(SignalEvent.status == status)
-    payloads = [_event_payload(row) for row in db.scalars(statement)]
+    if strategy_mode:
+        # Filter in SQL before limiting so old/legacy rows cannot crowd V8
+        # signals out of the requested page.
+        statement = statement.where(
+            SignalEvent.reasons_json.contains(f'"strategy_mode": "{strategy_mode}"')
+        )
+    payloads = [_event_payload(row) for row in db.scalars(statement.limit(limit))]
     if strategy_mode:
         payloads = [
             item for item in payloads if item.get("strategy_mode") == strategy_mode
         ]
-    return payloads[:limit]
+    return payloads
 
 
 @router.get("/performance")
@@ -372,10 +378,16 @@ def list_notifications(
         select(SignalNotification, SignalEvent)
         .outerjoin(SignalEvent, SignalNotification.signal_id == SignalEvent.id)
         .order_by(SignalNotification.created_at.desc())
-        .limit(200)
     )
     if unread_only:
         statement = statement.where(SignalNotification.read_at.is_(None))
+    if strategy_mode:
+        # Apply strategy filtering before pagination; otherwise a busy legacy
+        # inbox could hide every newer V8 notification behind the first 200.
+        statement = statement.where(
+            SignalEvent.reasons_json.contains(f'"strategy_mode": "{strategy_mode}"')
+        )
+    statement = statement.limit(limit)
 
     items = []
     for notification, signal in db.execute(statement):
