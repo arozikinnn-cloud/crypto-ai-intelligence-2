@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: tradingagents-v8-scheduled-cycle
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   tradingagents-cycle:
@@ -36,7 +36,7 @@ jobs:
       TRADINGAGENTS_OUTPUT_LANGUAGE: Indonesian
       TRADINGAGENTS_GEMINI_MIN_INTERVAL_SECONDS: "13"
       TRADINGAGENTS_GEMINI_RATE_LIMIT_RETRIES: "5"
-      TRADINGAGENTS_JOB_STALE_MINUTES: "45"
+      TRADINGAGENTS_JOB_STALE_MINUTES: "1"
       TRADINGAGENTS_RESULTS_DIR: /tmp/tradingagents/results
       TRADINGAGENTS_CACHE_DIR: /tmp/tradingagents/cache
       TRADINGAGENTS_MEMORY_LOG_PATH: /tmp/tradingagents/memory/trading_memory.md
