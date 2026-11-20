@@ -114,39 +114,9 @@ class AnalysisApi {
       );
     }
     if (status == 'PENDING' || status == 'RUNNING') {
-      final jobId = job['id'];
-      if (jobId is! int) {
-        return _agentUnavailableDashboard(symbol, 'ID job TradingAgents tidak valid.');
-      }
-      for (var attempt = 0; attempt < 18; attempt++) {
-        await Future<void>.delayed(const Duration(seconds: 5));
-        final statusUri = _endpoint('agent-analysis/jobs/$jobId');
-        final statusResponse = await _client
-            .get(statusUri, headers: const {'Accept': 'application/json'})
-            .timeout(const Duration(seconds: 20));
-        if (statusResponse.statusCode != 200) {
-          return _agentUnavailableDashboard(
-            symbol,
-            'Tidak dapat membaca status job TradingAgents (HTTP ${statusResponse.statusCode}).',
-          );
-        }
-        final statusPayload = jsonDecode(statusResponse.body);
-        if (statusPayload is! Map<String, dynamic>) {
-          return _agentUnavailableDashboard(symbol, 'Format status job TradingAgents tidak valid.');
-        }
-        final current = Map<String, dynamic>.from(statusPayload);
-        if (current['status'] == 'COMPLETED') return _agentJobToDashboard(current);
-        if (current['status'] == 'FAILED') {
-          return _agentUnavailableDashboard(
-            symbol,
-            'Analisis TradingAgents gagal: ${current['error_message'] ?? 'unknown error'}',
-          );
-        }
-        if (current['status'] != 'PENDING' && current['status'] != 'RUNNING') {
-          return _agentUnavailableDashboard(symbol, 'Status job TradingAgents tidak dikenali.');
-        }
-        if (attempt == 17) return _agentJobToDashboard(current, timedOut: true);
-      }
+      // Do not hold the whole dashboard open while a cloud worker runs.
+      // Show the current job state immediately; the dashboard refreshes later.
+      return _agentJobToDashboard(job, timedOut: true);
     }
     return _agentUnavailableDashboard(
       symbol,
@@ -164,10 +134,10 @@ class AnalysisApi {
     'max_confluence': 3,
     'score_note': 'TradingAgents belum aktif; tidak ada sinyal trading yang diterbitkan.',
     'reasons': <String>[
-      'Mode uji coba read-only: worker TradingAgents atau kredensial model belum dikonfigurasi.',
+      'Hasil TradingAgents belum tersedia. Periksa worker, kredensial model, dan akses backend.',
     ],
     'context_notes': <String>[
-      'Status AI: DISABLED',
+      'Status AI: UNAVAILABLE',
       'Tidak menggunakan sinyal RSI/MA/Ichimoku lama sebagai pengganti AI V8.',
       'Tidak ada order exchange yang dibuat.',
       if (detail.isNotEmpty) detail,
