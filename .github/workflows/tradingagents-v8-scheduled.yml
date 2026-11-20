@@ -12,14 +12,14 @@ on:
       - backend/tests/test_gemini_throttle.py
   schedule:
     # Episodic scheduled execution, not a persistent 24/7 process.
-    - cron: "17 */6 * * *"
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
 
 concurrency:
   group: tradingagents-v8-scheduled-cycle
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   tradingagents-cycle:
@@ -137,12 +137,12 @@ jobs:
                   latest is not None
                   and latest.status == "COMPLETED"
                   and latest.completed_at is not None
-                  and latest.completed_at >= datetime.now(timezone.utc) - timedelta(hours=6)
+                  and latest.completed_at >= datetime.now(timezone.utc) - timedelta(minutes=45)
               )
               if active is not None:
                   print("Existing pending/running BTCUSDT job found; worker recovery will handle it.")
               elif recent_completed:
-                  print("A recent completed BTCUSDT result exists; avoiding duplicate AI usage.")
+                  print("A recent completed BTCUSDT result exists; avoiding duplicate AI usage within the hourly cycle.")
               else:
                   db.add(AgentAnalysisJob(symbol="BTCUSDT", ticker="BTC-USD", status="PENDING"))
                   db.commit()
