@@ -298,16 +298,20 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         db.execute(delete(SignalEvent))
         db.commit()
 
+        signal_candle = datetime.now(timezone.utc).isoformat()
+        later_candle = (
+            datetime.now(timezone.utc) + timedelta(minutes=15)
+        ).isoformat()
         record_signal(
             db, "V8INBOX", "BUY", ["1h", "30m", "15m"], ["Aligned V8 setup"],
-            "v8-inbox-candle", {
+            signal_candle, {
                 "entry": 100, "stop_loss": 98, "take_profit": 103,
                 "take_profit_1": 101, "take_profit_2": 102,
                 "take_profit_3": 103,
                 "confirmation_score": "3/3 higher-timeframe alignment",
                 "confidence_note": "Konfirmasi timeframe; bukan probabilitas win rate.",
             },
-            "v8-inbox-candle", strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
+            signal_candle, strategy_mode="TRADINGAGENTS_MULTI_AGENT_V8",
         )
         record_signal(
             db, "LEGACYINBOX", "SELL", ["1h", "15m"], ["Legacy setup"],
@@ -318,7 +322,7 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         from app.api.signals import evaluate_active_signals
         evaluate_active_signals(
             db, "V8INBOX", candle_high=104, candle_low=99,
-            candle_timestamp="later-closed-candle",
+            candle_timestamp=later_candle,
         )
         notifications = list_notifications(
             unread_only=False,
