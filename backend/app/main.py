@@ -20,8 +20,6 @@ import app.models.cvd_collector_state  # noqa: F401
 import app.models.liquidation_record  # noqa: F401
 import app.models.signal_event  # noqa: F401
 import app.models.device_token  # noqa: F401
-from app.services.market_data.cvd_collector import stream_binance_aggtrades
-from app.services.market_data.liquidation_collector import stream_binance_liquidations
 
 settings = get_settings()
 configure_logging()
@@ -37,13 +35,21 @@ async def lifespan(_app: FastAPI):
     stop_event = asyncio.Event()
 
     if IS_VERCEL:
-        # Production uses shared PostgreSQL and additive migrations. A preview
-        # without DATABASE_URL uses disposable /tmp SQLite; create its full ORM
-        # schema so API smoke tests and demo endpoints remain usable.
+        # Preview deployments without a shared DATABASE_URL use disposable
+        # /tmp SQLite. ORM metadata already includes every registered table, so
+        # create_all is sufficient; do not run the additive migration routine
+        # against this ephemeral database on every serverless cold start.
         if engine.dialect.name == "sqlite":
             Base.metadata.create_all(bind=engine)
-        migrate_schema(engine)
+        else:
+            # Production/shared PostgreSQL retains the idempotent schema migration.
+            migrate_schema(engine)
     else:
+        # Import persistent collectors only in non-serverless runtimes.
+        # Keep WebSocket collector dependencies out of Vercel cold starts.
+        from app.services.market_data.cvd_collector import stream_binance_aggtrades
+        from app.services.market_data.liquidation_collector import stream_binance_liquidations
+
         Base.metadata.create_all(bind=engine)
         migrate_schema(engine)
 
