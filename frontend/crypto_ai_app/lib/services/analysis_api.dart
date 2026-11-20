@@ -271,6 +271,79 @@ class AnalysisApi {
         .toList(growable: false);
   }
 
+  Future<Map<String, dynamic>> fetchAggTradesOrderFlow({String symbol = 'BTCUSDT'}) async {
+    final uri = _endpoint('analysis/order-flow/aggtrades', {
+      'symbol': symbol,
+      'limit': '500',
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw Exception('Order-flow API error ${response.statusCode}: ${_errorMessage(response.body)}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid order-flow response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchCvdHistory({String symbol = 'BTCUSDT', int limit = 60}) async {
+    final uri = _endpoint('analysis/order-flow/cvd-history', {
+      'symbol': symbol,
+      'limit': limit.toString(),
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('CVD API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid CVD response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchMarketStructure({String symbol = 'BTCUSDT', String interval = '1h'}) async {
+    final uri = _endpoint('analysis/structure', {
+      'symbol': symbol,
+      'interval': interval,
+      'limit': '200',
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw Exception('Market-structure API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid market-structure response format.');
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchLiquidationHistory({String symbol = 'BTCUSDT'}) async {
+    final uri = _endpoint('analysis/liquidations/history', {
+      'symbol': symbol,
+      'hours': '24',
+    });
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Liquidation API error: ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid liquidation response format.');
+    }
+    return decoded;
+  }
+
   Future<Map<String, dynamic>> fetchBacktest({
     String symbol = 'BTCUSDT',
     String interval = '1h',
