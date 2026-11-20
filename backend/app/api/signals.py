@@ -60,18 +60,45 @@ def _event_payload(row: SignalEvent) -> dict:
                 )
                 else "LEGACY_UNVERSIONED"
             )
+        entry = plan.get("entry")
+        stop = plan.get("stop_loss")
+        target = plan.get("take_profit")
+        is_current_strategy = strategy_mode == CURRENT_STRATEGY_MODE
+        risk = (
+            abs(float(entry) - float(stop))
+            if isinstance(entry, (int, float))
+            and isinstance(stop, (int, float))
+            and math.isfinite(float(entry))
+            and math.isfinite(float(stop))
+            else None
+        )
+        direction = 1.0 if row.side == "BUY" else -1.0
+        tp1 = plan.get("take_profit_1")
+        tp2 = plan.get("take_profit_2")
+        tp3 = plan.get("take_profit_3") or target
+        if is_current_strategy and risk is not None and risk > 0:
+            tp1 = tp1 if tp1 is not None else float(entry) + direction * risk * 0.5
+            tp2 = tp2 if tp2 is not None else float(entry) + direction * risk
+        confirmation_score = plan.get("confirmation_score")
+        confidence_note = plan.get("confidence_note")
+        if is_current_strategy:
+            confirmation_score = confirmation_score or "3/3 higher-timeframe alignment"
+            confidence_note = confidence_note or (
+                "Konfirmasi arah H1, M30, dan M15; bukan probabilitas win rate "
+                "atau jaminan hasil."
+            )
         return {
             "id": row.id, "symbol": row.symbol, "side": row.side,
             "status": row.status, "timeframe_set": row.timeframe_set,
             "reasons": reasons, "created_at": row.created_at,
-            "updated_at": row.updated_at, "entry": plan.get("entry"),
-            "stop_loss": plan.get("stop_loss"),
-            "take_profit": plan.get("take_profit"),
-            "take_profit_1": plan.get("take_profit_1"),
-            "take_profit_2": plan.get("take_profit_2"),
-            "take_profit_3": plan.get("take_profit_3") or plan.get("take_profit"),
-            "confirmation_score": plan.get("confirmation_score"),
-            "confidence_note": plan.get("confidence_note"),
+            "updated_at": row.updated_at, "entry": entry,
+            "stop_loss": stop,
+            "take_profit": target,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+            "take_profit_3": tp3,
+            "confirmation_score": confirmation_score,
+            "confidence_note": confidence_note,
             "strategy_mode": strategy_mode,
             "ambiguous_candle": bool(stored.get("ambiguous_candle")),
             "outcome": outcome, "realized_r": stored.get("realized_r"),
