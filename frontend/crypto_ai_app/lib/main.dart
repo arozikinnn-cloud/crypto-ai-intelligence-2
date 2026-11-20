@@ -638,11 +638,19 @@ class _Dashboard extends StatelessWidget {
                   Row(children: [
                     Expanded(child: _PlanValue('ENTRY', tradePlan['entry'])),
                     Expanded(child: _PlanValue('STOP LOSS', tradePlan['stop_loss'])),
-                    Expanded(child: _PlanValue('TAKE PROFIT', tradePlan['take_profit'])),
                   ]),
                   const SizedBox(height: 8),
-                  Text('Risk/Reward: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
+                  Row(children: [
+                    Expanded(child: _PlanValue('TP1 • 0.5R', tradePlan['take_profit_1'] ?? tradePlan['take_profit'])),
+                    Expanded(child: _PlanValue('TP2 • 1.0R', tradePlan['take_profit_2'])),
+                    Expanded(child: _PlanValue('TP3 • 1.5R', tradePlan['take_profit_3'] ?? tradePlan['take_profit'])),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
                     style: const TextStyle(color: muted, fontSize: 10)),
+                  if (tradePlan['confirmation_score'] != null)
+                    Text('Konfirmasi: ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
+                      style: const TextStyle(color: blue, fontSize: 9)),
                 ],
               ]),
             ),
@@ -1360,7 +1368,7 @@ class _SignalCenter extends StatelessWidget {
                     children: [
                       Text('$symbol • $side • #${item['id']}',
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
-                      Text('$status • $outcome',
+                      Text('$status • $outcome • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
                           style: TextStyle(color: muted, fontSize: 8)),
                       if (analysisReasons.isNotEmpty)
                         Text(analysisReasons.join(' '),
@@ -1451,7 +1459,8 @@ class _Inbox extends StatelessWidget {
                   if (linked.isNotEmpty)
                     Text(linked, style: const TextStyle(color: blue, fontSize: 8)),
                   if (signalStatus != null)
-                    Text('Status: $signalStatus', style: const TextStyle(color: muted, fontSize: 8)),
+                    Text('Status: $signalStatus • ${txt(item['signal_created_at'], txt(item['created_at'], 'Waktu tidak tersedia'))}',
+                      style: const TextStyle(color: muted, fontSize: 8)),
                   if (levels.isNotEmpty)
                     Text(levels, style: const TextStyle(color: muted, fontSize: 8)),
                   if (confidence != null)
