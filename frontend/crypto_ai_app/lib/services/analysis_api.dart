@@ -132,7 +132,10 @@ class AnalysisApi {
           ...dashboard,
           'refresh_status': runningJob['status'],
           'context_notes': <String>[
-            ...strings(dashboard['context_notes']),
+            ...(dashboard['context_notes'] is List
+                ? (dashboard['context_notes'] as List)
+                    .map((item) => item.toString())
+                : <String>[]),
             'Analisis TradingAgents terbaru sedang berjalan; laporan selesai terakhir tetap ditampilkan sampai hasil baru tersimpan.',
           ],
         };
