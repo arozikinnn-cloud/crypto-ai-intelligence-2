@@ -327,7 +327,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
       return await api.fetchBacktest(
         symbol: selectedSymbol,
         interval: '1h',
-        limit: 300,
+        // Use the maximum supported history so out-of-sample quality gates
+        // are evaluated on a meaningful sample instead of too few trades.
+        limit: 1000,
       );
     } catch (error) {
       return <String, dynamic>{'unavailable_reason': error.toString()};
