@@ -3,7 +3,12 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 
-from app.api.signals import record_signal
+from app.api.signals import (
+    CURRENT_STRATEGY_MODE,
+    evaluate_active_signals,
+    record_signal,
+    signal_performance,
+)
 from app.database.base import Base
 from app.database.session import SessionLocal, engine
 from app.models.agent_analysis_job import AgentAnalysisJob
@@ -679,3 +684,55 @@ def test_v8_blocks_signal_when_bitget_market_snapshot_is_stale():
     assert result["side"] == "NO TRADE"
     assert result["trade_plan"] is None
     assert any("Data Bitget tidak cukup baru" in reason for reason in result["reasons"])
+
+
+def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db,
+            "BTCUSDT",
+            "BUY",
+            ["1h", "30m", "15m", "5m"],
+            ["V8 multi-agent confirmation"],
+            "v8-candle-1",
+            {"entry": 100.0, "stop_loss": 98.0, "take_profit": 103.0},
+            signal_candle_timestamp="v8-signal-candle-1",
+            strategy_mode=CURRENT_STRATEGY_MODE,
+        )
+        row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT"))
+        stored = json.loads(row.reasons_json)
+        plan = stored["trade_plan"]
+        assert plan["take_profit_1"] == 102.0
+        assert plan["take_profit_2"] == 104.0
+        assert plan["take_profit_3"] == 106.0
+        assert plan["take_profit"] == 106.0
+
+        evaluate_active_signals(db, "BTCUSDT", 102.2, 100.5, "v8-candle-2")
+        db.refresh(row)
+        stored = json.loads(row.reasons_json)
+        assert row.status == "ACTIVE"
+        assert stored["lifecycle"]["remaining_position_pct"] == 50.0
+        assert stored["realized_r"] == 0.5
+
+        evaluate_active_signals(db, "BTCUSDT", 101.0, 99.9, "v8-candle-3")
+        db.refresh(row)
+        stored = json.loads(row.reasons_json)
+        assert row.status == "CLOSED"
+        assert stored["outcome"] == "WIN"
+        assert stored["realized_r"] == 0.5
+        assert stored["lifecycle"]["closed_position_pct"] == 100.0
+        performance = signal_performance(db)
+        assert performance["wins"] == 1
+        assert performance["losses"] == 0
+        assert performance["breakeven"] == 0
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
