@@ -1407,6 +1407,17 @@ class _SignalCenter extends StatelessWidget {
                 final outcome = item['outcome'];
                 final realizedR = item['realized_r'];
                 final closedAt = item['closed_at'];
+                final lifecycle = item['lifecycle'] is Map
+                    ? Map<String, dynamic>.from(item['lifecycle'] as Map)
+                    : <String, dynamic>{};
+                final lifecycleEvents = lifecycle['events'] is List
+                    ? (lifecycle['events'] as List)
+                        .whereType<Map>()
+                        .map((event) => Map<String, dynamic>.from(event))
+                        .toList()
+                    : <Map<String, dynamic>>[];
+                final remainingPosition = lifecycle['remaining_position_pct'];
+                final executionMode = txt(item['execution_mode'], 'SIGNAL_ONLY');
                 final reasons = strings(item['reasons']);
                 final lifecycleReasons = reasons.where((reason) =>
                     reason.startsWith('Alasan invalidasi:') ||
@@ -1444,6 +1455,14 @@ class _SignalCenter extends StatelessWidget {
                       if (entry != null)
                         Text('Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3',
                             style: TextStyle(color: muted, fontSize: 8)),
+                      if (lifecycleEvents.isNotEmpty)
+                        Text(
+                          '\${lifecycleEvents.map((event) => '\${event['type']} \${event['position_pct']}% @ \${event['price']} (\${event['realized_r']}R)').join(' • ')}',
+                          maxLines: 2, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: blue, fontSize: 8)),
+                      if (remainingPosition != null)
+                        Text('Sisa posisi: $remainingPosition% • Mode: $executionMode (paper, bukan order exchange)',
+                            style: const TextStyle(color: muted, fontSize: 8)),
                       if (confidence != null)
                         Text('Confidence (konfirmasi TF): $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
                             maxLines: 2, overflow: TextOverflow.ellipsis,
