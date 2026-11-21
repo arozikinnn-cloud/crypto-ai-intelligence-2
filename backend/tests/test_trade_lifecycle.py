@@ -18,6 +18,10 @@ def test_tp1_then_breakeven_stop_is_a_net_positive_paper_win():
     assert state["remaining_position_pct"] == 50.0
     assert state["current_stop"] == 100.0
     assert state["realized_r"] == 0.38675
+    assert state["gross_realized_r"] == 0.5
+    assert state["estimated_costs_r"] == 0.11325
+    assert state["fee_bps_per_side"] == 10.0
+    assert state["slippage_bps_per_side"] == 5.0
 
     state, changed = advance_lifecycle("BUY", plan(), state, 101.0, 99.9, "c2")
     assert changed
