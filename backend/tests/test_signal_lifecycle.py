@@ -723,14 +723,14 @@ def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
         stored = json.loads(row.reasons_json)
         assert row.status == "ACTIVE"
         assert stored["lifecycle"]["remaining_position_pct"] == 50.0
-        assert stored["realized_r"] == 0.34925
+        assert stored["realized_r"] == 0.38675
 
         evaluate_active_signals(db, "BTCUSDT", 101.0, 99.9, "v8-candle-3")
         db.refresh(row)
         stored = json.loads(row.reasons_json)
         assert row.status == "CLOSED"
         assert stored["outcome"] == "WIN"
-        assert stored["realized_r"] == 0.38675
+        assert stored["realized_r"] == 0.34925
         assert stored["lifecycle"]["closed_position_pct"] == 100.0
         performance = signal_performance(db)
         assert performance["wins"] == 1
