@@ -134,7 +134,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         amb_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "AMBTEST"))
         amb_payload = json.loads(amb_row.reasons_json)
         assert amb_row.status == "CLOSED"
-        assert amb_payload["outcome"] == "SL"
+        assert amb_payload["outcome"] == "LOSS"
         assert amb_payload["realized_r"] == -1.1485
         assert amb_payload["ambiguous_candle"] is True
 
@@ -144,7 +144,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         )
         evaluate_active_signals(db, "SLTEST", 101.0, 97.0, "candle-sl-2")
         sl_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "SLTEST"))
-        assert json.loads(sl_row.reasons_json)["outcome"] == "SL"
+        assert json.loads(sl_row.reasons_json)["outcome"] == "LOSS"
 
         from app.api.signals import signal_performance
 
