@@ -274,6 +274,7 @@ def test_v8_partial_tp_events_send_push_notifications(monkeypatch):
         assert len(calls) == 4
         assert calls[3]["data"]["type"] == "trade_result"
         assert calls[3]["data"]["outcome"] == "WIN"
+        assert calls[3]["data"]["event"] == "TP3"
         assert len(list(db.scalars(select(SignalNotification)))) == 4
     finally:
         db.rollback()
