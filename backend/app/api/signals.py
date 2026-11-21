@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.models.signal_event import SignalEvent, SignalNotification
 from app.schemas.signals import SignalEventResponse, SignalNotificationResponse
+from app.services.trade_lifecycle import advance_lifecycle
 
 router = APIRouter(prefix="/signals", tags=["signal lifecycle and notifications"])
 logger = logging.getLogger(__name__)
@@ -115,6 +116,8 @@ def _event_payload(row: SignalEvent) -> dict:
             "ambiguous_candle": bool(stored.get("ambiguous_candle")),
             "outcome": outcome, "realized_r": stored.get("realized_r"),
             "closed_at": stored.get("closed_at"),
+            "lifecycle": stored.get("lifecycle"),
+            "execution_mode": stored.get("execution_mode", "SIGNAL_ONLY"),
         }
     return {
         "id": row.id, "symbol": row.symbol, "side": row.side,
@@ -128,103 +131,122 @@ def evaluate_active_signals(
     db: Session, symbol: str, candle_high: float, candle_low: float,
     candle_timestamp: str,
 ) -> None:
-    """Evaluate active signals against a later, fully closed market candle.
-
-    If TP and SL are both crossed in one OHLC candle, conservatively record SL:
-    OHLC data cannot establish intrabar order, and performance must not overstate.
-    """
+    """Track V8 partial exits from closed candles; legacy signals retain TP/SL behavior."""
     now = datetime.now(timezone.utc)
     rows = list(db.scalars(select(SignalEvent).where(
         SignalEvent.symbol == symbol.upper(),
         SignalEvent.status == "ACTIVE",
     ).with_for_update(skip_locked=True)))
-    closed_signals: list[tuple[SignalEvent, str, float | None]] = []
+    notifications: list[tuple[SignalEvent, str, float | None]] = []
     for row in rows:
         try:
             stored = json.loads(row.reasons_json)
         except (TypeError, json.JSONDecodeError):
             continue
-        if not isinstance(stored, dict):
-            continue
-        if stored.get("signal_candle_timestamp") == candle_timestamp:
+        if not isinstance(stored, dict) or stored.get("signal_candle_timestamp") == candle_timestamp:
             continue
         plan = stored.get("trade_plan") or {}
-        entry = plan.get("entry")
-        stop = plan.get("stop_loss")
-        target = plan.get("take_profit")
         if not _valid_trade_plan(row.side, plan):
             continue
+
+        if stored.get("strategy_mode") == CURRENT_STRATEGY_MODE:
+            try:
+                lifecycle, changed = advance_lifecycle(
+                    row.side, plan, stored.get("lifecycle"),
+                    candle_high, candle_low, candle_timestamp,
+                )
+            except (KeyError, TypeError, ValueError):
+                logger.exception("Invalid partial lifecycle for signal %s", row.id)
+                continue
+            if not changed:
+                continue
+            stored["lifecycle"] = lifecycle
+            stored["realized_r"] = lifecycle["realized_r"]
+            stored["outcome"] = lifecycle.get("outcome")
+            stored["ambiguous_candle"] = bool(lifecycle.get("ambiguous_candle"))
+            last_event = lifecycle["events"][-1]
+            stored["close_reason"] = last_event["reason"]
+            if lifecycle.get("closed"):
+                stored["closed_at"] = now.isoformat()
+                row.status = "CLOSED"
+                row.updated_at = now
+                outcome = lifecycle["outcome"]
+                message = (
+                    f"Hasil paper-tracking: {outcome} "
+                    f"({lifecycle['realized_r']:.2f}R); "
+                    f"posisi tertutup {lifecycle['closed_position_pct']:.0f}%."
+                )
+                db.add(SignalNotification(
+                    signal_id=row.id, title=f"{row.symbol} {outcome}",
+                    message=message, created_at=now,
+                ))
+                notifications.append((row, outcome, lifecycle["realized_r"]))
+            else:
+                db.add(SignalNotification(
+                    signal_id=row.id,
+                    title=f"{row.symbol} {last_event['type']} hit",
+                    message=last_event["reason"] + (
+                        f" Sisa posisi {lifecycle['remaining_position_pct']:.0f}%; "
+                        f"realized {lifecycle['realized_r']:.2f}R."
+                    ),
+                    created_at=now,
+                ))
+            row.reasons_json = json.dumps(stored, ensure_ascii=False)
+            row.updated_at = now
+            continue
+
+        # Backward-compatible legacy one-target tracking.
+        entry, stop, target = (
+            float(plan["entry"]), float(plan["stop_loss"]), float(plan["take_profit"])
+        )
         if row.side == "BUY":
             hit_stop, hit_target = candle_low <= stop, candle_high >= target
-            risk = entry - stop
-            reward = target - entry
+            risk, reward = entry - stop, target - entry
         else:
             hit_stop, hit_target = candle_high >= stop, candle_low <= target
-            risk = stop - entry
-            reward = entry - target
+            risk, reward = stop - entry, entry - target
         if not hit_stop and not hit_target:
             continue
         ambiguous = hit_stop and hit_target
-        if hit_stop:
-            outcome, realized_r = "SL", -1.0
-        else:
-            outcome = "TP"
-            realized_r = reward / risk if risk > 0 else None
-        stored["ambiguous_candle"] = ambiguous
-        stored["outcome"] = outcome
-        stored["realized_r"] = realized_r
-        stored["closed_at"] = now.isoformat()
-        stored["close_candle_timestamp"] = candle_timestamp
-        if ambiguous:
-            stored["close_reason"] = (
-                "TP dan SL tersentuh dalam candle yang sama; hasil dicatat "
-                "konservatif sebagai SL karena urutan intrabar tidak tersedia."
-            )
-        else:
-            level = "stop-loss" if outcome == "SL" else "take-profit"
-            stored["close_reason"] = f"Candle tertutup menyentuh {level}."
+        outcome = "SL" if hit_stop else "TP"
+        realized_r = -1.0 if hit_stop else (reward / risk if risk > 0 else None)
+        stored.update({
+            "ambiguous_candle": ambiguous, "outcome": outcome,
+            "realized_r": realized_r, "closed_at": now.isoformat(),
+            "close_candle_timestamp": candle_timestamp,
+            "close_reason": (
+                "TP dan SL tersentuh dalam candle yang sama; dicatat konservatif sebagai SL."
+                if ambiguous else f"Candle tertutup menyentuh {'stop-loss' if hit_stop else 'take-profit'}."
+            ),
+        })
         row.reasons_json = json.dumps(stored, ensure_ascii=False)
         row.status = "CLOSED"
         row.updated_at = now
-        message = (
-            f"Hasil sinyal otomatis: {outcome}"
-            + (f" ({realized_r:.2f}R)" if realized_r is not None else "")
-            + (" — TP dan SL satu candle, dicatat konservatif sebagai SL." if ambiguous else "")
-        )
         db.add(SignalNotification(
-            signal_id=row.id,
-            title=f"{row.symbol} {outcome}",
-            message=message,
+            signal_id=row.id, title=f"{row.symbol} {outcome}",
+            message=f"Hasil sinyal otomatis: {outcome} ({realized_r:.2f}R).",
             created_at=now,
         ))
-        closed_signals.append((row, outcome, realized_r))
+        notifications.append((row, outcome, realized_r))
     db.commit()
 
-    # Deliver TP/SL results to devices too; persist the result first so an FCM
-    # outage cannot roll back the signal lifecycle or its performance history.
-    for row, outcome, realized_r in closed_signals:
+    # Push is best-effort. Persisted paper lifecycle is authoritative; no exchange order is sent.
+    for row, outcome, realized_r in notifications:
         try:
             from app.services.push_notifications import send_push_to_registered_devices
-
             stored = json.loads(row.reasons_json)
             plan = stored.get("trade_plan") or {}
             send_push_to_registered_devices(
-                db,
-                title=f"{row.symbol} {outcome}",
-                body=(
-                    f"Hasil sinyal {row.side}: {outcome}"
-                    + (f" ({realized_r:.2f}R)" if realized_r is not None else "")
-                ),
+                db, title=f"{row.symbol} {outcome}",
+                body=f"Hasil sinyal {row.side}: {outcome} ({realized_r:.2f}R)",
                 data={
-                    "type": "trade_result",
-                    "signal_id": str(row.id),
-                    "symbol": row.symbol,
-                    "side": row.side,
-                    "outcome": outcome,
+                    "type": "trade_result", "signal_id": str(row.id),
+                    "symbol": row.symbol, "side": row.side, "outcome": outcome,
                     "entry": str(plan.get("entry") or ""),
                     "stop_loss": str(plan.get("stop_loss") or ""),
                     "take_profit": str(plan.get("take_profit") or ""),
                     "realized_r": str(realized_r if realized_r is not None else ""),
+                    "execution_mode": "PAPER_PRICE_TRACKING",
                 },
             )
         except Exception:
@@ -297,14 +319,25 @@ def record_signal(
         if previous_event is not None:
             db.commit()
             return
+        normalized_plan = dict(trade_plan or {})
+        if strategy_mode == CURRENT_STRATEGY_MODE:
+            entry = float(normalized_plan["entry"])
+            stop = float(normalized_plan["stop_loss"])
+            risk = abs(entry - stop)
+            direction = 1.0 if side == "BUY" else -1.0
+            normalized_plan.setdefault("take_profit_1", entry + direction * risk)
+            normalized_plan.setdefault("take_profit_2", entry + direction * risk * 2)
+            normalized_plan.setdefault("take_profit_3", entry + direction * risk * 3)
+            normalized_plan["take_profit"] = normalized_plan["take_profit_3"]
         event = SignalEvent(
             dedupe_key=dedupe_key, symbol=symbol.upper(), side=side, status="ACTIVE",
             timeframe_set=timeframe_set,
             reasons_json=json.dumps({
-                "reasons": reasons, "trade_plan": trade_plan or {},
+                "reasons": reasons, "trade_plan": normalized_plan,
                 "outcome": None, "realized_r": None, "closed_at": None,
                 "signal_candle_timestamp": signal_candle_timestamp,
                 "strategy_mode": strategy_mode or "LEGACY_UNVERSIONED",
+                "execution_mode": "PAPER_PRICE_TRACKING" if strategy_mode == CURRENT_STRATEGY_MODE else "SIGNAL_ONLY",
             }, ensure_ascii=False),
             created_at=now, updated_at=now,
         )
@@ -403,10 +436,10 @@ def signal_performance(db: Session = Depends(get_db)):
     def summarize(items: list[dict]) -> dict:
         completed = [
             item for item in items
-            if item.get("outcome") in {"TP", "SL"}
+            if item.get("outcome") in {"TP", "SL", "WIN", "LOSS", "BREAKEVEN"}
         ]
-        wins = sum(item["outcome"] == "TP" for item in completed)
-        losses = sum(item["outcome"] == "SL" for item in completed)
+        wins = sum(item["outcome"] in {"TP", "WIN"} for item in completed)
+        losses = sum(item["outcome"] in {"SL", "LOSS"} for item in completed)
         total_r = sum(float(item.get("realized_r") or 0) for item in completed)
         return {
             "total_signals": len(items),
@@ -415,6 +448,7 @@ def signal_performance(db: Session = Depends(get_db)):
             "completed": len(completed),
             "wins": wins,
             "losses": losses,
+            "breakeven": sum(item["outcome"] == "BREAKEVEN" for item in completed),
             "ambiguous": sum(bool(item.get("ambiguous_candle")) for item in items),
             "win_rate_pct": (wins / len(completed) * 100) if completed else None,
             "total_realized_r": round(total_r, 4),
