@@ -43,7 +43,13 @@ def build_lifecycle(side: str, plan: dict) -> dict:
         "targets": targets,
         "target_allocations_pct": [50.0, 30.0, 20.0],
         "next_target_index": 0,
-        "realized_r": 0.0,
+        "fee_bps_per_side": 10.0,
+        "slippage_bps_per_side": 5.0,
+        "gross_realized_r": 0.0,
+        "estimated_costs_r": (
+            (10.0 + 5.0) / 10000.0 * entry / risk
+        ),
+        "realized_r": -((10.0 + 5.0) / 10000.0 * entry / risk),
         "events": [],
     }
 
@@ -88,8 +94,21 @@ def advance_lifecycle(
     ambiguous = stop_hit and target_hit
     if stop_hit:
         exit_price = stop
-        pnl_r = direction * (exit_price - entry) / risk * remaining / 100.0
-        state["realized_r"] = round(float(state["realized_r"]) + pnl_r, 8)
+        gross_pnl_r = direction * (exit_price - entry) / risk * remaining / 100.0
+        exit_cost_r = (
+            (float(state["fee_bps_per_side"]) + float(state["slippage_bps_per_side"]))
+            / 10000.0 * exit_price * remaining / 100.0 / risk
+        )
+        state["gross_realized_r"] = round(
+            float(state["gross_realized_r"]) + gross_pnl_r, 8
+        )
+        state["estimated_costs_r"] = round(
+            float(state["estimated_costs_r"]) + exit_cost_r, 8
+        )
+        state["realized_r"] = round(
+            float(state["gross_realized_r"]) - float(state["estimated_costs_r"]), 8
+        )
+        pnl_r = gross_pnl_r - exit_cost_r
         state["closed_position_pct"] = round(
             float(state["closed_position_pct"]) + remaining, 8
         )
@@ -116,8 +135,21 @@ def advance_lifecycle(
     else:
         allocation = float(state["target_allocations_pct"][index])
         tranche = min(allocation, remaining)
-        pnl_r = direction * (target - entry) / risk * tranche / 100.0
-        state["realized_r"] = round(float(state["realized_r"]) + pnl_r, 8)
+        gross_pnl_r = direction * (target - entry) / risk * tranche / 100.0
+        exit_cost_r = (
+            (float(state["fee_bps_per_side"]) + float(state["slippage_bps_per_side"]))
+            / 10000.0 * target * tranche / 100.0 / risk
+        )
+        state["gross_realized_r"] = round(
+            float(state["gross_realized_r"]) + gross_pnl_r, 8
+        )
+        state["estimated_costs_r"] = round(
+            float(state["estimated_costs_r"]) + exit_cost_r, 8
+        )
+        state["realized_r"] = round(
+            float(state["gross_realized_r"]) - float(state["estimated_costs_r"]), 8
+        )
+        pnl_r = gross_pnl_r - exit_cost_r
         state["remaining_position_pct"] = round(remaining - tranche, 8)
         state["closed_position_pct"] = round(
             float(state["closed_position_pct"]) + tranche, 8
@@ -155,8 +187,24 @@ def advance_lifecycle(
             )
             if tightened_stop_hit:
                 remaining = float(state["remaining_position_pct"])
-                stop_r = direction * (tightened_stop - entry) / risk * remaining / 100.0
-                state["realized_r"] = round(float(state["realized_r"]) + stop_r, 8)
+                gross_stop_r = (
+                    direction * (tightened_stop - entry) / risk * remaining / 100.0
+                )
+                exit_cost_r = (
+                    (float(state["fee_bps_per_side"]) + float(state["slippage_bps_per_side"]))
+                    / 10000.0 * tightened_stop * remaining / 100.0 / risk
+                )
+                state["gross_realized_r"] = round(
+                    float(state["gross_realized_r"]) + gross_stop_r, 8
+                )
+                state["estimated_costs_r"] = round(
+                    float(state["estimated_costs_r"]) + exit_cost_r, 8
+                )
+                state["realized_r"] = round(
+                    float(state["gross_realized_r"])
+                    - float(state["estimated_costs_r"]), 8
+                )
+                stop_r = gross_stop_r - exit_cost_r
                 state["closed_position_pct"] = round(
                     float(state["closed_position_pct"]) + remaining, 8
                 )
