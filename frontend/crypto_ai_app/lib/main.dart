@@ -698,6 +698,12 @@ _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bi
             const SizedBox(height: 15),
             
             ],
+            if (activePage == 'Overview') ...[
+              const _Heading('SIGNAL PERFORMANCE', 'Ringkasan performa sinyal V8 dari backend'),
+              const SizedBox(height: 9),
+              _SignalPerformance(future: signalPerformance),
+              const SizedBox(height: 15),
+            ],
             if (activePage == 'Overview' || activePage == 'AI Agents') ...[
 Container(padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
