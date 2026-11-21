@@ -12,6 +12,7 @@ import signal
 
 from sqlalchemy import select
 
+from app.api.analysis_intelligence import _backfill_uninitialized_v8_signals
 from app.api.signals import evaluate_active_signals
 from app.core.config import get_settings
 from app.database.base import Base
@@ -106,6 +107,14 @@ async def monitor_active_signals_once(market=None, session_factory=SessionLocal)
             provider = BinanceMarketData()
         for symbol in symbols:
             try:
+                if provider_name == "bitget" and market is None:
+                    backfill_db = session_factory()
+                    try:
+                        await _backfill_uninitialized_v8_signals(
+                            backfill_db, symbol
+                        )
+                    finally:
+                        backfill_db.close()
                 candles = await provider.fetch_klines(
                     symbol, "1m", limit=2, closed_only=True
                 )
