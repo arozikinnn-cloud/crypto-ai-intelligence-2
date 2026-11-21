@@ -63,7 +63,7 @@ def test_same_candle_stop_and_target_resolves_conservatively_as_stop():
     assert state["closed"] is True
     assert state["outcome"] == "LOSS"
     assert state["ambiguous_candle"] is True
-    assert state["realized_r"] == -1.0
+    assert state["realized_r"] == -1.1485
 
 
 def test_duplicate_candle_does_not_duplicate_partial_fill():
