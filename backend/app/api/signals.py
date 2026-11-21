@@ -117,6 +117,8 @@ def _event_payload(row: SignalEvent) -> dict:
             "outcome": outcome, "realized_r": stored.get("realized_r"),
             "closed_at": stored.get("closed_at"),
             "lifecycle": stored.get("lifecycle"),
+            "gross_realized_r": (stored.get("lifecycle") or {}).get("gross_realized_r"),
+            "estimated_costs_r": (stored.get("lifecycle") or {}).get("estimated_costs_r"),
             "execution_mode": stored.get("execution_mode", "SIGNAL_ONLY"),
         }
     return {
@@ -479,8 +481,10 @@ def signal_performance(db: Session = Depends(get_db)):
             "Statistik utama hanya menghitung sinyal TradingAgents V8 yang telah "
             "melewati validasi data Bitget Futures dan konfirmasi multi-timeframe. "
             "Sinyal strategi lama dipisahkan sebagai riwayat legacy dan tidak dicampur. "
-            "WR dihitung hanya dari sinyal TP/SL terkonfirmasi; TP dan SL pada "
-            "candle yang sama dihitung sebagai SL secara konservatif."
+            "WR dihitung setelah seluruh posisi ditutup berdasarkan net R paper "
+            "setelah estimasi fee 10 bps dan slippage 5 bps per sisi. "
+            "WIN/LOSS/BREAKEVEN mengikuti net R; partial fill bukan order exchange. "
+            "Jika stop dan target bertabrakan dalam satu candle, stop diprioritaskan."
         ),
     }
 
