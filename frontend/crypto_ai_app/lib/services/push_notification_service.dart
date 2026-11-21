@@ -17,7 +17,15 @@ class PushNotificationService {
 
   static bool _initialized = false;
   static bool _notificationsAllowed = false;
+  static bool _registrationSucceeded = false;
   static StreamSubscription<String>? _tokenRefreshSubscription;
+  static StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
+
+  static void Function(String title, String body)? onForegroundNotification;
+
+  static bool get initialized => _initialized;
+  static bool get notificationsAllowed => _notificationsAllowed;
+  static bool get registrationSucceeded => _registrationSucceeded;
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -40,13 +48,23 @@ class PushNotificationService {
           settings.authorizationStatus == AuthorizationStatus.provisional;
       _initialized = true;
 
-      if (!_notificationsAllowed) return;
+      await _foregroundMessageSubscription?.cancel();
+      _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen((message) {
+        final title = message.notification?.title ??
+            message.data['title']?.toString() ??
+            'Crypto AI Intelligence';
+        final body = message.notification?.body ??
+            message.data['body']?.toString() ??
+            '';
+        onForegroundNotification?.call(title, body);
+      });
+
+      if (!_notificationsAllowed) {
+        _registrationSucceeded = false;
+        return;
+      }
 
       await refreshRegistration();
-      await _tokenRefreshSubscription?.cancel();
-      _tokenRefreshSubscription = messaging.onTokenRefresh.listen((token) {
-        unawaited(_registerToken(token));
-      });
     } catch (_) {
       // A later app-resume event retries Firebase/token initialization.
       _initialized = false;
@@ -56,12 +74,27 @@ class PushNotificationService {
   /// Re-fetch and register the current token on app resume. This recovers from
   /// first-run network outages and from the backend being temporarily offline.
   static Future<void> refreshRegistration() async {
-    if (!_initialized || !_notificationsAllowed) return;
+    if (!_initialized) return;
     try {
-      final token = await FirebaseMessaging.instance.getToken();
+      final messaging = FirebaseMessaging.instance;
+      final settings = await messaging.getNotificationSettings();
+      _notificationsAllowed =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+      if (!_notificationsAllowed) {
+        _registrationSucceeded = false;
+        await _tokenRefreshSubscription?.cancel();
+        _tokenRefreshSubscription = null;
+        return;
+      }
+
+      final token = await messaging.getToken();
       if (token != null && token.isNotEmpty) {
         await _registerToken(token);
       }
+      _tokenRefreshSubscription ??= messaging.onTokenRefresh.listen((token) {
+        unawaited(_registerToken(token));
+      });
     } catch (_) {
       // Keep app lifecycle and dashboard refresh independent from FCM.
     }
@@ -80,9 +113,12 @@ class PushNotificationService {
             body: jsonEncode({'token': token, 'platform': 'android'}),
           )
           .timeout(const Duration(seconds: 15));
-      return response.statusCode >= 200 && response.statusCode < 300;
+      _registrationSucceeded =
+          response.statusCode >= 200 && response.statusCode < 300;
+      return _registrationSucceeded;
     } catch (_) {
       // No token is logged or exposed; retry at the next app start/resume.
+      _registrationSucceeded = false;
       return false;
     }
   }

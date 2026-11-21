@@ -216,6 +216,74 @@ def test_signal_creation_and_result_send_push_without_breaking_persistence(monke
         db.close()
 
 
+
+def test_v8_partial_tp_events_send_push_notifications(monkeypatch):
+    from app.services import push_notifications
+
+    calls = []
+
+    def fake_push(_db, **kwargs):
+        calls.append(kwargs)
+        return {"sent": 1, "failed": 0, "configured": 1}
+
+    monkeypatch.setattr(
+        push_notifications, "send_push_to_registered_devices", fake_push
+    )
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+
+        record_signal(
+            db, "PUSHV8", "BUY", ["4h", "1h", "15m"], ["aligned"],
+            "push-v8-signal-1",
+            {"entry": 100.0, "stop_loss": 98.0, "take_profit": 103.0},
+            "push-v8-candle-1",
+            strategy_mode=CURRENT_STRATEGY_MODE,
+        )
+        assert len(calls) == 1
+        assert calls[0]["data"]["type"] == "trade_signal"
+
+        evaluate_active_signals(
+            db, "PUSHV8", 102.2, 100.5, "push-v8-candle-2"
+        )
+        event = db.scalar(
+            select(SignalEvent).where(SignalEvent.symbol == "PUSHV8")
+        )
+        assert event.status == "ACTIVE"
+        assert len(calls) == 2
+        assert calls[1]["data"]["type"] == "trade_lifecycle"
+        assert calls[1]["data"]["event"] == "TP1"
+        assert calls[1]["data"]["remaining_position_pct"] == "50.0"
+
+        evaluate_active_signals(
+            db, "PUSHV8", 104.2, 102.5, "push-v8-candle-3"
+        )
+        assert event.status == "ACTIVE"
+        assert len(calls) == 3
+        assert calls[2]["data"]["type"] == "trade_lifecycle"
+        assert calls[2]["data"]["event"] == "TP2"
+        assert calls[2]["data"]["remaining_position_pct"] == "20.0"
+
+        evaluate_active_signals(
+            db, "PUSHV8", 106.2, 103.0, "push-v8-candle-4"
+        )
+        assert event.status == "CLOSED"
+        assert len(calls) == 4
+        assert calls[3]["data"]["type"] == "trade_result"
+        assert calls[3]["data"]["outcome"] == "WIN"
+        assert calls[3]["data"]["event"] == "TP3"
+        assert len(list(db.scalars(select(SignalNotification)))) == 4
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
 def test_signal_outcome_is_saved_when_push_provider_raises(monkeypatch):
     from app.api.signals import evaluate_active_signals
     from app.services import push_notifications

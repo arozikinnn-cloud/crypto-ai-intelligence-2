@@ -197,6 +197,7 @@ def evaluate_active_signals(
                 continue
             last_event = lifecycle["events"][-1]
             stored["lifecycle_note"] = last_event["reason"]
+            stored["lifecycle_event"] = last_event["type"]
             if lifecycle.get("closed"):
                 stored["close_reason"] = last_event["reason"]
                 stored["closed_at"] = now.isoformat()
@@ -222,6 +223,12 @@ def evaluate_active_signals(
                         f"realized {lifecycle['realized_r']:.2f}R."
                     ),
                     created_at=now,
+                ))
+                # Partial TP1/TP2/stop-adjustment events must also reach FCM,
+                # not only the final closed-trade outcome.
+                notifications.append((
+                    row, str(last_event.get("type") or "LIFECYCLE_UPDATE"),
+                    lifecycle["realized_r"],
                 ))
             row.reasons_json = json.dumps(stored, ensure_ascii=False)
             row.updated_at = now
@@ -272,16 +279,33 @@ def evaluate_active_signals(
             from app.services.push_notifications import send_push_to_registered_devices
             stored = json.loads(row.reasons_json)
             plan = stored.get("trade_plan") or {}
+            lifecycle = stored.get("lifecycle") or {}
+            is_final = row.status == "CLOSED"
+            realized_label = (
+                f"{realized_r:.2f}R"
+                if isinstance(realized_r, (int, float))
+                else "R belum tersedia"
+            )
+            remaining_pct = lifecycle.get("remaining_position_pct")
+            body_prefix = "Hasil akhir" if is_final else "Update posisi"
+            body = f"{body_prefix} {row.side}: {outcome} ({realized_label})"
+            if remaining_pct is not None and not is_final:
+                body += f" • sisa posisi {float(remaining_pct):.0f}%"
             send_push_to_registered_devices(
-                db, title=f"{row.symbol} {outcome}",
-                body=f"Hasil sinyal {row.side}: {outcome} ({realized_r:.2f}R)",
+                db, title=f"{row.symbol} {outcome}", body=body,
                 data={
-                    "type": "trade_result", "signal_id": str(row.id),
+                    "type": "trade_result" if is_final else "trade_lifecycle",
+                    "event": str(stored.get("lifecycle_event") or outcome),
+                    "signal_id": str(row.id),
                     "symbol": row.symbol, "side": row.side, "outcome": outcome,
                     "entry": str(plan.get("entry") or ""),
                     "stop_loss": str(plan.get("stop_loss") or ""),
                     "take_profit": str(plan.get("take_profit") or ""),
                     "realized_r": str(realized_r if realized_r is not None else ""),
+                    "remaining_position_pct": str(
+                        remaining_pct if remaining_pct is not None else ""
+                    ),
+                    "closed_position_pct": str(lifecycle.get("closed_position_pct", "")),
                     "execution_mode": "PAPER_PRICE_TRACKING",
                 },
             )
