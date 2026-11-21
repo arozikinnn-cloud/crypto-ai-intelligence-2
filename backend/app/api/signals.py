@@ -90,8 +90,10 @@ def _event_payload(row: SignalEvent) -> dict:
         tp2 = plan.get("take_profit_2")
         tp3 = plan.get("take_profit_3") or target
         if is_current_strategy and risk is not None and risk > 0:
-            tp1 = tp1 if tp1 is not None else float(entry) + direction * risk * 0.5
-            tp2 = tp2 if tp2 is not None else float(entry) + direction * risk
+            tp1 = float(entry) + direction * risk
+            tp2 = float(entry) + direction * risk * 2
+            tp3 = float(entry) + direction * risk * 3
+            target = tp3
         confirmation_score = plan.get("confirmation_score")
         confidence_note = plan.get("confidence_note")
         if is_current_strategy:
