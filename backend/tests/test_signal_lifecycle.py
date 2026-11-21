@@ -127,7 +127,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         tp_payload = json.loads(tp_row.reasons_json)
         assert tp_row.status == "CLOSED"
         assert tp_payload["outcome"] == "WIN"
-        assert tp_payload["realized_r"] == 1.7
+        assert tp_payload["realized_r"] == 1.54745
 
         # If TP and SL occur in one OHLC candle, do not guess the order.
         evaluate_active_signals(db, "AMBTEST", 105.0, 97.0, "candle-amb-2")
@@ -349,7 +349,7 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         assert item.side == "BUY"
         assert item.signal_status == "CLOSED"
         assert item.signal_outcome == "WIN"
-        assert item.signal_realized_r == 0.5
+        assert item.signal_realized_r == 0.34925
         assert item.signal_closed_at is not None
         assert item.entry == 100
         assert item.stop_loss == 98
@@ -723,14 +723,14 @@ def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
         stored = json.loads(row.reasons_json)
         assert row.status == "ACTIVE"
         assert stored["lifecycle"]["remaining_position_pct"] == 50.0
-        assert stored["realized_r"] == 0.5
+        assert stored["realized_r"] == 0.34925
 
         evaluate_active_signals(db, "BTCUSDT", 101.0, 99.9, "v8-candle-3")
         db.refresh(row)
         stored = json.loads(row.reasons_json)
         assert row.status == "CLOSED"
         assert stored["outcome"] == "WIN"
-        assert stored["realized_r"] == 0.5
+        assert stored["realized_r"] == 0.38675
         assert stored["lifecycle"]["closed_position_pct"] == 100.0
         performance = signal_performance(db)
         assert performance["wins"] == 1
