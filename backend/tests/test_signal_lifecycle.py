@@ -754,3 +754,41 @@ def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
         db.execute(delete(SignalEvent))
         db.commit()
         db.close()
+
+
+def test_v8_lifecycle_persists_candle_cursor_before_first_target():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db,
+            "BTCUSDT",
+            "BUY",
+            ["1h", "30m", "15m", "5m"],
+            ["V8 multi-agent confirmation"],
+            "cursor-signal-candle",
+            {"entry": 100.0, "stop_loss": 98.0, "take_profit": 103.0},
+            signal_candle_timestamp="2026-11-20T00:00:00+00:00",
+            strategy_mode=CURRENT_STRATEGY_MODE,
+        )
+        row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT"))
+        evaluate_active_signals(
+            db, "BTCUSDT", 101.0, 100.5, "2026-11-20T00:15:00+00:00"
+        )
+        db.refresh(row)
+        stored = json.loads(row.reasons_json)
+        assert row.status == "ACTIVE"
+        assert stored["execution_mode"] == "PAPER_PRICE_TRACKING"
+        assert stored["lifecycle"]["last_candle_timestamp"] == (
+            "2026-11-20T00:15:00+00:00"
+        )
+        assert stored["lifecycle"]["events"] == []
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
