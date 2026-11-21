@@ -669,12 +669,12 @@ class _Dashboard extends StatelessWidget {
                   ]),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: _PlanValue('TP1 • 0.5R', tradePlan['take_profit_1'] ?? tradePlan['take_profit'])),
-                    Expanded(child: _PlanValue('TP2 • 1.0R', tradePlan['take_profit_2'])),
-                    Expanded(child: _PlanValue('TP3 • 1.5R', tradePlan['take_profit_3'] ?? tradePlan['take_profit'])),
+                    Expanded(child: _PlanValue('TP1 • 1.0R', tradePlan['take_profit_1'] ?? tradePlan['take_profit'])),
+                    Expanded(child: _PlanValue('TP2 • 2.0R', tradePlan['take_profit_2'])),
+                    Expanded(child: _PlanValue('TP3 • 3.0R', tradePlan['take_profit_3'] ?? tradePlan['take_profit'])),
                   ]),
                   const SizedBox(height: 8),
-                  Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
+                  Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '3.0')} • Entry M15, SL berbasis ATR',
                     style: const TextStyle(color: muted, fontSize: 10)),
                   if (tradePlan['confirmation_score'] != null)
                     Text('Confidence (konfirmasi TF): ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
