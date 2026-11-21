@@ -850,7 +850,7 @@ def test_backfill_replays_missed_partial_tp_and_stop_candles(monkeypatch):
         assert stored["outcome"] == "WIN"
         assert stored["realized_r"] == 0.34925
         assert [event["type"] for event in stored["lifecycle"]["events"]] == [
-            "TP1", "TIGHTENED_STOP_EXIT"
+            "TP1", "STOP_EXIT"
         ]
     finally:
         db.rollback()
