@@ -86,17 +86,9 @@ jobs:
             adb logcat -c
             adb shell monkey -p com.cryptoai.crypto_ai_app 1
             sleep 15
-            if ! adb shell pidof -s com.cryptoai.crypto_ai_app >/dev/null; then
-              echo "Android app process exited during launch smoke test."
-              adb logcat -d -s AndroidRuntime:E
-              exit 1
-            fi
-            runtime_errors="$(adb logcat -d -s AndroidRuntime:E)"
-            echo "$runtime_errors"
-            if echo "$runtime_errors" | grep -q "FATAL EXCEPTION"; then
-              echo "Fatal Android runtime exception detected."
-              exit 1
-            fi
+            adb shell pidof -s com.cryptoai.crypto_ai_app >/dev/null || { echo "Android app process exited during launch smoke test."; adb logcat -d -s AndroidRuntime:E; exit 1; }
+            adb logcat -d -s AndroidRuntime:E
+            ! adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION" || { echo "Fatal Android runtime exception detected."; exit 1; }
             echo "Debug APK installed, remained running, and had no fatal Android runtime exception."
       - name: Build Android release APKs (split by ABI)
         env:
