@@ -3,8 +3,6 @@ import logging
 import os
 from functools import lru_cache
 
-import firebase_admin
-from firebase_admin import credentials, messaging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,6 +18,9 @@ def _firebase_app():
         logger.info("FCM disabled: FIREBASE_SERVICE_ACCOUNT_JSON is not configured")
         return None
     try:
+        import firebase_admin
+        from firebase_admin import credentials
+
         info = json.loads(raw)
         if info.get("project_id") != "crypto-ai-intelligence-v7":
             raise ValueError("Firebase service account project_id does not match the app")
@@ -38,6 +39,8 @@ def send_push_to_registered_devices(
     app = _firebase_app()
     if app is None:
         return {"sent": 0, "failed": 0, "configured": 0}
+    from firebase_admin import messaging
+
     rows = list(db.scalars(select(DeviceToken).where(DeviceToken.is_active.is_(True))))
     if not rows:
         return {"sent": 0, "failed": 0, "configured": 1}
