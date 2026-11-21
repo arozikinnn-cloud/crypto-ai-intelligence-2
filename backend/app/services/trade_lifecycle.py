@@ -144,6 +144,41 @@ def advance_lifecycle(
                 else "BREAKEVEN"
             )
             state["closed"] = True
+        else:
+            # Once a target tranche is confirmed, also honor the newly tightened
+            # stop if the same candle retraced through it. The previous stop was
+            # checked first, so an original SL collision never earns TP credit.
+            tightened_stop = float(state["current_stop"])
+            tightened_stop_hit = (
+                candle_low <= tightened_stop if side == "BUY"
+                else candle_high >= tightened_stop
+            )
+            if tightened_stop_hit:
+                remaining = float(state["remaining_position_pct"])
+                stop_r = direction * (tightened_stop - entry) / risk * remaining / 100.0
+                state["realized_r"] = round(float(state["realized_r"]) + stop_r, 8)
+                state["closed_position_pct"] = round(
+                    float(state["closed_position_pct"]) + remaining, 8
+                )
+                state["remaining_position_pct"] = 0.0
+                state["events"].append({
+                    "type": "TIGHTENED_STOP_EXIT",
+                    "price": tightened_stop,
+                    "position_pct": remaining,
+                    "realized_r": round(stop_r, 8),
+                    "candle_timestamp": candle_timestamp,
+                    "ambiguous_candle": True,
+                    "reason": (
+                        "Setelah partial TP, stop yang diperketat ikut tersentuh "
+                        "dalam candle yang sama; sisa posisi ditutup pada stop baru."
+                    ),
+                })
+                state["outcome"] = (
+                    "WIN" if state["realized_r"] > 1e-9
+                    else "LOSS" if state["realized_r"] < -1e-9
+                    else "BREAKEVEN"
+                )
+                state["closed"] = True
 
     state["last_candle_timestamp"] = candle_timestamp
     state["ambiguous_candle"] = bool(state.get("ambiguous_candle")) or ambiguous
