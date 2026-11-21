@@ -1,11 +1,20 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.api.signals import evaluate_active_signals, record_signal
+from app.api.signals import (
+    CURRENT_STRATEGY_MODE,
+    evaluate_active_signals,
+    record_signal,
+)
+from app.models.signal_event import SignalEvent
+from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.schemas.analysis import AnalysisResponse
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.order_flow import (
@@ -27,6 +36,74 @@ from app.services.market_data.binance_futures import BinanceFuturesMarketData
 from app.services.market_data.binance_order_book import BinanceOrderBookMarketData
 from app.services.market_data.cvd_storage import persist_aggtrades_cvd, read_cvd_history
 from app.services.market_data.liquidation_storage import read_liquidation_history
+
+
+logger = logging.getLogger(__name__)
+
+
+async def _backfill_uninitialized_v8_signals(db: Session, symbol: str) -> None:
+    """Replay recent closed Bitget 15m candles once for legacy active V8 signals."""
+    rows = list(db.scalars(select(SignalEvent).where(
+        SignalEvent.symbol == symbol.upper(),
+        SignalEvent.status == "ACTIVE",
+    )))
+    if not rows:
+        return
+
+    now = datetime.now(timezone.utc)
+    provider = BitgetUsdtFuturesMarketData()
+    for row in rows:
+        try:
+            stored = json.loads(row.reasons_json)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if (
+            not isinstance(stored, dict)
+            or stored.get("strategy_mode") != CURRENT_STRATEGY_MODE
+            or stored.get("lifecycle") is not None
+        ):
+            continue
+
+        created_at = row.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if now - created_at < timedelta(minutes=15):
+            continue
+
+        try:
+            candles = await provider.fetch_klines(
+                symbol.upper(), "15m", limit=200, closed_only=True
+            )
+        except Exception:
+            logger.exception(
+                "Unable to backfill V8 lifecycle candles for %s", symbol
+            )
+            continue
+
+        for candle in sorted(candles, key=lambda item: item.close_time):
+            close_time = candle.close_time
+            if close_time.tzinfo is None:
+                close_time = close_time.replace(tzinfo=timezone.utc)
+            if close_time <= created_at:
+                continue
+            evaluate_active_signals(
+                db,
+                symbol.upper(),
+                float(candle.high),
+                float(candle.low),
+                close_time.isoformat(),
+            )
+            db.refresh(row)
+            if row.status != "ACTIVE":
+                break
+            try:
+                latest = json.loads(row.reasons_json)
+            except (TypeError, json.JSONDecodeError):
+                break
+            if latest.get("lifecycle") is not None:
+                # Lifecycle cursor is persisted on every processed candle.
+                continue
+
 
 router = APIRouter(prefix="/analysis", tags=["combined intelligence"])
 
