@@ -95,11 +95,6 @@ def run_strategy_backtest(
 
         direction = 1 if side == "BUY" else -1
         stop = entry - risk_distance if side == "BUY" else entry + risk_distance
-        target = (
-            entry + risk_distance * 1.5
-            if side == "BUY"
-            else entry - risk_distance * 1.5
-        )
         last_index = min(len(candles) - 1, entry_index + max_holding_candles - 1)
         exit_index = last_index
         remaining_pct = 100.0
