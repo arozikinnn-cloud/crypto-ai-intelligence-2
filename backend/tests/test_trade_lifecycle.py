@@ -72,3 +72,24 @@ def test_duplicate_candle_does_not_duplicate_partial_fill():
     assert changed is False
     assert repeated["realized_r"] == 0.38675
     assert len(repeated["events"]) == 1
+
+
+def test_sell_partial_ladder_uses_symmetric_stop_management_and_costs():
+    sell_plan = {
+        "entry": 100.0,
+        "stop_loss": 102.0,
+        "take_profit": 97.0,
+    }
+    state, _ = advance_lifecycle("SELL", sell_plan, None, 99.5, 97.8, "s1")
+    assert state["remaining_position_pct"] == 50.0
+    assert state["current_stop"] == 100.0
+    assert state["realized_r"] == 0.38825
+
+    state, _ = advance_lifecycle("SELL", sell_plan, state, 97.5, 95.8, "s2")
+    assert state["remaining_position_pct"] == 20.0
+    assert state["current_stop"] == 98.0
+
+    state, _ = advance_lifecycle("SELL", sell_plan, state, 98.1, 97.5, "s3")
+    assert state["closed"] is True
+    assert state["outcome"] == "WIN"
+    assert state["realized_r"] == 1.15195
