@@ -37,6 +37,17 @@ jobs:
       - run: flutter test
       - name: Generate Android platform project
         run: flutter create --platforms=android --org com.cryptoai .
+      - name: Add INTERNET permission for public API and WebSocket feeds
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text()
+          permission = '<uses-permission android:name="android.permission.INTERNET" />'
+          if permission not in content:
+              content = content.replace("<application", "    " + permission + chr(10) + "    <application", 1)
+              manifest.write_text(content)
+          PY
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
