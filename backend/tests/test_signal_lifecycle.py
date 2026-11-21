@@ -8,6 +8,7 @@ from app.api.signals import (
     evaluate_active_signals,
     record_signal,
     signal_performance,
+    _event_payload,
 )
 from app.database.base import Base
 from app.database.session import SessionLocal, engine
@@ -713,6 +714,15 @@ def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
         row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT"))
         stored = json.loads(row.reasons_json)
         plan = stored["trade_plan"]
+        stored.pop("execution_mode", None)
+        row.reasons_json = json.dumps(stored, ensure_ascii=False)
+        db.commit()
+        payload = _event_payload(row)
+        assert payload["execution_mode"] == "PAPER_PRICE_TRACKING"
+        assert payload["take_profit_1"] == 102.0
+        assert payload["take_profit_2"] == 104.0
+        assert payload["take_profit_3"] == 106.0
+        assert any(reason.startswith("Ladder TP paper:") for reason in payload["reasons"])
         assert plan["take_profit_1"] == 102.0
         assert plan["take_profit_2"] == 104.0
         assert plan["take_profit_3"] == 106.0
