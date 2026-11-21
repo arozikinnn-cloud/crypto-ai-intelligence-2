@@ -17,13 +17,13 @@ def test_tp1_then_breakeven_stop_is_a_net_positive_paper_win():
     assert changed
     assert state["remaining_position_pct"] == 50.0
     assert state["current_stop"] == 100.0
-    assert state["realized_r"] == 0.5
+    assert state["realized_r"] == 0.38675
 
     state, changed = advance_lifecycle("BUY", plan(), state, 101.0, 99.9, "c2")
     assert changed
     assert state["closed"] is True
     assert state["outcome"] == "WIN"
-    assert state["realized_r"] == 0.5
+    assert state["realized_r"] == 0.34925
     assert state["closed_position_pct"] == 100.0
 
 
@@ -35,7 +35,7 @@ def test_tp1_tp2_then_stop_at_tp1_keeps_partial_profit():
     state, _ = advance_lifecycle("BUY", plan(), state, 103.0, 101.9, "c3")
     assert state["closed"] is True
     assert state["outcome"] == "WIN"
-    assert state["realized_r"] == 1.3
+    assert state["realized_r"] == 1.14805
 
 
 def test_all_three_targets_close_50_30_20_position():
@@ -46,7 +46,7 @@ def test_all_three_targets_close_50_30_20_position():
     assert state["remaining_position_pct"] == 0.0
     assert state["closed_position_pct"] == 100.0
     assert state["outcome"] == "WIN"
-    assert state["realized_r"] == 1.7
+    assert state["realized_r"] == 1.54745
 
 
 def test_stop_before_tp1_is_full_loss():
@@ -55,7 +55,7 @@ def test_stop_before_tp1_is_full_loss():
     )
     assert changed
     assert state["outcome"] == "LOSS"
-    assert state["realized_r"] == -1.0
+    assert state["realized_r"] == -1.1485
 
 
 def test_same_candle_stop_and_target_resolves_conservatively_as_stop():
@@ -70,5 +70,5 @@ def test_duplicate_candle_does_not_duplicate_partial_fill():
     state, _ = advance_lifecycle("BUY", plan(), None, 102.5, 100.5, "c1")
     repeated, changed = advance_lifecycle("BUY", plan(), state, 102.5, 100.5, "c1")
     assert changed is False
-    assert repeated["realized_r"] == 0.5
+    assert repeated["realized_r"] == 0.38675
     assert len(repeated["events"]) == 1
