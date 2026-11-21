@@ -1443,8 +1443,12 @@ class _SignalCenter extends StatelessWidget {
                     children: [
                       Text('$symbol • $side • #${item['id']}',
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
-                      Text('$status • $outcome${realizedR == null ? '' : ' • ${realizedR}R'} • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
+                      Text('$status • $outcome${realizedR == null ? '' : ' • NET ${realizedR}R'} • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
                           style: TextStyle(color: muted, fontSize: 8)),
+                      if (lifecycle['estimated_costs_r'] != null)
+                        Text(
+                          'Gross R: ${lifecycle['gross_realized_r']} • Estimasi biaya: ${lifecycle['estimated_costs_r']}R • Fee 10 bps + slippage 5 bps per sisi',
+                          style: const TextStyle(color: muted, fontSize: 8)),
                       if (closedAt != null)
                         Text('Ditutup: ${txt(closedAt)}',
                             style: const TextStyle(color: muted, fontSize: 8)),
