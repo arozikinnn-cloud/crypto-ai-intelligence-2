@@ -18,4 +18,4 @@ The dashboard requests `GET /analysis/intelligence` and renders the decision, co
 
 ## CI
 
-The Mobile CI workflow runs dependency resolution, Dart formatting, static analysis, and widget tests. It does not yet certify a signed Android release APK.
+The Mobile CI workflow runs dependency resolution, Dart formatting, static analysis, Flutter tests, builds a debug APK, installs and launches it in an Android emulator, and builds ABI-split release APKs. The workflow uploads APK artifacts for 7 days. A CI build is not a substitute for testing push delivery on a physical phone or configuring the persistent TradingAgents worker.
