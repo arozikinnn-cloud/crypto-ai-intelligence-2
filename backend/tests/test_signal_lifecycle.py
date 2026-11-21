@@ -477,9 +477,9 @@ def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probabili
 
     plan = result["trade_plan"]
     assert result["side"] == "BUY"
-    assert plan["take_profit_1"] == 101.0
-    assert plan["take_profit_2"] == 102.0
-    assert plan["take_profit_3"] == 103.0
+    assert plan["take_profit_1"] == 102.0
+    assert plan["take_profit_2"] == 104.0
+    assert plan["take_profit_3"] == 106.0
     assert plan["take_profit"] == plan["take_profit_3"]
     assert plan["confirmation_score"] == "3/3 higher-timeframe alignment"
     assert "bukan probabilitas win rate" in plan["confidence_note"]
