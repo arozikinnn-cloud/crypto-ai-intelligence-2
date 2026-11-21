@@ -550,7 +550,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    drawer: _buildDrawer(context),
+    endDrawer: _buildDrawer(context),
     body: SafeArea(child: FutureBuilder<Map<String, dynamic>>(
       future: analysis,
       builder: (context, snap) {
@@ -657,7 +657,7 @@ class _Dashboard extends StatelessWidget {
                 ])),
               IconButton(
                 tooltip: 'Buka menu navigasi',
-                onPressed: () => Scaffold.of(context).openDrawer(),
+                onPressed: () => Scaffold.of(context).openEndDrawer(),
                 icon: const Icon(Icons.more_vert_rounded),
               ),
               IconButton(onPressed: refreshing ? null : refresh,
