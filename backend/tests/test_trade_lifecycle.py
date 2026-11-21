@@ -50,7 +50,9 @@ def test_all_three_targets_close_50_30_20_position():
 
 
 def test_stop_before_tp1_is_full_loss():
-    state, changed = advance_lifecycle("BUY", plan(), build_lifecycle("BUY", plan()), 100.5, 97.9, "c1")
+    state, changed = advance_lifecycle(
+        "BUY", plan(), build_lifecycle("BUY", plan()), 100.5, 97.9, "c1"
+    )
     assert changed
     assert state["outcome"] == "LOSS"
     assert state["realized_r"] == -1.0
