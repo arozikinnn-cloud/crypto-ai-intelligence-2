@@ -13,7 +13,7 @@ on:
       - ".github/workflows/tradingagents-v8-scheduled.yml"
       - ".github/workflows/mobile-ci.yml"
   pull_request:
-    branches: ["feature/**"]
+    branches: [main, "feature/**"]
     paths:
       - "frontend/crypto_ai_app/**"
       - "backend/app/services/analysis/intelligence.py"
