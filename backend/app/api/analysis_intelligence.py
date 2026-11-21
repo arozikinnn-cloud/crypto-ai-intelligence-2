@@ -254,6 +254,7 @@ async def combined_intelligence(
     # Track TP/SL on closed 1m candles, independently of the analysis
     # timeframes. Fall back to the selected 5m candle if Binance 1m data
     # is temporarily unavailable.
+    await _backfill_uninitialized_v8_signals(db, symbol)
     tracking_candles = []
     try:
         tracking_candles = await market.fetch_klines(
