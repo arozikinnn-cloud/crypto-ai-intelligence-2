@@ -65,10 +65,6 @@ class PushNotificationService {
       }
 
       await refreshRegistration();
-      await _tokenRefreshSubscription?.cancel();
-      _tokenRefreshSubscription = messaging.onTokenRefresh.listen((token) {
-        unawaited(_registerToken(token));
-      });
     } catch (_) {
       // A later app-resume event retries Firebase/token initialization.
       _initialized = false;
@@ -78,12 +74,27 @@ class PushNotificationService {
   /// Re-fetch and register the current token on app resume. This recovers from
   /// first-run network outages and from the backend being temporarily offline.
   static Future<void> refreshRegistration() async {
-    if (!_initialized || !_notificationsAllowed) return;
+    if (!_initialized) return;
     try {
-      final token = await FirebaseMessaging.instance.getToken();
+      final messaging = FirebaseMessaging.instance;
+      final settings = await messaging.getNotificationSettings();
+      _notificationsAllowed =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+      if (!_notificationsAllowed) {
+        _registrationSucceeded = false;
+        await _tokenRefreshSubscription?.cancel();
+        _tokenRefreshSubscription = null;
+        return;
+      }
+
+      final token = await messaging.getToken();
       if (token != null && token.isNotEmpty) {
         await _registerToken(token);
       }
+      _tokenRefreshSubscription ??= messaging.onTokenRefresh.listen((token) {
+        unawaited(_registerToken(token));
+      });
     } catch (_) {
       // Keep app lifecycle and dashboard refresh independent from FCM.
     }
