@@ -116,12 +116,18 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
         assert tp_row.status == "ACTIVE"
 
-        evaluate_active_signals(db, "TPTEST", 105.0, 99.0, "candle-tp-2")
+        evaluate_active_signals(db, "TPTEST", 103.0, 100.5, "candle-tp-2")
+        tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
+        assert tp_row.status == "ACTIVE"
+        evaluate_active_signals(db, "TPTEST", 105.0, 102.5, "candle-tp-3")
+        tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
+        assert tp_row.status == "ACTIVE"
+        evaluate_active_signals(db, "TPTEST", 107.0, 103.0, "candle-tp-4")
         tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
         tp_payload = json.loads(tp_row.reasons_json)
         assert tp_row.status == "CLOSED"
-        assert tp_payload["outcome"] == "TP"
-        assert tp_payload["realized_r"] == 2.0
+        assert tp_payload["outcome"] == "WIN"
+        assert tp_payload["realized_r"] == 1.7
 
         # If TP and SL occur in one OHLC candle, do not guess the order.
         evaluate_active_signals(db, "AMBTEST", 105.0, 97.0, "candle-amb-2")
@@ -342,15 +348,15 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         assert item.symbol == "V8INBOX"
         assert item.side == "BUY"
         assert item.signal_status == "CLOSED"
-        assert item.signal_outcome == "TP"
-        assert item.signal_realized_r == 1.5
+        assert item.signal_outcome == "WIN"
+        assert item.signal_realized_r == 0.5
         assert item.signal_closed_at is not None
         assert item.entry == 100
         assert item.stop_loss == 98
-        assert item.take_profit == 103
-        assert item.take_profit_1 == 101
-        assert item.take_profit_2 == 102
-        assert item.take_profit_3 == 103
+        assert item.take_profit == 106
+        assert item.take_profit_1 == 102
+        assert item.take_profit_2 == 104
+        assert item.take_profit_3 == 106
         assert item.confirmation_score == "3/3 higher-timeframe alignment"
         assert "bukan probabilitas" in item.confidence_note
     finally:
@@ -596,7 +602,7 @@ def test_worker_recovers_missing_signal_from_recent_completed_job():
         assert signal.status == "ACTIVE"
         assert signal.side == "BUY"
         payload = json.loads(signal.reasons_json)
-        assert payload["trade_plan"]["take_profit_1"] == 101
+        assert payload["trade_plan"]["take_profit_1"] == 102
         assert payload["strategy_mode"] == "TRADINGAGENTS_MULTI_AGENT_V8"
     finally:
         db.rollback()
