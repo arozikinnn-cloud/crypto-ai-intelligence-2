@@ -173,6 +173,7 @@ def advance_lifecycle(
                         "dalam candle yang sama; sisa posisi ditutup pada stop baru."
                     ),
                 })
+                state["ambiguous_candle"] = True
                 state["outcome"] = (
                     "WIN" if state["realized_r"] > 1e-9
                     else "LOSS" if state["realized_r"] < -1e-9
