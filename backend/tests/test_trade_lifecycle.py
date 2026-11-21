@@ -40,7 +40,7 @@ def test_tp1_tp2_then_stop_at_tp1_keeps_partial_profit():
 
 def test_all_three_targets_close_50_30_20_position():
     state, _ = advance_lifecycle("BUY", plan(), None, 102.2, 100.5, "c1")
-    state, _ = advance_lifecycle("BUY", plan(), state, 104.2, 101.0, "c2")
+    state, _ = advance_lifecycle("BUY", plan(), state, 104.2, 102.5, "c2")
     state, _ = advance_lifecycle("BUY", plan(), state, 106.2, 103.0, "c3")
     assert state["closed"] is True
     assert state["remaining_position_pct"] == 0.0
