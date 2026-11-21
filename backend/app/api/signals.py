@@ -302,7 +302,9 @@ def evaluate_active_signals(
                     "stop_loss": str(plan.get("stop_loss") or ""),
                     "take_profit": str(plan.get("take_profit") or ""),
                     "realized_r": str(realized_r if realized_r is not None else ""),
-                    "remaining_position_pct": str(remaining_pct if remaining_pct is not None else ""),
+                    "remaining_position_pct": str(
+                        remaining_pct if remaining_pct is not None else ""
+                    ),
                     "closed_position_pct": str(lifecycle.get("closed_position_pct", "")),
                     "execution_mode": "PAPER_PRICE_TRACKING",
                 },
