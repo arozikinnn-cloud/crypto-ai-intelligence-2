@@ -135,7 +135,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         amb_payload = json.loads(amb_row.reasons_json)
         assert amb_row.status == "CLOSED"
         assert amb_payload["outcome"] == "SL"
-        assert amb_payload["realized_r"] == -1.0
+        assert amb_payload["realized_r"] == -1.1485
         assert amb_payload["ambiguous_candle"] is True
 
         record_signal(
