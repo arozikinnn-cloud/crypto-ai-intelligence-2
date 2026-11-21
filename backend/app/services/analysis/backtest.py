@@ -221,7 +221,9 @@ def run_strategy_backtest(
             "This is not a full H1/M15/M5 multi-timeframe replay and does not replay "
             "historical aggTrades/CVD, order book, OI, funding or liquidation data. "
             "TP and SL hit in the same candle are counted as SL conservatively. "
-            "Partial exits are modeled at 50%/30%/20% at 1R/2R/3R; the stop moves to breakeven after TP1 and TP1 after TP2. Fees and slippage are estimates; results do not guarantee future performance."
+            "Partial exits use 50%/30%/20% at 1R/2R/3R; the stop moves to "
+            "breakeven after TP1 and to TP1 after TP2. Fees and slippage "
+            "are estimates; results do not guarantee future performance."
         ),
     }
 
