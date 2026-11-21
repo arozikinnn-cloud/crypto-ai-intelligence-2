@@ -143,7 +143,10 @@ def evaluate_active_signals(
             stored = json.loads(row.reasons_json)
         except (TypeError, json.JSONDecodeError):
             continue
-        if not isinstance(stored, dict) or stored.get("signal_candle_timestamp") == candle_timestamp:
+        if (
+            not isinstance(stored, dict)
+            or stored.get("signal_candle_timestamp") == candle_timestamp
+        ):
             continue
         plan = stored.get("trade_plan") or {}
         if not _valid_trade_plan(row.side, plan):
@@ -216,7 +219,11 @@ def evaluate_active_signals(
             "close_candle_timestamp": candle_timestamp,
             "close_reason": (
                 "TP dan SL tersentuh dalam candle yang sama; dicatat konservatif sebagai SL."
-                if ambiguous else f"Candle tertutup menyentuh {'stop-loss' if hit_stop else 'take-profit'}."
+                if ambiguous
+                else (
+                    "Candle tertutup menyentuh "
+                    f"{'stop-loss' if hit_stop else 'take-profit'}."
+                )
             ),
         })
         row.reasons_json = json.dumps(stored, ensure_ascii=False)
@@ -337,7 +344,11 @@ def record_signal(
                 "outcome": None, "realized_r": None, "closed_at": None,
                 "signal_candle_timestamp": signal_candle_timestamp,
                 "strategy_mode": strategy_mode or "LEGACY_UNVERSIONED",
-                "execution_mode": "PAPER_PRICE_TRACKING" if strategy_mode == CURRENT_STRATEGY_MODE else "SIGNAL_ONLY",
+                "execution_mode": (
+                    "PAPER_PRICE_TRACKING"
+                    if strategy_mode == CURRENT_STRATEGY_MODE
+                    else "SIGNAL_ONLY"
+                ),
             }, ensure_ascii=False),
             created_at=now, updated_at=now,
         )
