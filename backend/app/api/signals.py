@@ -58,6 +58,8 @@ def _event_payload(row: SignalEvent) -> dict:
             reasons.append("Alasan invalidasi: " + stored["invalidation_reason"])
         if stored.get("close_reason"):
             reasons.append("Alasan penutupan: " + stored["close_reason"])
+        if stored.get("lifecycle_note"):
+            reasons.append("Progress lifecycle: " + stored["lifecycle_note"])
         plan = stored.get("trade_plan") or {}
         outcome = stored.get("outcome")
         strategy_mode = stored.get("strategy_mode")
@@ -172,8 +174,9 @@ def evaluate_active_signals(
             stored["outcome"] = lifecycle.get("outcome")
             stored["ambiguous_candle"] = bool(lifecycle.get("ambiguous_candle"))
             last_event = lifecycle["events"][-1]
-            stored["close_reason"] = last_event["reason"]
+            stored["lifecycle_note"] = last_event["reason"]
             if lifecycle.get("closed"):
+                stored["close_reason"] = last_event["reason"]
                 stored["closed_at"] = now.isoformat()
                 row.status = "CLOSED"
                 row.updated_at = now
