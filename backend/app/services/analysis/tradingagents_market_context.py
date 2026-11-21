@@ -266,7 +266,10 @@ def finalize_v8_decision(
                 ),
                 "status": "PAPER_VALIDATION_REQUIRED",
             }
-            reasons.append("TradingAgents dan 1H/30m/15m searah; kandidat ATR tervalidasi, ladder TP 1R/2R/3R.")
+            reasons.append(
+                "TradingAgents dan 1H/30m/15m searah; kandidat ATR tervalidasi, "
+                "ladder TP 1R/2R/3R."
+            )
             reasons.append(
                 "Level Entry/SL/TP final mengikuti candle tertutup Bitget Futures "
                 "dan ATR(14); angka harga dalam narasi agent adalah referensi riset, "
