@@ -1,8 +1,12 @@
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from sqlalchemy import delete, select
 
+from app.api.analysis_intelligence import _backfill_uninitialized_v8_signals
+from app.services.market_data.bitget import BitgetUsdtFuturesMarketData
 from app.api.signals import (
     CURRENT_STRATEGY_MODE,
     evaluate_active_signals,
@@ -786,6 +790,68 @@ def test_v8_lifecycle_persists_candle_cursor_before_first_target():
             "2026-11-20T00:15:00+00:00"
         )
         assert stored["lifecycle"]["events"] == []
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
+
+
+def test_backfill_replays_missed_partial_tp_and_stop_candles(monkeypatch):
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db,
+            "BTCUSDT",
+            "BUY",
+            ["1h", "30m", "15m", "5m"],
+            ["V8 multi-agent confirmation"],
+            "backfill-signal-candle",
+            {"entry": 100.0, "stop_loss": 98.0, "take_profit": 103.0},
+            signal_candle_timestamp="2026-11-20T00:00:00+00:00",
+            strategy_mode=CURRENT_STRATEGY_MODE,
+        )
+        row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT"))
+        created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        row.created_at = created_at
+        db.commit()
+
+        candles = [
+            SimpleNamespace(
+                close_time=created_at + timedelta(minutes=15),
+                high=102.2,
+                low=100.5,
+            ),
+            SimpleNamespace(
+                close_time=created_at + timedelta(minutes=30),
+                high=101.0,
+                low=99.9,
+            ),
+        ]
+
+        async def fake_fetch_klines(self, symbol, interval, limit=200, closed_only=False):
+            assert symbol == "BTCUSDT"
+            assert interval == "15m"
+            assert closed_only is True
+            return candles
+
+        monkeypatch.setattr(
+            BitgetUsdtFuturesMarketData, "fetch_klines", fake_fetch_klines
+        )
+        asyncio.run(_backfill_uninitialized_v8_signals(db, "BTCUSDT"))
+        db.refresh(row)
+        stored = json.loads(row.reasons_json)
+        assert row.status == "CLOSED"
+        assert stored["outcome"] == "WIN"
+        assert stored["realized_r"] == 0.34925
+        assert [event["type"] for event in stored["lifecycle"]["events"]] == [
+            "TP1", "TIGHTENED_STOP_EXIT"
+        ]
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
