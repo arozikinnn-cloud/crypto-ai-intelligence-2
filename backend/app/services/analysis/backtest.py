@@ -154,6 +154,18 @@ def run_strategy_backtest(
                 if remaining_pct <= 1e-9:
                     remaining_pct = 0.0
                     break
+                tightened_stop_hit = (
+                    candle.low <= current_stop if side == "BUY"
+                    else candle.high >= current_stop
+                )
+                if tightened_stop_hit:
+                    realized_r += (
+                        direction * (current_stop - entry) / risk_distance
+                        * remaining_pct / 100.0
+                    )
+                    remaining_pct = 0.0
+                    outcome = f"{outcome}_TIGHTENED_STOP"
+                    break
                 # At most one tranche is credited per candle to avoid inventing
                 # an intrabar path when several targets lie inside one OHLC bar.
 
