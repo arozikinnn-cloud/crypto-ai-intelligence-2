@@ -163,7 +163,9 @@ def run_strategy_backtest(
                 # an intrabar path when several targets lie inside one OHLC bar.
 
         if remaining_pct > 0:
-            time_exit_price = candles[exit_index].close if outcome == "TIME_EXIT" else candles[exit_index].close
+            # Any unclosed tranche is marked at the actual horizon candle close.
+            exit_index = last_index
+            time_exit_price = candles[last_index].close
             realized_r += (
                 direction * (time_exit_price - entry) / risk_distance
                 * remaining_pct / 100.0
