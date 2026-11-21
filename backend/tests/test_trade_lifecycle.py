@@ -29,7 +29,7 @@ def test_tp1_then_breakeven_stop_is_a_net_positive_paper_win():
 
 def test_tp1_tp2_then_stop_at_tp1_keeps_partial_profit():
     state, _ = advance_lifecycle("BUY", plan(), None, 102.2, 100.5, "c1")
-    state, _ = advance_lifecycle("BUY", plan(), state, 104.2, 101.0, "c2")
+    state, _ = advance_lifecycle("BUY", plan(), state, 104.2, 102.5, "c2")
     assert state["remaining_position_pct"] == 20.0
     assert state["current_stop"] == 102.0
     state, _ = advance_lifecycle("BUY", plan(), state, 103.0, 101.9, "c3")
