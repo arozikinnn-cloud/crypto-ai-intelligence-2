@@ -8,7 +8,7 @@ class AnalysisApi {
         _baseUrl = (baseUrl ??
                 const String.fromEnvironment(
                   'API_BASE_URL',
-                  defaultValue: 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1',
+                  defaultValue: 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1',
                 ))
             .replaceFirst(RegExp(r'/+$'), '');
 

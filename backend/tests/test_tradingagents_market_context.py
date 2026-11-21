@@ -34,8 +34,8 @@ def test_v8_requires_tradingagents_and_all_higher_timeframes_to_agree():
     assert result["side"] == "BUY"
     assert result["trade_plan"]["entry"] == 100
     assert result["trade_plan"]["stop_loss"] == 98
-    assert result["trade_plan"]["take_profit"] == 103
-    assert result["trade_plan"]["risk_reward"] == 1.5
+    assert result["trade_plan"]["take_profit"] == 106
+    assert result["trade_plan"]["risk_reward"] == 3.0
     assert result["execution_ready"] is False
     assert result["paper_validation_required"] is True
 

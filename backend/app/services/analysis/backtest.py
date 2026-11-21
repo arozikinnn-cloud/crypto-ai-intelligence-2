@@ -95,40 +95,94 @@ def run_strategy_backtest(
 
         direction = 1 if side == "BUY" else -1
         stop = entry - risk_distance if side == "BUY" else entry + risk_distance
-        target = (
-            entry + risk_distance * 1.5
-            if side == "BUY"
-            else entry - risk_distance * 1.5
-        )
         last_index = min(len(candles) - 1, entry_index + max_holding_candles - 1)
         exit_index = last_index
-        exit_price = candles[last_index].close
+        remaining_pct = 100.0
+        realized_r = 0.0
+        current_stop = stop
+        target_prices = [
+            entry + direction * risk_distance,
+            entry + direction * risk_distance * 2,
+            entry + direction * risk_distance * 3,
+        ]
+        allocations = [50.0, 30.0, 20.0]
+        target_index = 0
         outcome = "TIME_EXIT"
 
         for index in range(entry_index, last_index + 1):
             candle = candles[index]
+            next_target = target_prices[target_index]
             hit_stop = (
-                candle.low <= stop if side == "BUY" else candle.high >= stop
+                candle.low <= current_stop if side == "BUY"
+                else candle.high >= current_stop
             )
             hit_target = (
-                candle.high >= target if side == "BUY" else candle.low <= target
+                candle.high >= next_target if side == "BUY"
+                else candle.low <= next_target
             )
-            if hit_stop and hit_target:
-                # OHLC cannot prove intrabar order; resolve ambiguity as a loss.
-                exit_index, exit_price, outcome = index, stop, "SL_AMBIGUOUS"
-                break
             if hit_stop:
-                exit_index, exit_price, outcome = index, stop, "SL"
+                # A same-candle stop/target collision resolves to the stop.
+                realized_r += (
+                    direction * (current_stop - entry) / risk_distance
+                    * remaining_pct / 100.0
+                )
+                exit_index = index
+                outcome = (
+                    "SL_AMBIGUOUS" if hit_target else
+                    "SL_AFTER_TP2" if target_index == 2 else
+                    "SL_AFTER_TP1" if target_index == 1 else "SL"
+                )
+                remaining_pct = 0.0
                 break
             if hit_target:
-                exit_index, exit_price, outcome = index, target, "TP"
-                break
+                tranche = min(allocations[target_index], remaining_pct)
+                realized_r += (
+                    direction * (next_target - entry) / risk_distance
+                    * tranche / 100.0
+                )
+                remaining_pct -= tranche
+                exit_index = index
+                if target_index == 0:
+                    current_stop = entry
+                    outcome = "TP1_PARTIAL"
+                elif target_index == 1:
+                    current_stop = target_prices[0]
+                    outcome = "TP2_PARTIAL"
+                else:
+                    outcome = "TP3"
+                target_index += 1
+                if remaining_pct <= 1e-9:
+                    remaining_pct = 0.0
+                    break
+                tightened_stop_hit = (
+                    candle.low <= current_stop if side == "BUY"
+                    else candle.high >= current_stop
+                )
+                if tightened_stop_hit:
+                    realized_r += (
+                        direction * (current_stop - entry) / risk_distance
+                        * remaining_pct / 100.0
+                    )
+                    remaining_pct = 0.0
+                    outcome = f"{outcome}_TIGHTENED_STOP"
+                    break
+                # At most one tranche is credited per candle to avoid inventing
+                # an intrabar path when several targets lie inside one OHLC bar.
 
-        executed_entry = entry * (1 + slippage * direction)
-        executed_exit = exit_price * (1 - slippage * direction)
-        net_return = (
-            direction * (executed_exit - executed_entry) / executed_entry - 2 * fee
-        )
+        if remaining_pct > 0:
+            # Any unclosed tranche is marked at the actual horizon candle close.
+            exit_index = last_index
+            time_exit_price = candles[last_index].close
+            realized_r += (
+                direction * (time_exit_price - entry) / risk_distance
+                * remaining_pct / 100.0
+            )
+            if outcome != "TIME_EXIT":
+                outcome = f"{outcome}_REMAINDER_TIME_EXIT"
+
+        # Fees and slippage are charged on the full entry and aggregate exit
+        # notional. This is a conservative estimate, not exchange fill data.
+        net_return = realized_r * risk_distance / entry - 2 * fee - 2 * slippage
         trades.append({
             "entry_index": entry_index,
             "exit_index": exit_index,
@@ -151,7 +205,7 @@ def run_strategy_backtest(
         "train_ratio": train_ratio,
         "fee_bps_per_side": fee_bps,
         "slippage_bps_per_side": slippage_bps,
-        "strategy": "RSI16 + MA40 + Ichimoku Kumo; ATR stop; fixed 1:1.5 risk/reward",
+        "strategy": "RSI16 + MA40 + Ichimoku Kumo; ATR stop; 50/30/20 partial exits at 1R/2R/3R",
         "train": _metrics(train),
         "out_of_sample": _metrics(test),
         "overall": _metrics([item["return"] for item in trades]),
@@ -167,7 +221,9 @@ def run_strategy_backtest(
             "This is not a full H1/M15/M5 multi-timeframe replay and does not replay "
             "historical aggTrades/CVD, order book, OI, funding or liquidation data. "
             "TP and SL hit in the same candle are counted as SL conservatively. "
-            "Fees and slippage are estimates; results do not guarantee future performance."
+            "Partial exits use 50%/30%/20% at 1R/2R/3R; the stop moves to "
+            "breakeven after TP1 and to TP1 after TP2. Fees and slippage "
+            "are estimates; results do not guarantee future performance."
         ),
     }
 

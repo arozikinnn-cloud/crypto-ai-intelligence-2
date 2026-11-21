@@ -43,8 +43,9 @@ def run_combined_backtest(
             "events are not replayed.",
             "If TP and SL are touched in the same candle, the result is counted "
             "as SL conservatively because OHLC cannot reveal intrabar order.",
-            "Fees and slippage are estimates; partial fills, spread variation "
-            "and market impact are not modeled.",
+            "Partial tranches are simulated as paper fills; actual exchange partial "
+            "fills, spread variation and market impact are not modeled. "
+            "Fees and slippage are estimates.",
             "A deterministic technical heuristic is not a trained probability model "
             "and does not guarantee future performance.",
         ],

@@ -669,12 +669,12 @@ class _Dashboard extends StatelessWidget {
                   ]),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: _PlanValue('TP1 • 0.5R', tradePlan['take_profit_1'] ?? tradePlan['take_profit'])),
-                    Expanded(child: _PlanValue('TP2 • 1.0R', tradePlan['take_profit_2'])),
-                    Expanded(child: _PlanValue('TP3 • 1.5R', tradePlan['take_profit_3'] ?? tradePlan['take_profit'])),
+                    Expanded(child: _PlanValue('TP1 • 1.0R', tradePlan['take_profit_1'] ?? tradePlan['take_profit'])),
+                    Expanded(child: _PlanValue('TP2 • 2.0R', tradePlan['take_profit_2'])),
+                    Expanded(child: _PlanValue('TP3 • 3.0R', tradePlan['take_profit_3'] ?? tradePlan['take_profit'])),
                   ]),
                   const SizedBox(height: 8),
-                  Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '1.5')} • Entry M15, SL berbasis ATR',
+                  Text('Risk/Reward maksimum: 1:${txt(tradePlan['risk_reward'], '3.0')} • Entry M15, SL berbasis ATR',
                     style: const TextStyle(color: muted, fontSize: 10)),
                   if (tradePlan['confirmation_score'] != null)
                     Text('Confidence (konfirmasi TF): ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
@@ -1339,6 +1339,10 @@ class _SignalPerformance extends StatelessWidget {
                 _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
                 _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
               ]),
+              Text(
+                'BREAKEVEN: ${txt(data['breakeven'], '0')} • WR dihitung dari hasil bersih seluruh posisi yang sudah ditutup.',
+                style: const TextStyle(color: muted, fontSize: 8),
+              ),
               if (closedCount < 30)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 7),
@@ -1407,10 +1411,22 @@ class _SignalCenter extends StatelessWidget {
                 final outcome = item['outcome'];
                 final realizedR = item['realized_r'];
                 final closedAt = item['closed_at'];
+                final lifecycle = item['lifecycle'] is Map
+                    ? Map<String, dynamic>.from(item['lifecycle'] as Map)
+                    : <String, dynamic>{};
+                final lifecycleEvents = lifecycle['events'] is List
+                    ? (lifecycle['events'] as List)
+                        .whereType<Map>()
+                        .map((event) => Map<String, dynamic>.from(event))
+                        .toList()
+                    : <Map<String, dynamic>>[];
+                final remainingPosition = lifecycle['remaining_position_pct'];
+                final executionMode = txt(item['execution_mode'], 'SIGNAL_ONLY');
                 final reasons = strings(item['reasons']);
                 final lifecycleReasons = reasons.where((reason) =>
                     reason.startsWith('Alasan invalidasi:') ||
-                    reason.startsWith('Alasan penutupan:')).toList();
+                    reason.startsWith('Alasan penutupan:') ||
+                    reason.startsWith('Progress lifecycle:')).toList();
                 final entry = item['entry'];
                 final stop = item['stop_loss'];
                 final target1 = item['take_profit_1'] ?? item['take_profit'];
@@ -1420,7 +1436,8 @@ class _SignalCenter extends StatelessWidget {
                 final confidenceNote = item['confidence_note'];
                 final analysisReasons = reasons.where((reason) =>
                     !reason.startsWith('Alasan invalidasi:') &&
-                    !reason.startsWith('Alasan penutupan:')).take(5).toList();
+                    !reason.startsWith('Alasan penutupan:') &&
+                    !reason.startsWith('Progress lifecycle:')).take(5).toList();
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(
@@ -1428,8 +1445,12 @@ class _SignalCenter extends StatelessWidget {
                     children: [
                       Text('$symbol • $side • #${item['id']}',
                           style: TextStyle(color: muted, fontSize: 10, fontWeight: FontWeight.w900)),
-                      Text('$status • $outcome${realizedR == null ? '' : ' • ${realizedR}R'} • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
+                      Text('$status • $outcome${realizedR == null ? '' : ' • NET ${realizedR}R'} • ${txt(item['created_at'], 'Waktu tidak tersedia')}',
                           style: TextStyle(color: muted, fontSize: 8)),
+                      if (lifecycle['estimated_costs_r'] != null)
+                        Text(
+                          'Gross R: ${lifecycle['gross_realized_r']} • Estimasi biaya: ${lifecycle['estimated_costs_r']}R • Fee 10 bps + slippage 5 bps per sisi',
+                          style: const TextStyle(color: muted, fontSize: 8)),
                       if (closedAt != null)
                         Text('Ditutup: ${txt(closedAt)}',
                             style: const TextStyle(color: muted, fontSize: 8)),
@@ -1444,6 +1465,14 @@ class _SignalCenter extends StatelessWidget {
                       if (entry != null)
                         Text('Entry $entry • SL $stop • TP1 $target1 • TP2 $target2 • TP3 $target3',
                             style: TextStyle(color: muted, fontSize: 8)),
+                      if (lifecycleEvents.isNotEmpty)
+                        Text(
+                          '${lifecycleEvents.map((event) => '${event['type']} ${event['position_pct']}% @ ${event['price']} (${event['realized_r']}R)').join(' • ')}',
+                          maxLines: 2, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: blue, fontSize: 8)),
+                      if (remainingPosition != null)
+                        Text('Sisa posisi: $remainingPosition% • Mode: $executionMode (paper, bukan order exchange)',
+                            style: const TextStyle(color: muted, fontSize: 8)),
                       if (confidence != null)
                         Text('Confidence (konfirmasi TF): $confidence${confidenceNote == null ? '' : ' • $confidenceNote'}',
                             maxLines: 2, overflow: TextOverflow.ellipsis,

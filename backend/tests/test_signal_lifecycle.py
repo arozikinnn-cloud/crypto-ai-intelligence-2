@@ -3,7 +3,12 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 
-from app.api.signals import record_signal
+from app.api.signals import (
+    CURRENT_STRATEGY_MODE,
+    evaluate_active_signals,
+    record_signal,
+    signal_performance,
+)
 from app.database.base import Base
 from app.database.session import SessionLocal, engine
 from app.models.agent_analysis_job import AgentAnalysisJob
@@ -111,20 +116,26 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
         assert tp_row.status == "ACTIVE"
 
-        evaluate_active_signals(db, "TPTEST", 105.0, 99.0, "candle-tp-2")
+        evaluate_active_signals(db, "TPTEST", 103.0, 100.5, "candle-tp-2")
+        tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
+        assert tp_row.status == "ACTIVE"
+        evaluate_active_signals(db, "TPTEST", 105.0, 102.5, "candle-tp-3")
+        tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
+        assert tp_row.status == "ACTIVE"
+        evaluate_active_signals(db, "TPTEST", 107.0, 103.0, "candle-tp-4")
         tp_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "TPTEST"))
         tp_payload = json.loads(tp_row.reasons_json)
         assert tp_row.status == "CLOSED"
-        assert tp_payload["outcome"] == "TP"
-        assert tp_payload["realized_r"] == 2.0
+        assert tp_payload["outcome"] == "WIN"
+        assert tp_payload["realized_r"] == 1.54745
 
         # If TP and SL occur in one OHLC candle, do not guess the order.
         evaluate_active_signals(db, "AMBTEST", 105.0, 97.0, "candle-amb-2")
         amb_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "AMBTEST"))
         amb_payload = json.loads(amb_row.reasons_json)
         assert amb_row.status == "CLOSED"
-        assert amb_payload["outcome"] == "SL"
-        assert amb_payload["realized_r"] == -1.0
+        assert amb_payload["outcome"] == "LOSS"
+        assert amb_payload["realized_r"] == -1.1485
         assert amb_payload["ambiguous_candle"] is True
 
         record_signal(
@@ -133,7 +144,7 @@ def test_signal_outcomes_resolve_ambiguous_candles_conservatively_as_sl():
         )
         evaluate_active_signals(db, "SLTEST", 101.0, 97.0, "candle-sl-2")
         sl_row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "SLTEST"))
-        assert json.loads(sl_row.reasons_json)["outcome"] == "SL"
+        assert json.loads(sl_row.reasons_json)["outcome"] == "LOSS"
 
         from app.api.signals import signal_performance
 
@@ -337,15 +348,15 @@ def test_v8_inbox_filters_and_returns_linked_signal_details():
         assert item.symbol == "V8INBOX"
         assert item.side == "BUY"
         assert item.signal_status == "CLOSED"
-        assert item.signal_outcome == "TP"
-        assert item.signal_realized_r == 1.5
+        assert item.signal_outcome == "WIN"
+        assert item.signal_realized_r == 0.34925
         assert item.signal_closed_at is not None
         assert item.entry == 100
         assert item.stop_loss == 98
-        assert item.take_profit == 103
-        assert item.take_profit_1 == 101
-        assert item.take_profit_2 == 102
-        assert item.take_profit_3 == 103
+        assert item.take_profit == 106
+        assert item.take_profit_1 == 102
+        assert item.take_profit_2 == 104
+        assert item.take_profit_3 == 106
         assert item.confirmation_score == "3/3 higher-timeframe alignment"
         assert "bukan probabilitas" in item.confidence_note
     finally:
@@ -466,9 +477,9 @@ def test_v8_decision_exposes_three_risk_based_targets_without_fake_win_probabili
 
     plan = result["trade_plan"]
     assert result["side"] == "BUY"
-    assert plan["take_profit_1"] == 101.0
-    assert plan["take_profit_2"] == 102.0
-    assert plan["take_profit_3"] == 103.0
+    assert plan["take_profit_1"] == 102.0
+    assert plan["take_profit_2"] == 104.0
+    assert plan["take_profit_3"] == 106.0
     assert plan["take_profit"] == plan["take_profit_3"]
     assert plan["confirmation_score"] == "3/3 higher-timeframe alignment"
     assert "bukan probabilitas win rate" in plan["confidence_note"]
@@ -591,7 +602,7 @@ def test_worker_recovers_missing_signal_from_recent_completed_job():
         assert signal.status == "ACTIVE"
         assert signal.side == "BUY"
         payload = json.loads(signal.reasons_json)
-        assert payload["trade_plan"]["take_profit_1"] == 101
+        assert payload["trade_plan"]["take_profit_1"] == 102
         assert payload["strategy_mode"] == "TRADINGAGENTS_MULTI_AGENT_V8"
     finally:
         db.rollback()
@@ -679,3 +690,57 @@ def test_v8_blocks_signal_when_bitget_market_snapshot_is_stale():
     assert result["side"] == "NO TRADE"
     assert result["trade_plan"] is None
     assert any("Data Bitget tidak cukup baru" in reason for reason in result["reasons"])
+
+
+def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        record_signal(
+            db,
+            "BTCUSDT",
+            "BUY",
+            ["1h", "30m", "15m", "5m"],
+            ["V8 multi-agent confirmation"],
+            "v8-candle-1",
+            {"entry": 100.0, "stop_loss": 98.0, "take_profit": 103.0},
+            signal_candle_timestamp="v8-signal-candle-1",
+            strategy_mode=CURRENT_STRATEGY_MODE,
+        )
+        row = db.scalar(select(SignalEvent).where(SignalEvent.symbol == "BTCUSDT"))
+        stored = json.loads(row.reasons_json)
+        plan = stored["trade_plan"]
+        assert plan["take_profit_1"] == 102.0
+        assert plan["take_profit_2"] == 104.0
+        assert plan["take_profit_3"] == 106.0
+        assert plan["take_profit"] == 106.0
+
+        evaluate_active_signals(db, "BTCUSDT", 102.2, 100.5, "v8-candle-2")
+        db.refresh(row)
+        stored = json.loads(row.reasons_json)
+        assert row.status == "ACTIVE"
+        assert stored["lifecycle"]["remaining_position_pct"] == 50.0
+        assert stored["realized_r"] == 0.38675
+        assert stored.get("close_reason") is None
+        assert stored.get("lifecycle_note", "").startswith("TP1 tersentuh")
+
+        evaluate_active_signals(db, "BTCUSDT", 101.0, 99.9, "v8-candle-3")
+        db.refresh(row)
+        stored = json.loads(row.reasons_json)
+        assert row.status == "CLOSED"
+        assert stored["outcome"] == "WIN"
+        assert stored["realized_r"] == 0.34925
+        assert stored["lifecycle"]["closed_position_pct"] == 100.0
+        performance = signal_performance(db)
+        assert performance["wins"] == 1
+        assert performance["losses"] == 0
+        assert performance["breakeven"] == 0
+    finally:
+        db.rollback()
+        db.execute(delete(SignalNotification))
+        db.execute(delete(SignalEvent))
+        db.commit()
+        db.close()
