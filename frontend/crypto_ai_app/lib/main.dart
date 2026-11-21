@@ -617,10 +617,12 @@ class _Dashboard extends StatelessWidget {
     final traderPlanReport = txt(agentReports['trader_investment_plan'], '');
     final finalDecisionReport = txt(agentReports['final_trade_decision'], '');
     String reportStatus(String report) {
+      // A saved report belongs to its individual agent and remains valid
+      // even if the latest global job later becomes stale or unavailable.
+      if (report.trim().isNotEmpty) return 'COMPLETED';
       if (agentStatus == 'STALE') return 'STALE';
       if (agentStatus == 'UNAVAILABLE') return 'UNAVAILABLE';
       if (agentStatus == 'DISABLED') return 'DISABLED';
-      if (report.isNotEmpty) return 'COMPLETED';
       if (agentStatus == 'PENDING' || agentStatus == 'RUNNING') {
         return agentStatus;
       }
