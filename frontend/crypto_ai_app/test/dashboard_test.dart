@@ -52,6 +52,48 @@ void main() {
     expect(find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == 'ETHUSDT'), findsOneWidget);
   });
 
+  testWidgets('opens the risk calculator prefilled from the V8 trade plan', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: DashboardShell(
+        loadNotifications: () async => [],
+        loadAnalysis: () async => {
+          'symbol': 'BTCUSDT',
+          'side': 'BUY',
+          'confluence_score': 3,
+          'max_confluence': 3,
+          'strategy_mode': 'TRADINGAGENTS_MULTI_AGENT_V8',
+          'trade_plan': {
+            'entry': 100,
+            'stop_loss': 95,
+            'take_profit': 110,
+            'risk_reward': 1.5,
+          },
+          'timeframe_analyses': [],
+          'reasons': [],
+          'context_notes': [],
+          'agent_reports': {},
+          'market_context': {},
+          'derivatives': {},
+        },
+      ),
+    ));
+
+    await tester.pumpAndSettle();
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Hitung risiko dari rencana AI'),
+      400,
+      scrollable: scrollable,
+    );
+    await tester.tap(find.text('Hitung risiko dari rencana AI'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kalkulator Risiko • BTCUSDT'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('entry'))).controller!.text, '100.0');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('stop'))).controller!.text, '95.0');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('target'))).controller!.text, '110.0');
+  });
+
   testWidgets('shows recoverable state when API fails', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: DashboardShell(

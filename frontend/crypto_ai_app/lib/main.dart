@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/push_notification_service.dart';
 import 'services/analysis_api.dart';
+import 'risk_calculator_page.dart';
 
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
@@ -680,6 +681,36 @@ class _Dashboard extends StatelessWidget {
                     Text('Confidence (konfirmasi TF): ${tradePlan['confirmation_score']} • ${txt(tradePlan['confidence_note'], 'Bukan probabilitas win rate')}',
                       style: const TextStyle(color: blue, fontSize: 9)),
                 ],
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('open-risk-calculator'),
+                    onPressed: () {
+                      double? parsePlanPrice(dynamic value) {
+                        if (value is num) return value.toDouble();
+                        return double.tryParse(value?.toString() ?? '');
+                      }
+
+                      final side = txt(data['side'], '').toUpperCase();
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => RiskCalculatorPage(
+                          symbol: selectedSymbol,
+                          initialSide: side == 'BUY' || side == 'SELL' ? side : null,
+                          initialEntry: parsePlanPrice(tradePlan['entry']),
+                          initialStopLoss: parsePlanPrice(tradePlan['stop_loss']),
+                          initialTakeProfit: parsePlanPrice(tradePlan['take_profit']),
+                        ),
+                      ));
+                    },
+                    icon: const Icon(Icons.calculate_outlined, size: 16),
+                    label: Text(
+                      tradePlan.isEmpty
+                          ? 'Kalkulator risiko manual'
+                          : 'Hitung risiko dari rencana AI',
+                    ),
+                  ),
+                ),
               ]),
             ),
             const SizedBox(height: 15),
