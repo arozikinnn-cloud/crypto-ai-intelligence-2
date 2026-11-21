@@ -1457,7 +1457,7 @@ class _SignalCenter extends StatelessWidget {
                             style: TextStyle(color: muted, fontSize: 8)),
                       if (lifecycleEvents.isNotEmpty)
                         Text(
-                          '\${lifecycleEvents.map((event) => '\${event['type']} \${event['position_pct']}% @ \${event['price']} (\${event['realized_r']}R)').join(' • ')}',
+                          '${lifecycleEvents.map((event) => '${event['type']} ${event['position_pct']}% @ ${event['price']} (${event['realized_r']}R)').join(' • ')}',
                           maxLines: 2, overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: blue, fontSize: 8)),
                       if (remainingPosition != null)
