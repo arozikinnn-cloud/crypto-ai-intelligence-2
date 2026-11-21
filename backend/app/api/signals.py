@@ -170,21 +170,31 @@ def evaluate_active_signals(
             continue
 
         if stored.get("strategy_mode") == CURRENT_STRATEGY_MODE:
+            previous_lifecycle = stored.get("lifecycle")
             try:
                 lifecycle, changed = advance_lifecycle(
-                    row.side, plan, stored.get("lifecycle"),
+                    row.side, plan, previous_lifecycle,
                     candle_high, candle_low, candle_timestamp,
                 )
             except (KeyError, TypeError, ValueError):
                 logger.exception("Invalid partial lifecycle for signal %s", row.id)
                 continue
-            if not changed:
+            cursor_changed = (
+                previous_lifecycle is None
+                or lifecycle.get("last_candle_timestamp")
+                != previous_lifecycle.get("last_candle_timestamp")
+            )
+            if not changed and not cursor_changed:
                 continue
             stored["lifecycle"] = lifecycle
             stored["execution_mode"] = "PAPER_PRICE_TRACKING"
             stored["realized_r"] = lifecycle["realized_r"]
             stored["outcome"] = lifecycle.get("outcome")
             stored["ambiguous_candle"] = bool(lifecycle.get("ambiguous_candle"))
+            row.reasons_json = json.dumps(stored, ensure_ascii=False)
+            row.updated_at = now
+            if not changed:
+                continue
             last_event = lifecycle["events"][-1]
             stored["lifecycle_note"] = last_event["reason"]
             if lifecycle.get("closed"):
