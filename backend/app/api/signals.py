@@ -96,6 +96,10 @@ def _event_payload(row: SignalEvent) -> dict:
             tp2 = float(entry) + direction * risk * 2
             tp3 = float(entry) + direction * risk * 3
             target = tp3
+            reasons.append(
+                "Ladder TP paper: TP1=1R (50%), TP2=2R (30%), TP3=3R (20%); "
+                "SL ke breakeven setelah TP1 dan ke TP1 setelah TP2."
+            )
         confirmation_score = plan.get("confirmation_score")
         confidence_note = plan.get("confidence_note")
         if is_current_strategy:
@@ -125,7 +129,11 @@ def _event_payload(row: SignalEvent) -> dict:
             "estimated_costs_r": (stored.get("lifecycle") or {}).get("estimated_costs_r"),
             "execution_mode": (
                 stored.get("execution_mode")
-                or (stored.get("lifecycle") or {}).get("mode", "SIGNAL_ONLY")
+                or (
+                    "PAPER_PRICE_TRACKING"
+                    if is_current_strategy
+                    else (stored.get("lifecycle") or {}).get("mode", "SIGNAL_ONLY")
+                )
             ),
         }
     return {
