@@ -83,10 +83,21 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           script: |
             adb install -r "$GITHUB_WORKSPACE/frontend/crypto_ai_app/build/app/outputs/flutter-apk/app-debug.apk"
+            adb logcat -c
             adb shell monkey -p com.cryptoai.crypto_ai_app 1
             sleep 15
-            adb logcat -d -s AndroidRuntime:E
-            echo "Debug APK installed and launched successfully on Android emulator."
+            if ! adb shell pidof -s com.cryptoai.crypto_ai_app >/dev/null; then
+              echo "Android app process exited during launch smoke test."
+              adb logcat -d -s AndroidRuntime:E
+              exit 1
+            fi
+            runtime_errors="$(adb logcat -d -s AndroidRuntime:E)"
+            echo "$runtime_errors"
+            if echo "$runtime_errors" | grep -q "FATAL EXCEPTION"; then
+              echo "Fatal Android runtime exception detected."
+              exit 1
+            fi
+            echo "Debug APK installed, remained running, and had no fatal Android runtime exception."
       - name: Build Android release APKs (split by ABI)
         env:
           API_BASE_URL: ${{ github.event.inputs.api_base_url || (((github.event_name == 'pull_request' && github.head_ref == 'feature/v8-partial-lifecycle') || (github.event_name == 'push' && github.ref_name == 'feature/v8-partial-lifecycle')) && 'https://crypto-ai-intelligence-2-backend-git-fe-706e2c-arozikinnn-cloud.vercel.app/api/v1') || (((github.event_name == 'pull_request' && github.head_ref == 'feature/v8-drawer-navigation-mainline-20261121') || (github.event_name == 'push' && github.ref_name == 'feature/v8-drawer-navigation-mainline-20261121')) && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || (((github.event_name == 'pull_request' && github.head_ref == 'feature/v8-tradingagents-multi-agent') || (github.event_name == 'push' && github.ref_name == 'feature/v8-tradingagents-multi-agent')) && 'https://crypto-ai-intelligence-2-backend-git-fe-0e1088-arozikinnn-cloud.vercel.app/api/v1') || 'https://crypto-ai-intelligence-2-backend.vercel.app/api/v1' }}
