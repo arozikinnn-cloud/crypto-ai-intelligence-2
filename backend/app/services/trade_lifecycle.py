@@ -18,17 +18,11 @@ def build_lifecycle(side: str, plan: dict) -> dict:
     if risk <= 0:
         raise ValueError("Risk distance must be positive.")
     direction = 1.0 if side == "BUY" else -1.0
-    fallback = [
+    targets = [
         entry + direction * risk,
         entry + direction * risk * 2,
         entry + direction * risk * 3,
     ]
-    targets = [
-        plan.get("take_profit_1", fallback[0]),
-        plan.get("take_profit_2", fallback[1]),
-        plan.get("take_profit_3", plan.get("take_profit", fallback[2])),
-    ]
-    targets = [float(value) for value in targets]
     if side == "BUY" and not (entry < targets[0] < targets[1] < targets[2]):
         raise ValueError("BUY partial targets must be strictly ascending above entry.")
     if side == "SELL" and not (entry > targets[0] > targets[1] > targets[2]):
