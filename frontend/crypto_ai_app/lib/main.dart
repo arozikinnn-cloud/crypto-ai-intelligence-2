@@ -440,7 +440,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(PushNotificationService.initialize());
+      unawaited(PushNotificationService.initialize().then((_) {
+        if (mounted) setState(() {});
+      }));
       setState(() { analysis = load(); candles = loadCandles(); });
       unawaited(loadSecondaryFeeds(includeScanner: true));
       startPolling();
