@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: background-ai-signal-monitor
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   scan-market:
