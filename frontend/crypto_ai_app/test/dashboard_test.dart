@@ -52,6 +52,36 @@ void main() {
     expect(find.byWidgetPredicate((widget) => widget is DropdownButton<String> && widget.value == 'ETHUSDT'), findsOneWidget);
   });
 
+  testWidgets('opens drawer and keeps Market as a separate page', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: DashboardShell(
+        loadNotifications: () async => [],
+        loadAnalysis: () async => {
+          'symbol': 'BTCUSDT',
+          'side': 'NO TRADE',
+          'confluence_score': 0,
+          'max_confluence': 5,
+          'reasons': [],
+          'context_notes': [],
+        },
+      ),
+    ));
+
+    await tester.pumpAndSettle();
+    expect(find.text('OVERVIEW'), findsOneWidget);
+    expect(find.text('BTCUSDT / MARKET CANDLES'), findsNothing);
+
+    await tester.tap(find.byTooltip('Buka menu navigasi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Market'), findsOneWidget);
+
+    await tester.tap(find.text('Market'));
+    await tester.pumpAndSettle();
+    expect(find.text('MARKET'), findsOneWidget);
+    expect(find.text('BTCUSDT / MARKET CANDLES'), findsOneWidget);
+    expect(find.text('TRADINGAGENTS MULTI-AGENT RESEARCH'), findsNothing);
+  });
+
   testWidgets('shows recoverable state when API fails', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: DashboardShell(
