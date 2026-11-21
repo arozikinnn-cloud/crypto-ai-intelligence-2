@@ -724,6 +724,8 @@ def test_v8_signal_uses_partial_tp_ladder_and_counts_be_stop_as_win():
         assert row.status == "ACTIVE"
         assert stored["lifecycle"]["remaining_position_pct"] == 50.0
         assert stored["realized_r"] == 0.38675
+        assert stored.get("close_reason") is None
+        assert stored.get("lifecycle_note", "").startswith("TP1 tersentuh")
 
         evaluate_active_signals(db, "BTCUSDT", 101.0, 99.9, "v8-candle-3")
         db.refresh(row)
