@@ -97,3 +97,15 @@ def test_sell_partial_ladder_uses_symmetric_stop_management_and_costs():
     assert state["closed"] is True
     assert state["outcome"] == "WIN"
     assert state["realized_r"] == 1.15195
+
+
+def test_lifecycle_ignores_out_of_order_candles():
+    state, _ = advance_lifecycle(
+        "BUY", plan(), None, 101.0, 100.5, "2026-11-20T00:30:00+00:00"
+    )
+    repeated, changed = advance_lifecycle(
+        "BUY", plan(), state, 102.5, 100.5, "2026-11-20T00:15:00+00:00"
+    )
+    assert changed is False
+    assert repeated["last_candle_timestamp"] == "2026-11-20T00:30:00+00:00"
+    assert repeated["events"] == []
