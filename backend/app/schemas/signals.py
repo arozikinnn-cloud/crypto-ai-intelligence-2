@@ -23,6 +23,8 @@ class SignalEventResponse(BaseModel):
     outcome: str | None = None
     realized_r: float | None = None
     closed_at: datetime | None = None
+    lifecycle: dict | None = None
+    execution_mode: str | None = None
 
 
 class SignalNotificationResponse(BaseModel):
