@@ -19,3 +19,11 @@ The dashboard requests `GET /analysis/intelligence` and renders the decision, co
 ## CI
 
 The Mobile CI workflow runs dependency resolution, Dart formatting, static analysis, Flutter tests, builds a debug APK, installs and launches it in an Android emulator, and builds ABI-split release APKs. The workflow uploads APK artifacts for 7 days. A CI build is not a substitute for testing push delivery on a physical phone or configuring the persistent TradingAgents worker.
+
+
+## Live liquidation context
+- The Android Market page subscribes to Binance USDⓈ-M Futures `<symbol>@forceOrder` through the public market stream endpoint `wss://fstream.binance.com/market/ws/{symbol}@forceOrder`.
+- The stream is read-only and requires no API key. Binance publishes at most one liquidation snapshot per symbol in a 1000 ms interval and sends no message when there is no liquidation event; this is not a complete historical tape or liquidation heatmap.
+- The app keeps up to 20 received events in memory for the current session, disconnects while paused, and reconnects on resume or symbol change. Events missed while offline are not backfilled.
+- A forced SELL generally closes a long position and a forced BUY generally closes a short position. This is descriptive context, not an entry signal.
+- Mobile CI explicitly adds Android INTERNET permission before building the generated platform project.
