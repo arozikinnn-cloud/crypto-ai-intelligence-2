@@ -688,7 +688,6 @@ class _Dashboard extends StatelessWidget {
             ]),
             ],
             if (activePage == 'Market') ...[
-            if (activePage == 'Market') ...[
 _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bitget USDT-M Futures'),
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
@@ -784,10 +783,9 @@ _Heading('DAY TRADING PLAN', txt(data['strategy_mode'], 'DAY_TRADING')),
               ]),
             ),
             const SizedBox(height: 15),
-            const 
             ],
             if (activePage == 'Market') ...[
-_Heading('MULTI-COIN SCANNER', 'Pemindaian setup pada daftar aset yang dipilih'),
+const _Heading('MULTI-COIN SCANNER', 'Pemindaian setup pada daftar aset yang dipilih'),
             const SizedBox(height: 9),
             _Scanner(future: scanner, selectedSymbol: selectedSymbol, onSelect: onSymbolChanged),
             const SizedBox(height: 22),
@@ -835,26 +833,23 @@ _Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Status job: $agentStatus • sta
             const SizedBox(height: 7),
             _TextCard(title: 'Final Trade Decision • $finalDecisionStatus', items: [finalDecisionReport], empty: 'Keputusan akhir belum tersedia.'),
             const SizedBox(height: 15),
-            const 
             ],
             if (activePage == 'Overview' || activePage == 'AI Agents') ...[
-_Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
+const _Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
             const SizedBox(height: 9),
             _TextCard(items: strings(data['reasons']), empty: 'Belum ada alasan sinyal yang memenuhi syarat.'),
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const 
             ],
             if (activePage == 'Backtest & Performance') ...[
-_Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
+const _Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const 
             ],
             if (activePage == 'Signal Center') ...[
-_Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
+const _Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
@@ -863,10 +858,9 @@ _Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tida
               child: _SignalCenter(future: signals),
             ),
             const SizedBox(height: 15),
-            const 
             ],
             if (activePage == 'Signal Inbox') ...[
-_Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
+const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
             _Inbox(
               future: notes,
