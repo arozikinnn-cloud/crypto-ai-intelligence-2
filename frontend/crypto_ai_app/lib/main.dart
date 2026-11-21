@@ -10,18 +10,28 @@ import 'services/analysis_api.dart';
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
 const green = Color(0xFF25D6A2), red = Color(0xFFFF647C), blue = Color(0xFF65A9FF);
+final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 // Keep V7 dashboard market coverage while V8 AI runs independently.
 const supportedSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PushNotificationService.onForegroundNotification = (title, body) {
+    appScaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(body.isEmpty ? title : '$title\n$body'),
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  };
   // Push notifications are optional. A Firebase/network/configuration issue
   // must never prevent the trading dashboard from opening.
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    await PushNotificationService.initialize();
+    unawaited(PushNotificationService.initialize());
   } catch (error, stackTrace) {
     debugPrint('Optional Firebase initialization failed: $error');
     debugPrintStack(stackTrace: stackTrace);
@@ -34,6 +44,7 @@ class CryptoAIApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Crypto AI Intelligence', debugShowCheckedModeBanner: false,
+    scaffoldMessengerKey: appScaffoldMessengerKey,
     theme: ThemeData(
       brightness: Brightness.dark, scaffoldBackgroundColor: bg,
       colorScheme: const ColorScheme.dark(primary: green, secondary: blue, surface: panel),
@@ -104,6 +115,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   bool refreshing = false;
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
+  String activePage = 'Overview';
   Map<String, dynamic> summarizeBitgetOrderBook(
     Map<String, dynamic> snapshot,
   ) {
@@ -466,8 +478,77 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     super.dispose();
   }
 
+  Widget _buildDrawer(BuildContext context) {
+    const items = <(String, IconData)>[
+      ('Overview', Icons.dashboard_outlined),
+      ('Market', Icons.candlestick_chart_outlined),
+      ('AI Agents', Icons.psychology_alt_outlined),
+      ('Signal Center', Icons.track_changes_outlined),
+      ('Signal Inbox', Icons.inbox_outlined),
+      ('Paper Trading', Icons.account_balance_wallet_outlined),
+      ('Backtest & Performance', Icons.query_stats_outlined),
+      ('Settings', Icons.settings_outlined),
+    ];
+    return Drawer(
+      backgroundColor: panel,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text('CRYPTO AI', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                  SizedBox(height: 3),
+                  Text('INTELLIGENCE V8', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.4)),
+                ],
+              ),
+            ),
+            const Divider(color: line, height: 1),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                children: [
+                  for (final item in items)
+                    ListTile(
+                      selected: activePage == item.$1,
+                      selectedTileColor: green.withValues(alpha: .10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(item.$2, color: activePage == item.$1 ? green : muted),
+                      title: Text(
+                        item.$1,
+                        style: TextStyle(
+                          color: activePage == item.$1 ? green : Colors.white,
+                          fontSize: 13,
+                          fontWeight: activePage == item.$1 ? FontWeight.w800 : FontWeight.w500,
+                        ),
+                      ),
+                      onTap: () {
+                        setState(() => activePage = item.$1);
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Research & decision support only. Tidak ada eksekusi order exchange.',
+                style: TextStyle(color: muted, fontSize: 9, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
+    drawer: _buildDrawer(context),
     body: SafeArea(child: FutureBuilder<Map<String, dynamic>>(
       future: analysis,
       builder: (context, snap) {
@@ -477,6 +558,8 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (snap.hasError) return _ErrorView(message: snap.error.toString(), retry: refresh);
         if (snap.data == null) return _ErrorView(message: 'API belum mengirimkan data.', retry: refresh);
         return _Dashboard(data: snap.data!, notes: notifications, refreshing: refreshing,
+          activePage: activePage,
+          onPageSelected: (page) => setState(() => activePage = page),
           signalCenterKey: signalCenterKey,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
@@ -487,13 +570,15 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 }
 
 class _Dashboard extends StatelessWidget {
-  const _Dashboard({required this.data, required this.notes, required this.refreshing,
+  const _Dashboard({required this.data, required this.notes, required this.refreshing, required this.activePage, required this.onPageSelected,
     required this.signalCenterKey, required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
     required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
   final Map<String, dynamic> data;
   final GlobalKey signalCenterKey;
   final Future<List<Map<String, dynamic>>> notes;
   final bool refreshing;
+  final String activePage;
+  final ValueChanged<String> onPageSelected;
   final String selectedSymbol;
   final ValueChanged<String?> onSymbolChanged;
   final Future<List<Map<String, dynamic>>> scanner;
@@ -568,11 +653,19 @@ class _Dashboard extends StatelessWidget {
                   Icon(Icons.circle, size: 7, color: blue), SizedBox(width: 5),
                   Text('V8 READ-ONLY', style: TextStyle(color: blue, fontSize: 9, fontWeight: FontWeight.bold)),
                 ])),
+              IconButton(
+                tooltip: 'Buka menu navigasi',
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                icon: const Icon(Icons.more_vert_rounded),
+              ),
               IconButton(onPressed: refreshing ? null : refresh,
                 icon: refreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.refresh_rounded)),
             ]),
-            const SizedBox(height: 22),
+            const SizedBox(height: 12),
+            Text(activePage.toUpperCase(), style: const TextStyle(color: muted, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            if (activePage == 'Overview' || activePage == 'Market') ...[
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('MARKET OVERVIEW', style: TextStyle(color: muted, fontSize: 10, letterSpacing: 1.5)),
@@ -593,14 +686,19 @@ class _Dashboard extends StatelessWidget {
                 Text(formatTime(txt(data['timestamp'], '')), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
               ]),
             ]),
-            const SizedBox(height: 16),
-            _Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bitget USDT-M Futures'),
+            ],
+            if (activePage == 'Market') ...[
+            if (activePage == 'Market') ...[
+_Heading('$selectedSymbol / MARKET CANDLES', 'Multi-timeframe candlestick • Bitget USDT-M Futures'),
             const SizedBox(height: 8),
             _CandlestickChart(future: candles, interval: candleInterval, onIntervalChanged: onCandleIntervalChanged),
             const SizedBox(height: 8),
             const SizedBox(height: 16),
             const SizedBox(height: 15),
-            Container(padding: const EdgeInsets.all(18),
+            
+            ],
+            if (activePage == 'Overview' || activePage == 'AI Agents') ...[
+Container(padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -642,7 +740,10 @@ class _Dashboard extends StatelessWidget {
                 ],
               ])),
             const SizedBox(height: 15),
-            _Heading('DAY TRADING PLAN', txt(data['strategy_mode'], 'DAY_TRADING')),
+            
+            ],
+            if (activePage == 'Overview' || activePage == 'AI Agents') ...[
+_Heading('DAY TRADING PLAN', txt(data['strategy_mode'], 'DAY_TRADING')),
             const SizedBox(height: 9),
             Container(
               width: double.infinity,
@@ -683,7 +784,10 @@ class _Dashboard extends StatelessWidget {
               ]),
             ),
             const SizedBox(height: 15),
-            const _Heading('MULTI-COIN SCANNER', 'Pemindaian setup pada daftar aset yang dipilih'),
+            const 
+            ],
+            if (activePage == 'Market') ...[
+_Heading('MULTI-COIN SCANNER', 'Pemindaian setup pada daftar aset yang dipilih'),
             const SizedBox(height: 9),
             _Scanner(future: scanner, selectedSymbol: selectedSymbol, onSelect: onSymbolChanged),
             const SizedBox(height: 22),
@@ -714,7 +818,10 @@ class _Dashboard extends StatelessWidget {
                 note: txt(mapVal(market['liquidations'])['note'], 'Riwayat teramati'))),
             ]),
             const SizedBox(height: 15),
-            _Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Status job: $agentStatus • status tiap analis mengikuti laporan yang tersimpan'),
+            
+            ],
+            if (activePage == 'AI Agents') ...[
+_Heading('TRADINGAGENTS MULTI-AGENT RESEARCH', 'Status job: $agentStatus • status tiap analis mengikuti laporan yang tersimpan'),
             const SizedBox(height: 9),
             _TextCard(title: 'Market Analyst • ${marketAgentStatus}', items: [marketAgentReport], empty: 'Laporan market belum tersedia.'),
             const SizedBox(height: 7),
@@ -728,17 +835,26 @@ class _Dashboard extends StatelessWidget {
             const SizedBox(height: 7),
             _TextCard(title: 'Final Trade Decision • $finalDecisionStatus', items: [finalDecisionReport], empty: 'Keputusan akhir belum tersedia.'),
             const SizedBox(height: 15),
-            const _Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
+            const 
+            ],
+            if (activePage == 'Overview' || activePage == 'AI Agents') ...[
+_Heading('AI DECISION NOTES', 'Alasan yang mendasari keputusan sistem'),
             const SizedBox(height: 9),
             _TextCard(items: strings(data['reasons']), empty: 'Belum ada alasan sinyal yang memenuhi syarat.'),
             const SizedBox(height: 9),
             _TextCard(title: 'Market context', items: strings(data['context_notes']), empty: 'Tidak ada catatan tambahan.'),
             const SizedBox(height: 15),
-            const _Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
+            const 
+            ],
+            if (activePage == 'Backtest & Performance') ...[
+_Heading('BACKTEST & PERFORMANCE', 'Baseline teknikal 1H • out-of-sample • terpisah dari performa sinyal V8'),
             const SizedBox(height: 9),
             _BacktestCard(future: backtest),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
+            const 
+            ],
+            if (activePage == 'Signal Center') ...[
+_Heading('SIGNAL CENTER', 'Khusus sinyal TRADINGAGENTS V8; sinyal V7/legacy tidak ditampilkan'),
             const SizedBox(height: 9),
             _SignalPerformance(future: signalPerformance),
             const SizedBox(height: 9),
@@ -747,24 +863,53 @@ class _Dashboard extends StatelessWidget {
               child: _SignalCenter(future: signals),
             ),
             const SizedBox(height: 15),
-            const _Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
+            const 
+            ],
+            if (activePage == 'Signal Inbox') ...[
+_Heading('SIGNAL INBOX', 'Notifikasi yang tersimpan di backend'),
             const SizedBox(height: 9),
             _Inbox(
               future: notes,
               markRead: markRead,
-              onOpenSignalCenter: () {
-                final target = signalCenterKey.currentContext;
-                if (target != null) {
-                  unawaited(Scrollable.ensureVisible(
-                    target,
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeInOut,
-                    alignment: 0.08,
-                  ));
-                }
-              },
+              onOpenSignalCenter: () => onPageSelected('Signal Center'),
             ),
             const SizedBox(height: 18),
+            
+            ],
+            if (activePage == 'Paper Trading') ...[
+              const _Heading('PAPER TRADING', 'Simulasi posisi dan saldo virtual'),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(14), border: Border.all(color: line)),
+                child: const Text(
+                  'Paper Trading belum tersedia sebagai ledger simulasi di backend V8. Backtest dan pemantauan hasil sinyal tidak dianggap sebagai eksekusi paper trade.',
+                  style: TextStyle(color: muted, fontSize: 11, height: 1.5),
+                ),
+              ),
+              const SizedBox(height: 15),
+            ],
+            if (activePage == 'Settings') ...[
+              const _Heading('SYSTEM SETTINGS', 'Status integrasi aplikasi dan notifikasi'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _StatusRow('AI analysis', agentStatus),
+                      const SizedBox(height: 10),
+                      _StatusRow('FCM initialized', PushNotificationService.initialized ? 'YES' : 'NOT VERIFIED'),
+                      const SizedBox(height: 10),
+                      _StatusRow('Notification permission', PushNotificationService.notificationsAllowed ? 'GRANTED' : 'NOT GRANTED / UNKNOWN'),
+                      const SizedBox(height: 10),
+                      _StatusRow('Device token registration', PushNotificationService.registrationSucceeded ? 'REGISTERED' : 'NOT VERIFIED'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 15),
+            ],
             Container(padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(12), border: Border.all(color: line)),
               child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -779,6 +924,22 @@ class _Dashboard extends StatelessWidget {
 }
 
 
+
+class _StatusRow extends StatelessWidget {
+  const _StatusRow(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Expanded(child: Text(label, style: const TextStyle(color: muted, fontSize: 11))),
+      const SizedBox(width: 10),
+      Text(value, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+    ],
+  );
+}
 
 class _Scanner extends StatelessWidget {
   const _Scanner({required this.future, required this.selectedSymbol, required this.onSelect});
