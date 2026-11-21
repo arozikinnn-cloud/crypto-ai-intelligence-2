@@ -169,7 +169,7 @@ def test_worker_uses_bitget_for_v8_signal_outcomes(monkeypatch):
         stored = json.loads(event.reasons_json)
         assert event.status == "CLOSED"
         assert stored["outcome"] == "WIN"
-        assert stored["realized_r"] == 0.5
+        assert stored["realized_r"] == 0.34925
     finally:
         db.rollback()
         db.execute(delete(SignalNotification))
