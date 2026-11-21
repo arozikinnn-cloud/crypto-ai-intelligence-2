@@ -344,6 +344,10 @@ def record_signal(
             normalized_plan["take_profit_2"] = entry + direction * risk * 2
             normalized_plan["take_profit_3"] = entry + direction * risk * 3
             normalized_plan["take_profit"] = normalized_plan["take_profit_3"]
+            normalized_plan["risk_reward"] = 3.0
+            normalized_plan["target_method"] = (
+                "TP1=1R (50%), TP2=2R (30%), TP3=3R (20%); paper-tracked."
+            )
         event = SignalEvent(
             dedupe_key=dedupe_key, symbol=symbol.upper(), side=side, status="ACTIVE",
             timeframe_set=timeframe_set,
