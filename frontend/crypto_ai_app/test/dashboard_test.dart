@@ -69,7 +69,7 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(find.text('OVERVIEW'), findsOneWidget);
-    expect(find.text('MARKET CANDLES'), findsNothing);
+    expect(find.text('BTCUSDT / MARKET CANDLES'), findsNothing);
 
     await tester.tap(find.byTooltip('Buka menu navigasi'));
     await tester.pumpAndSettle();
@@ -78,7 +78,7 @@ void main() {
     await tester.tap(find.text('Market'));
     await tester.pumpAndSettle();
     expect(find.text('MARKET'), findsOneWidget);
-    expect(find.text('MARKET CANDLES'), findsOneWidget);
+    expect(find.text('BTCUSDT / MARKET CANDLES'), findsOneWidget);
     expect(find.text('TRADINGAGENTS MULTI-AGENT RESEARCH'), findsNothing);
   });
 
