@@ -40,7 +40,8 @@ def normalize_tradingagents_result(
         "risk_note": (
             "TradingAgents rating is research, not an exchange order. If agent and "
             "Bitget timeframes agree, V8 derives a candidate entry from the last "
-            "closed 15m candle, SL at 1.5 x ATR(14), and TP at 1.5R. The plan still "
-            "requires forward paper observation; live execution is disabled."
+            "closed 15m candle, SL at 1.5 x ATR(14), and a 1R/2R/3R partial "
+            "target ladder (50%/30%/20%). The plan requires forward paper "
+            "observation; live exchange execution is disabled."
         ),
     }
