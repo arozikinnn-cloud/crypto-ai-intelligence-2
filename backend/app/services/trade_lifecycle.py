@@ -70,7 +70,8 @@ def advance_lifecycle(
     state.setdefault("estimated_costs_r", 0.0)
     if state.get("mode") != "PAPER_PRICE_TRACKING":
         return state, False
-    if state.get("last_candle_timestamp") == candle_timestamp:
+    last_candle_timestamp = state.get("last_candle_timestamp")
+    if last_candle_timestamp and candle_timestamp <= last_candle_timestamp:
         return state, False
 
     entry = float(plan["entry"])
