@@ -197,6 +197,7 @@ def evaluate_active_signals(
                 continue
             last_event = lifecycle["events"][-1]
             stored["lifecycle_note"] = last_event["reason"]
+            stored["lifecycle_event"] = last_event["type"]
             if lifecycle.get("closed"):
                 stored["close_reason"] = last_event["reason"]
                 stored["closed_at"] = now.isoformat()
@@ -294,7 +295,7 @@ def evaluate_active_signals(
                 db, title=f"{row.symbol} {outcome}", body=body,
                 data={
                     "type": "trade_result" if is_final else "trade_lifecycle",
-                    "event": outcome,
+                    "event": str(stored.get("lifecycle_event") or outcome),
                     "signal_id": str(row.id),
                     "symbol": row.symbol, "side": row.side, "outcome": outcome,
                     "entry": str(plan.get("entry") or ""),
