@@ -1425,7 +1425,8 @@ class _SignalCenter extends StatelessWidget {
                 final reasons = strings(item['reasons']);
                 final lifecycleReasons = reasons.where((reason) =>
                     reason.startsWith('Alasan invalidasi:') ||
-                    reason.startsWith('Alasan penutupan:')).toList();
+                    reason.startsWith('Alasan penutupan:') ||
+                    reason.startsWith('Progress lifecycle:')).toList();
                 final entry = item['entry'];
                 final stop = item['stop_loss'];
                 final target1 = item['take_profit_1'] ?? item['take_profit'];
@@ -1435,7 +1436,8 @@ class _SignalCenter extends StatelessWidget {
                 final confidenceNote = item['confidence_note'];
                 final analysisReasons = reasons.where((reason) =>
                     !reason.startsWith('Alasan invalidasi:') &&
-                    !reason.startsWith('Alasan penutupan:')).take(5).toList();
+                    !reason.startsWith('Alasan penutupan:') &&
+                    !reason.startsWith('Progress lifecycle:')).take(5).toList();
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(
