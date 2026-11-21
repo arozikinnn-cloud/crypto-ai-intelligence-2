@@ -63,6 +63,11 @@ def advance_lifecycle(
     TP2 moves it to TP1. The final 20% exits at TP3.
     """
     state = lifecycle or build_lifecycle(side, plan)
+    # Additive compatibility for lifecycle snapshots created before cost fields.
+    state.setdefault("fee_bps_per_side", 10.0)
+    state.setdefault("slippage_bps_per_side", 5.0)
+    state.setdefault("gross_realized_r", float(state.get("realized_r", 0.0)))
+    state.setdefault("estimated_costs_r", 0.0)
     if state.get("mode") != "PAPER_PRICE_TRACKING":
         return state, False
     if state.get("last_candle_timestamp") == candle_timestamp:
