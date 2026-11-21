@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/push_notification_service.dart';
 import 'services/analysis_api.dart';
+import 'services/binance_liquidation_feed.dart';
 
 const bg = Color(0xFF080D18), panel = Color(0xFF111A2A), soft = Color(0xFF19263A);
 const line = Color(0xFF293950), muted = Color(0xFF91A2B8);
@@ -93,9 +94,10 @@ class _Tag extends StatelessWidget {
 }
 
 class DashboardShell extends StatefulWidget {
-  const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications});
+  const DashboardShell({super.key, this.loadAnalysis, this.loadNotifications, this.enableLiveLiquidations = true});
   final Future<Map<String, dynamic>> Function()? loadAnalysis;
   final Future<List<Map<String, dynamic>>> Function()? loadNotifications;
+  final bool enableLiveLiquidations;
   @override
   State<DashboardShell> createState() => _DashboardShellState();
 }
@@ -113,6 +115,14 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   Timer? poller;
   Timer? analysisPoller;
   bool refreshing = false;
+  late final BinanceLiquidationFeed? liquidationFeed;
+  StreamSubscription<BinanceLiquidationEvent>? liquidationEventsSubscription;
+  StreamSubscription<LiquidationFeedState>? liquidationStatesSubscription;
+  final List<BinanceLiquidationEvent> liveLiquidations = [];
+  LiquidationFeedState liveLiquidationState = const LiquidationFeedState(
+    LiquidationFeedStatus.disconnected,
+    message: 'Live liquidation belum diaktifkan.',
+  );
   String selectedSymbol = 'BTCUSDT';
   String selectedCandleInterval = '15m';
   String activePage = 'Overview';
@@ -306,7 +316,16 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 
   Future<void> changeSymbol(String? symbol) async {
     if (symbol == null || symbol == selectedSymbol || refreshing) return;
-    setState(() { selectedSymbol = symbol; refreshing = true; analysis = load(); candles = loadCandles(); backtest = loadBacktest(); signalPerformance = loadSignalPerformance(); });
+    setState(() {
+      selectedSymbol = symbol;
+      refreshing = true;
+      analysis = load();
+      candles = loadCandles();
+      backtest = loadBacktest();
+      signalPerformance = loadSignalPerformance();
+      liveLiquidations.clear();
+    });
+    unawaited(liquidationFeed?.connect(symbol) ?? Future<void>.value());
     try { await analysis; } finally { if (mounted) setState(() => refreshing = false); }
   }
   Future<List<Map<String, dynamic>>> loadNotes() async {
@@ -378,6 +397,24 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.enableLiveLiquidations) {
+      final feed = BinanceLiquidationFeed();
+      liquidationFeed = feed;
+      liquidationEventsSubscription = feed.events.listen((event) {
+        if (!mounted || event.symbol != selectedSymbol) return;
+        setState(() {
+          liveLiquidations.insert(0, event);
+          if (liveLiquidations.length > 20) liveLiquidations.removeLast();
+        });
+      });
+      liquidationStatesSubscription = feed.states.listen((state) {
+        if (!mounted) return;
+        setState(() => liveLiquidationState = state);
+      });
+      unawaited(feed.connect(selectedSymbol));
+    } else {
+      liquidationFeed = null;
+    }
     analysis = load();
     candles = loadCandles();
     // Render the core market dashboard first. Load secondary feeds afterwards
@@ -444,11 +481,13 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
         if (mounted) setState(() {});
       }));
       setState(() { analysis = load(); candles = loadCandles(); });
+      unawaited(liquidationFeed?.connect(selectedSymbol) ?? Future<void>.value());
       unawaited(loadSecondaryFeeds(includeScanner: true));
       startPolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       poller?.cancel();
       poller = null;
+      unawaited(liquidationFeed?.disconnect() ?? Future<void>.value());
       analysisPoller?.cancel();
       analysisPoller = null;
     }
@@ -477,6 +516,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
     poller?.cancel();
     analysisPoller?.cancel();
     api.close();
+    unawaited(liquidationEventsSubscription?.cancel() ?? Future<void>.value());
+    unawaited(liquidationStatesSubscription?.cancel() ?? Future<void>.value());
+    unawaited(liquidationFeed?.dispose() ?? Future<void>.value());
     super.dispose();
   }
 
@@ -565,7 +607,9 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
           signalCenterKey: signalCenterKey,
           selectedSymbol: selectedSymbol, onSymbolChanged: changeSymbol,
           scanner: scanner, signals: signals, backtest: backtest, refresh: refresh, markRead: markRead,
-          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval);
+          closeSignal: closeSignal, signalPerformance: signalPerformance, candles: candles, candleInterval: selectedCandleInterval, onCandleIntervalChanged: changeCandleInterval,
+          liquidations: liveLiquidations, liquidationState: liveLiquidationState,
+          onReconnectLiquidations: () => unawaited(liquidationFeed?.connect(selectedSymbol) ?? Future<void>.value()));
       },
     )),
   );
@@ -574,7 +618,7 @@ class _DashboardShellState extends State<DashboardShell> with WidgetsBindingObse
 class _Dashboard extends StatelessWidget {
   const _Dashboard({required this.data, required this.notes, required this.refreshing, required this.activePage, required this.onPageSelected,
     required this.signalCenterKey, required this.selectedSymbol, required this.onSymbolChanged, required this.scanner,
-    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged});
+    required this.signals, required this.backtest, required this.refresh, required this.markRead, required this.closeSignal, required this.signalPerformance, required this.candles, required this.candleInterval, required this.onCandleIntervalChanged, required this.liquidations, required this.liquidationState, required this.onReconnectLiquidations});
   final Map<String, dynamic> data;
   final GlobalKey signalCenterKey;
   final Future<List<Map<String, dynamic>>> notes;
@@ -593,6 +637,9 @@ class _Dashboard extends StatelessWidget {
   final Future<List<Map<String, dynamic>>> candles;
   final String candleInterval;
   final ValueChanged<String> onCandleIntervalChanged;
+  final List<BinanceLiquidationEvent> liquidations;
+  final LiquidationFeedState liquidationState;
+  final VoidCallback onReconnectLiquidations;
 
   @override
   Widget build(BuildContext context) {
@@ -825,6 +872,13 @@ const _Heading('MULTI-COIN SCANNER', 'Pemindaian setup pada daftar aset yang dip
               Expanded(child: _InfoCard(title: 'LIQUIDATIONS', value: txt(mapVal(market['liquidations'])['bias'], 'CONTEXT'),
                 note: txt(mapVal(market['liquidations'])['note'], 'Riwayat teramati'))),
             ]),
+            const SizedBox(height: 9),
+            _LiveLiquidations(
+              symbol: selectedSymbol,
+              events: liquidations,
+              state: liquidationState,
+              onReconnect: onReconnectLiquidations,
+            ),
             const SizedBox(height: 15),
             
             ],
@@ -943,6 +997,123 @@ class _StatusRow extends StatelessWidget {
       Text(value, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
     ],
   );
+}
+
+
+class _LiveLiquidations extends StatelessWidget {
+  const _LiveLiquidations({
+    required this.symbol,
+    required this.events,
+    required this.state,
+    required this.onReconnect,
+  });
+
+  final String symbol;
+  final List<BinanceLiquidationEvent> events;
+  final LiquidationFeedState state;
+  final VoidCallback onReconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = state.status == LiquidationFeedStatus.connected;
+    final busy = state.status == LiquidationFeedStatus.connecting ||
+        state.status == LiquidationFeedStatus.reconnecting;
+    final statusColor = connected
+        ? green
+        : state.status == LiquidationFeedStatus.error
+            ? red
+            : muted;
+    final statusLabel = connected
+        ? 'LIVE'
+        : state.status == LiquidationFeedStatus.connecting
+            ? 'CONNECTING'
+            : state.status == LiquidationFeedStatus.reconnecting
+                ? 'RECONNECTING'
+                : state.status == LiquidationFeedStatus.error
+                    ? 'ERROR'
+                    : 'OFFLINE';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Expanded(
+                child: Text('LIVE LIQUIDATION • USDⓈ-M FUTURES',
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+              ),
+              Text(statusLabel,
+                  style: TextStyle(
+                      color: statusColor,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900)),
+            ]),
+            const SizedBox(height: 6),
+            Text(state.message ?? 'Stream liquidation $symbol.',
+                style: const TextStyle(color: muted, fontSize: 8)),
+            if (!connected)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: busy ? null : onReconnect,
+                  icon: const Icon(Icons.refresh_rounded, size: 14),
+                  label: const Text('Hubungkan ulang',
+                      style: TextStyle(fontSize: 9)),
+                ),
+              ),
+            if (events.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 9),
+                child: Text(
+                  'Belum ada event untuk simbol ini. Binance tidak mengirim pesan ketika tidak ada snapshot liquidation.',
+                  style: TextStyle(color: muted, fontSize: 8, height: 1.4),
+                ),
+              ),
+            for (final event in events.take(6)) ...[
+              const Divider(color: line, height: 16),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    '${event.side} • ${event.status}',
+                    style: TextStyle(
+                      color: event.side == 'SELL' ? red : blue,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(event.symbol,
+                    style: const TextStyle(color: muted, fontSize: 8)),
+              ]),
+              const SizedBox(height: 5),
+              Text(event.sideDescription,
+                  style: const TextStyle(color: muted, fontSize: 8)),
+              const SizedBox(height: 5),
+              Wrap(spacing: 5, runSpacing: 5, children: [
+                _Tag('AVG ${event.averagePrice.toStringAsFixed(2)}'),
+                _Tag('FILLED ${event.executedQuantity.toStringAsFixed(5)}'),
+                _Tag('≈ ${event.executedNotional.toStringAsFixed(2)} USDT'),
+              ]),
+              const SizedBox(height: 4),
+              Text(
+                DateTime.fromMillisecondsSinceEpoch(event.tradeTimeMs)
+                    .toLocal()
+                    .toString(),
+                style: const TextStyle(color: muted, fontSize: 7),
+              ),
+            ],
+            const SizedBox(height: 7),
+            const Text(
+              'Stream publik Binance, tanpa API key. Snapshot dibatasi maksimal satu pembaruan per simbol dalam sekitar 1 detik; ini bukan arsip lengkap atau heatmap historis. Aplikasi menyimpan maksimal 20 event selama sesi aktif. SELL umumnya menutup long dan BUY umumnya menutup short; bukan sinyal entry.',
+              style: TextStyle(color: muted, fontSize: 8, height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _Scanner extends StatelessWidget {
