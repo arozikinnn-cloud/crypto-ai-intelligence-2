@@ -123,7 +123,7 @@ def _event_payload(row: SignalEvent) -> dict:
             "lifecycle": stored.get("lifecycle"),
             "gross_realized_r": (stored.get("lifecycle") or {}).get("gross_realized_r"),
             "estimated_costs_r": (stored.get("lifecycle") or {}).get("estimated_costs_r"),
-            "execution_mode": stored.get("execution_mode", "SIGNAL_ONLY"),
+            "execution_mode": stored.get("execution_mode") or (stored.get("lifecycle") or {}).get("mode", "SIGNAL_ONLY"),
         }
     return {
         "id": row.id, "symbol": row.symbol, "side": row.side,
@@ -170,6 +170,7 @@ def evaluate_active_signals(
             if not changed:
                 continue
             stored["lifecycle"] = lifecycle
+            stored["execution_mode"] = "PAPER_PRICE_TRACKING"
             stored["realized_r"] = lifecycle["realized_r"]
             stored["outcome"] = lifecycle.get("outcome")
             stored["ambiguous_candle"] = bool(lifecycle.get("ambiguous_candle"))
