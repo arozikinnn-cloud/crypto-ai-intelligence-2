@@ -8,7 +8,7 @@ on:
   push:
     branches: [main, "phase1/**", "feature/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "feature/**"]
   workflow_dispatch:
 
 jobs:
