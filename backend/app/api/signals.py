@@ -325,9 +325,9 @@ def record_signal(
             stop = float(normalized_plan["stop_loss"])
             risk = abs(entry - stop)
             direction = 1.0 if side == "BUY" else -1.0
-            normalized_plan.setdefault("take_profit_1", entry + direction * risk)
-            normalized_plan.setdefault("take_profit_2", entry + direction * risk * 2)
-            normalized_plan.setdefault("take_profit_3", entry + direction * risk * 3)
+            normalized_plan["take_profit_1"] = entry + direction * risk
+            normalized_plan["take_profit_2"] = entry + direction * risk * 2
+            normalized_plan["take_profit_3"] = entry + direction * risk * 3
             normalized_plan["take_profit"] = normalized_plan["take_profit_3"]
         event = SignalEvent(
             dedupe_key=dedupe_key, symbol=symbol.upper(), side=side, status="ACTIVE",
