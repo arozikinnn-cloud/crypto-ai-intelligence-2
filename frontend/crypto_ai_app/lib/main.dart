@@ -1339,6 +1339,10 @@ class _SignalPerformance extends StatelessWidget {
                 _Metric(label: 'AMBIGUOUS', value: txt(data['ambiguous'], '0')),
                 _Metric(label: 'NET R', value: txt(data['total_realized_r'], '0')),
               ]),
+              Text(
+                'BREAKEVEN: ${txt(data['breakeven'], '0')} • WR dihitung dari hasil bersih seluruh posisi yang sudah ditutup.',
+                style: const TextStyle(color: muted, fontSize: 8),
+              ),
               if (closedCount < 30)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 7),
