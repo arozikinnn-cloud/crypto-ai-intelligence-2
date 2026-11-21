@@ -22,6 +22,8 @@ class SignalEventResponse(BaseModel):
     confidence_note: str | None = None
     outcome: str | None = None
     realized_r: float | None = None
+    gross_realized_r: float | None = None
+    estimated_costs_r: float | None = None
     closed_at: datetime | None = None
     lifecycle: dict | None = None
     execution_mode: str | None = None
